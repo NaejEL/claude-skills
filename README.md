@@ -69,6 +69,22 @@ Pilote le **cycle complet d'une pull request GitHub** depuis la branche courante
 
 Garde-fous anti-dérive : périmètre strictement limité au diff (pas de refacto, pas de durcissement sécurité spéculatif, pas de nitpick), « zéro finding » est une réponse acceptable, registre cumulatif empêchant un finding rejeté de ressusciter d'une ronde à l'autre.
 
+### `legacy-audit`
+
+Audite un **repo legacy en lecture seule** et en tire un plan d'assainissement exécutable par la factory :
+
+```text
+/legacy-audit
+/legacy-audit C:/chemin/vieux-projet --categories "hygiene;qualite" --max-specs 10
+```
+
+1. **Cartographie** du repo (stack, taille, git présent ou non — l'absence de versioning est un finding) ;
+2. **4 auditeurs parallèles** par familles de smells (hygiène du dépôt, portabilité/config, qualité du code, filet de sécurité : tests/doc) → **validation adversariale** de chaque finding par un mini-agent qui relit la preuve à la source ;
+3. **Priorisation interactive** : nombre de jalons, critère dominant et affectation par thème décidés par l'utilisateur (AskUserQuestion) ;
+4. **Livrables** : `ROADMAP-legacy.md` (jalons, estimations, dépendances) + une spec `specs/SPEC-leg-*.md` au format factory (statut proposé) par finding retenu — prêtes pour `/factory-run`.
+
+Garde-fous : lecture seule stricte hors livrables (même un `.gitignore` manquant est un finding, pas une action), « zéro finding » est une réponse acceptable, estimation T-shirt (XS→XL, les XL sont découpés en specs chaînées), idempotent (reprise d'une roadmap existante, statuts FAIT préservés, specs jamais écrasées).
+
 ## Ajouter un skill
 
 Créer `skills/<nom>/SKILL.md` (frontmatter `name` + `description` minimum), relancer le script d'installation, commiter.
