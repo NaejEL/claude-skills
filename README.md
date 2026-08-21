@@ -104,6 +104,7 @@ Le skill détecte la stack (framework, venv, GPU réel), le **corpus scientifiqu
 | `.claude/agents/lab-builder.md` | Implémente le protocole comme flag de config ablatable + tests + script d'éval, exécute l'expérience complète, rend les résultats bruts **sans interpréter** |
 | `.claude/agents/lab-verifier.md` | Adversarial : conformité au protocole, fuites/confondants dans le code, ré-exécution d'au moins un run, recalcul, verdict JSON (jamais d'édition) |
 | `.claude/skills/lab-run/SKILL.md` | Orchestrateur de la boucle scientifique |
+| `.claude/lab-models.json` | Affectation d'un modèle par rôle, choisie à l'installation (gate humaine) |
 | `ci/lab.sh` + `ci/lab.ps1` | Entrée headless : `claude -p "/lab-run 'experiments/EXP-x.md'"` |
 | `.claude/settings.json` | `permissions.deny` : venv, caches, données, poids, résultats bruts (fusionné) |
 | `.vscode/tasks.json` | Tâches VS Code Lab (fusionné) |
@@ -124,13 +125,21 @@ Cycle d'une expérience :
 
 Un résultat négatif est un résultat : le cycle réussit quand la question a une réponse honnête, pas quand le code « marche ».
 
+**Un modèle par rôle.** À l'installation, une gate humaine choisit quel modèle tient quel rôle (profils prêts : tout hérité / le plus capable sur les deux experts / le plus capable seulement sur l'interprétation / sur-mesure par rôle). Le choix est écrit dans `.claude/lab-models.json` et relu à chaque cycle ; `inherit` = le rôle suit le modèle de la session. Override ponctuel sans toucher au fichier :
+
+```text
+/lab-run "ma question" --models "math=fable;director.interpretation=fable;builder=sonnet"
+```
+
+Les rôles affectés à un modèle coûteux sont traités comme une ressource rare : jamais le journal entier ni les résultats bruts en entrée, pas de relance pour une reformulation, et l'interprétation croisée n'a lieu qu'une fois par cycle. L'entrée de journal consigne quel modèle a tenu quel rôle — condition de reproductibilité du jugement, au même titre que les seeds.
+
 ### `ai-lab-audit`
 
 Revue externe d'un **projet de recherche IA en lecture seule** — le pendant scientifique de `legacy-audit`, qui alimente `/lab-run` au lieu de le détourner (auditer ≠ expérimenter : aucun run, aucun protocole) :
 
 ```text
 /ai-lab-audit
-/ai-lab-audit C:/chemin/projet --lenses "validite;fuites" --max-questions 4
+/ai-lab-audit C:/chemin/projet --lenses "validite;fuites" --max-questions 4 --models "math=fable"
 ```
 
 1. **Cartographie du corpus scientifique** (journal et format de ses entrées, architecture, feuille de route et tableau des résultats, documents figés, évals et leurs options réelles, contraintes non négociables) ; réutilise les agents `lab-*` s'ils sont installés ;
@@ -138,7 +147,7 @@ Revue externe d'un **projet de recherche IA en lecture seule** — le pendant sc
 3. **Arbitrage humain** : sort des corrections (specs factory ou simple liste) et critère de priorité des questions (fiabiliser d'abord / le moins cher / ordre de la feuille de route) ;
 4. **Livrable** `AUDIT-lab.md` : **corrections** `COR-*` (avec specs `specs/SPEC-lab-*.md` si la factory est présente) et **questions de recherche** `Q-*` — une phrase falsifiable, sa motivation chiffrée, ce qu'elle trancherait, son coût, sa dépendance éventuelle à une correction, et la commande `/lab-run "<question>"` exacte.
 
-Garde-fous : « zéro finding » est une réponse acceptable, une question dont dépend un banc d'éval fuyant attend la correction du banc, idempotent (reprise, questions tranchées par une entrée de journal postérieure marquées `TRANCHEE`).
+Garde-fous : « zéro finding » est une réponse acceptable, une question dont dépend un banc d'éval fuyant attend la correction du banc, idempotent (reprise, questions tranchées par une entrée de journal postérieure marquées `TRANCHEE`). L'audit lit la même affectation de modèles que `/lab-run` (`.claude/lab-models.json`) : les mini-validateurs restent sur un modèle économique, contester un extrait de trois lignes ne justifie pas le modèle le plus cher.
 
 ## Ajouter un skill
 

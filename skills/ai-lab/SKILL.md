@@ -130,6 +130,35 @@ Le prompt système impose : partir du protocole approuvé, du diff (`git diff` +
 
 Interdits : modifier le moindre fichier ; approuver si les tests échouent, si le protocole n'a pas été suivi, si un contrôle manque ou si la ré-exécution diverge au-delà de la tolérance ; rendre un verdict sans avoir ré-exécuté au moins un run ; juger de l'intérêt scientifique du résultat (c'est le rôle du Director — le Verifier juge de sa validité).
 
+## Phase 2b — Affectation des modèles par rôle (gate humaine)
+
+Les cinq fichiers d'agents sont créés **sans champ `model`** : un agent sans ce champ hérite du modèle de la session, et l'affectation réelle est portée par un fichier de configuration lu à chaque cycle. C'est le seul mécanisme vérifié pour mélanger les modèles dans un même cycle (le paramètre `model` de l'outil Agent, appliqué à chaque lancement), et il garde les agents réutilisables par d'autres skills. Ne jamais écrire `model:` dans le frontmatter des agents du labo : le fichier de configuration serait alors contredit sans que rien ne le signale.
+
+Poser à l'utilisateur, en **un seul appel AskUserQuestion**, le profil de modèles souhaité — en rappelant dans la question que les rôles laissés en héritage consomment le modèle de la session, et que le budget du modèle le plus capable se dépense vite :
+
+- **Tout hérité** — aucun override ; tous les rôles suivent la session. Zéro consommation du modèle haut de gamme au-delà de ce que la session coûte déjà.
+- **Le plus capable sur les deux experts** — `neuro` et `math` sur le modèle le plus capable disponible (`fable`), tout le reste hérité. Le cadrage scientifique et la formalisation sont les points où une erreur coûte une campagne de runs entière.
+- **Le plus capable sur l'interprétation** — `math` et le Director **en mode interprétation** sur `fable` ; le Director en mode cadrage, `neuro`, `builder` et `verifier` hérités. Profil le plus économe : le modèle haut de gamme n'est appelé qu'une fois par cycle, au moment où l'on décide ce que les chiffres veulent dire.
+- **Sur-mesure** — enchaîner un second appel AskUserQuestion (deux appels de trois questions maximum) : une question par rôle (`director.cadrage`, `director.interpretation`, `neuro`, `math`, `builder`, `verifier`), options `hériter de la session` / `opus` / `fable` / `sonnet` / `haiku`.
+
+Écrire le résultat dans `.claude/lab-models.json`, en fusionnant avec l'existant s'il y en a un (clés absentes complétées, clés existantes préservées sauf choix contraire explicite de l'utilisateur) :
+
+```json
+{
+  "director.cadrage": "inherit",
+  "director.interpretation": "fable",
+  "neuro": "inherit",
+  "math": "fable",
+  "builder": "inherit",
+  "verifier": "inherit",
+  "validator": "haiku"
+}
+```
+
+Valeurs autorisées : `inherit` (aucun override : le rôle suit la session), `opus`, `fable`, `sonnet`, `haiku`. La clé `validator` sert aux mini-agents de contestation d'autres skills du labo (dont `/ai-lab-audit`) : la laisser sur un modèle économique par défaut, contester un extrait de trois lignes ne justifie pas le modèle le plus cher. Toute clé absente ou valeur inconnue est traitée comme `inherit`.
+
+Ce fichier est un réglage personnel : signaler dans le rapport final qu'il peut être versionné (choix d'équipe) ou ajouté au `.gitignore` (préférence par machine), sans trancher à la place de l'utilisateur.
+
 ## Phase 3 — Skill d'orchestration `.claude/skills/lab-run/SKILL.md`
 
 Créer le skill projet qui pilote un cycle complet. Frontmatter exact :
@@ -139,24 +168,27 @@ Créer le skill projet qui pilote un cycle complet. Frontmatter exact :
 name: lab-run
 description: Lance un cycle du laboratoire IA (Director + experts Neuro/Math → protocole pré-enregistré avec gate humaine → Builder implémente et exécute → Verifier adversarial avec boucle de correction → interprétation croisée → journal) sur une question de recherche, le mot-clé "suivant", ou un protocole approuvé.
 disable-model-invocation: true
-argument-hint: "<question de recherche | suivant | chemin d'un protocole approuvé>"
+argument-hint: "<question de recherche | suivant | chemin d'un protocole approuvé> [--models \"role=modele;...\"]"
 ---
 ```
 
 Le corps (rédigé intégralement, voix impérative, adapté au projet : citer les chemins réels du journal, de la feuille de route, de la commande de test, de l'interpréteur) définit ce déroulé pour la session principale :
 
-1. **Entrée** : si `$ARGUMENTS` est le chemin d'un fichier existant sous `experiments/` dont la ligne de statut vaut `Statut : PRE-ENREGISTRE`, passer directement à l'étape 4. Sinon, traiter `$ARGUMENTS` comme une question de recherche (ou comme `suivant`).
-2. **Phase Cadrage** : lancer le sous-agent `lab-director` en mode cadrage avec la question ; à son retour, lancer **en parallèle** (même message, deux appels) `lab-neuro` et `lab-math` avec le brouillon de protocole complet et les questions qui leur sont adressées ; relancer `lab-director` avec son brouillon et les deux avis pour qu'il produise le **protocole consolidé** (il intègre ou écarte chaque remarque en le disant, et met à jour les prédictions chiffrées avec les apports de Math et les prédictions qualitatives de Neuro).
+0. **Affectation des modèles** : lire `.claude/lab-models.json` (absent → tous les rôles en `inherit`). Si `$ARGUMENTS` contient `--models "role=modele;..."`, appliquer ces paires **pour ce cycle uniquement**, sans réécrire le fichier ; rôles reconnus : `director.cadrage`, `director.interpretation`, `neuro`, `math`, `builder`, `verifier` ; valeurs reconnues : `inherit`, `opus`, `fable`, `sonnet`, `haiku` — toute valeur inconnue est refusée avec un message explicite plutôt que silencieusement ignorée. À chaque lancement d'un sous-agent, passer le paramètre `model` de l'outil Agent avec la valeur du rôle correspondant, **sauf si elle vaut `inherit`** (dans ce cas, ne pas passer le paramètre du tout). Annoncer en une ligne, avant la première dépense, l'affectation retenue (rôle → modèle) pour que l'utilisateur puisse interrompre s'il ne veut pas payer ce cycle-là au tarif annoncé.
+1. **Entrée** : si `$ARGUMENTS` (privé de l'option `--models`) est le chemin d'un fichier existant sous `experiments/` dont la ligne de statut vaut `Statut : PRE-ENREGISTRE`, passer directement à l'étape 4. Sinon, traiter le reste de `$ARGUMENTS` comme une question de recherche (ou comme `suivant`).
+2. **Phase Cadrage** : lancer le sous-agent `lab-director` en mode cadrage (modèle du rôle `director.cadrage`) avec la question ; à son retour, lancer **en parallèle** (même message, deux appels) `lab-neuro` et `lab-math` (modèles `neuro` et `math`) avec le brouillon de protocole complet et les questions qui leur sont adressées ; relancer `lab-director` (rôle `director.cadrage`) avec son brouillon et les deux avis pour qu'il produise le **protocole consolidé** (il intègre ou écarte chaque remarque en le disant, et met à jour les prédictions chiffrées avec les apports de Math et les prédictions qualitatives de Neuro).
 3. **Gate humaine (pré-enregistrement)** : poser à l'utilisateur les *Questions pour le PI* du protocole consolidé (AskUserQuestion) ; intégrer les réponses ; écrire `experiments/EXP-<AAAA-MM-JJ>-<slug>.md` avec en tête `Statut : PROPOSE` ; présenter le protocole à l'utilisateur (question, hypothèse, prédictions chiffrées, critères d'abandon, budget) et demander son approbation explicite ; en cas d'approbation, passer le statut à `PRE-ENREGISTRE` et **ne plus jamais modifier les sections Prédictions et Critères d'abandon** ; sinon itérer. **Si aucune interaction n'est possible (exécution headless), s'arrêter en erreur explicite : un cycle headless exige le chemin d'un protocole déjà pré-enregistré.** Ne jamais mesurer sans protocole pré-enregistré.
-4. **Phase Build & Run** : lancer le sous-agent `lab-builder` (contexte frais) avec le chemin du protocole pré-enregistré ; récupérer son compte rendu brut.
+4. **Phase Build & Run** : lancer le sous-agent `lab-builder` (contexte frais, modèle du rôle `builder`) avec le chemin du protocole pré-enregistré ; récupérer son compte rendu brut.
 5. **Phase Verify — boucle de correction, 3 itérations maximum** :
-   1. Lancer un sous-agent `lab-verifier` (contexte vierge, indépendant du Builder) avec le chemin du protocole et le compte rendu brut ; récupérer son bloc JSON.
+   1. Lancer un sous-agent `lab-verifier` (contexte vierge, indépendant du Builder, modèle du rôle `verifier`) avec le chemin du protocole et le compte rendu brut ; récupérer son bloc JSON.
    2. Si `verdict` vaut `APPROVED` **et** `tests_passed`, `protocol_followed` et `rerun_consistent` valent `true` : sortir de la boucle.
    3. Sinon : relancer `lab-builder` avec le protocole **et la liste complète des `issues`** (fichier, sévérité, type, description) et la consigne de corriger sans régresser puis de ré-exécuter les runs affectés ; reprendre à l'étape 1 avec un nouveau Verifier.
    4. Tenir le compteur ; après la 3e itération non approuvée, **échouer explicitement** en publiant les issues restantes et en écrivant une entrée de journal de type « expérience invalidée — cause » (un protocole qu'on n'arrive pas à exécuter proprement est une information). Ne jamais approuver par épuisement.
-6. **Phase Interprétation croisée** : lancer **en parallèle** `lab-neuro` et `lab-math` avec le protocole, le compte rendu brut vérifié et le JSON du Verifier (Math recalcule au moins un chiffre clé ; Neuro confronte les courbes à ce que la biologie prédisait) ; puis lancer `lab-director` en mode interprétation avec l'ensemble ; récupérer le verdict (`RETENU` / `REJETE` / `INCONCLUSIF`), l'entrée de journal rédigée, la ligne de tableau proposée et la prochaine expérience suggérée.
+6. **Phase Interprétation croisée** : lancer **en parallèle** `lab-neuro` et `lab-math` (modèles `neuro` et `math`) avec le protocole, le compte rendu brut vérifié et le JSON du Verifier (Math recalcule au moins un chiffre clé ; Neuro confronte les courbes à ce que la biologie prédisait) ; puis lancer `lab-director` en mode interprétation (modèle du rôle `director.interpretation`) avec l'ensemble ; récupérer le verdict (`RETENU` / `REJETE` / `INCONCLUSIF`), l'entrée de journal rédigée, la ligne de tableau proposée et la prochaine expérience suggérée.
 7. **Gate humaine (consignation)** : présenter le verdict et l'entrée de journal à l'utilisateur ; sur approbation, **ajouter** l'entrée dans le journal détecté (en respectant son ordre — chronologique ou antéchronologique, tel que détecté — et son format exact ; créer `docs/JOURNAL.md` s'il n'existe pas), ajouter la ligne au tableau des résultats de la feuille de route si le projet en tient un, passer le statut du protocole à `TERMINE — <verdict>` ; ne toucher à aucun autre document (l'architecture et les notes figées ne sont jamais éditées par le labo ; si le Director recommande une décision de design à y consigner, la mentionner dans le rapport pour que l'utilisateur le fasse). En headless, écrire l'entrée de journal sans gate (le protocole pré-enregistré en était l'autorisation) mais la marquer `(consignée automatiquement — à relire)`.
-8. **Rapport final** : question, verdict, chiffres clés vs prédictions pré-enregistrées, fichiers modifiés (`git status`), résultat des tests, nombre d'itérations Builder/Verifier, emplacement des résultats bruts, prochaine expérience suggérée avec la commande `/lab-run "<question>"` ou `/lab-run suivant` ; ne pas commiter à la place de l'utilisateur.
+8. **Rapport final** : question, verdict, chiffres clés vs prédictions pré-enregistrées, fichiers modifiés (`git status`), résultat des tests, nombre d'itérations Builder/Verifier, emplacement des résultats bruts, **affectation des modèles effectivement utilisée** (rôle → modèle, et si elle venait du fichier ou d'un `--models`), prochaine expérience suggérée avec la commande `/lab-run "<question>"` ou `/lab-run suivant` ; ne pas commiter à la place de l'utilisateur.
+
+**Économie du modèle le plus cher.** Tout rôle affecté à un modèle autre qu'`inherit` est traité comme une ressource rare : ne jamais lui passer un document entier quand un extrait suffit — pour `neuro` et `math`, le protocole ou le compte rendu concernés plus les seules entrées de journal citées, jamais le journal complet ni les fichiers de résultats bruts (qui restent au Builder et au Verifier) ; ne jamais le relancer pour une reformulation cosmétique ; en cas de boucle de correction (étape 5), ne pas rejouer l'interprétation croisée à chaque itération — elle n'a lieu qu'une fois, après approbation du Verifier. L'entrée de journal rédigée à l'étape 7 mentionne en une ligne quel modèle a tenu quel rôle : c'est une condition de reproductibilité du jugement, au même titre que les seeds.
 
 ## Phase 4 — Scripts headless `ci/lab.sh` et `ci/lab.ps1`
 
@@ -188,4 +220,4 @@ En cas de fusion, préserver les tâches et inputs existants ; ne pas dupliquer 
 
 ## Phase 7 — Rapport final
 
-Terminer par un rapport structuré : projet détecté (stack, framework, interpréteur, matériel et disponibilité réelle du GPU, commande de test) ; corpus scientifique retenu (chemins du journal, de l'architecture, de la feuille de route, documents figés, évals existantes, classe de config, contraintes non négociables recopiées dans les prompts) ; domaine et références utilisés pour spécialiser Neuro et Math ; liste des fichiers avec leur état (créé / fusionné / identique / personnalisé-conservé) ; absence de journal ou d'outillage de test le cas échéant ; mode d'emploi en trois lignes (session : `/lab-run "question"` ou `/lab-run suivant` ; headless : `ci/lab.sh experiments/EXP-x.md` ; les protocoles sont versionnés, les résultats bruts non). Si `$ARGUMENTS` contenait une question, conclure par la commande exacte à lancer : `/lab-run "<la question>"`.
+Terminer par un rapport structuré : projet détecté (stack, framework, interpréteur, matériel et disponibilité réelle du GPU, commande de test) ; corpus scientifique retenu (chemins du journal, de l'architecture, de la feuille de route, documents figés, évals existantes, classe de config, contraintes non négociables recopiées dans les prompts) ; domaine et références utilisés pour spécialiser Neuro et Math ; liste des fichiers avec leur état (créé / fusionné / identique / personnalisé-conservé) ; **affectation des modèles retenue** (tableau rôle → modèle, chemin `.claude/lab-models.json`, rappel qu'elle se modifie en éditant ce fichier ou ponctuellement avec `/lab-run "…" --models "math=opus"`, et qu'elle peut être versionnée ou ignorée par git selon la préférence) ; absence de journal ou d'outillage de test le cas échéant ; mode d'emploi en trois lignes (session : `/lab-run "question"` ou `/lab-run suivant` ; headless : `ci/lab.sh experiments/EXP-x.md`, qui suit le fichier d'affectation ; les protocoles sont versionnés, les résultats bruts non). Si `$ARGUMENTS` contenait une question, conclure par la commande exacte à lancer : `/lab-run "<la question>"`.

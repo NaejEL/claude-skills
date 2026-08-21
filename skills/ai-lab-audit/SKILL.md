@@ -3,7 +3,7 @@ name: ai-lab-audit
 description: Audite un projet de recherche IA en lecture seule — cartographie du corpus scientifique (journal, architecture, feuille de route, évals), cinq auditeurs parallèles par lentilles (fidélité code↔maths, validité statistique des résultats acquis, fuites et confondants dans les évals, analogies biologiques de façade, cohérence de la feuille de route), validation adversariale des findings, arbitrage humain — puis écrit AUDIT-lab.md avec les corrections à faire et les questions de recherche candidates, chacune prête pour /lab-run. À utiliser quand l'utilisateur veut une revue externe de son PoC de recherche avant de choisir la prochaine expérience.
 context: fork
 user-invocable: true
-argument-hint: "[chemin du projet] [--lenses \"l1;l2\"] [--max-questions N]"
+argument-hint: "[chemin du projet] [--lenses \"l1;l2\"] [--max-questions N] [--models \"role=modele;...\"]"
 ---
 
 # AI Lab audit — revue externe d'un projet de recherche IA
@@ -15,6 +15,7 @@ Parser `$ARGUMENTS` :
 - **1er token** (s'il ne commence pas par `--`) = chemin du projet ; défaut : répertoire courant. S'il n'existe pas → arrêt : « le chemin <chemin> n'existe pas ». Mémoriser `REPO` (chemin absolu, quoté si espaces).
 - **`--lenses "a;b"`** : restreint l'audit aux lentilles listées (`fidelite`, `validite`, `fuites`, `bio`, `route`, séparateur `;`). Défaut : les cinq. Si le projet n'a aucune inspiration biologique détectée en Phase 1, la lentille `bio` est retirée d'office et le rapport le dit.
 - **`--max-questions N`** : plafond de questions de recherche retenues dans le livrable, borné dur à `min(N, 12)`. Défaut : 6. On borne le livrable, jamais la détection : les candidates au-delà du plafond figurent dans `AUDIT-lab.md` (section « non retenues dans ce cycle »).
+- **`--models "role=modele;..."`** : override d'affectation **pour cet audit uniquement**, sans réécrire le fichier de configuration. Rôles reconnus : `neuro`, `math`, `director.cadrage`, `validator` ; valeurs reconnues : `inherit`, `opus`, `fable`, `sonnet`, `haiku` — toute valeur inconnue est refusée avec un message explicite plutôt que silencieusement ignorée.
 
 ## Règles impératives (toutes les phases)
 
@@ -33,6 +34,7 @@ Dans la session principale, sans sous-agent :
 1. **Stack** : manifestes Python (`pyproject.toml`, `requirements.txt`, `environment.yml`) ou autres ; framework (PyTorch, JAX, NumPy…) ; interpréteur et commande de test documentés dans `CLAUDE.md`/`README.md` (relevés, jamais exécutés sauf la commande de test si elle est CPU et sans téléchargement — un échec de tests est un finding `FID-`).
 2. **Corpus scientifique** (même méthode que `/ai-lab` Phase 1b) : identifier par lecture de `CLAUDE.md`, `README.md` et `docs/` les chemins exacts du **journal d'expériences** (et le format de ses entrées), du **document d'architecture** (sections maths, décisions numérotées, pièges connus, protocole des évals), de la **feuille de route** (mécanismes candidats, déclencheurs, tableau des résultats), des **documents figés** (déclarés « ne pas modifier »), de la **vision**, de la **classe de config** centrale, des **scripts d'éval** (nom, question mesurée, métrique, contrôle, options `argparse` réelles), du **vocabulaire**, de l'**état courant** (section « État du projet »), des **contraintes non négociables** et des **références bibliographiques** citées.
 3. **Labo** : présence de `.claude/agents/lab-director.md`, `lab-neuro.md`, `lab-math.md` et de `.claude/skills/lab-run/SKILL.md`. Si présents, `LAB=true` : les auditeurs des lentilles `fidelite`/`validite`/`fuites` sont lancés avec `subagent_type: lab-math`, la lentille `bio` avec `lab-neuro`, la lentille `route` avec `lab-director` (chacun reçoit en plus le prompt de lentille ci-dessous). Sinon `LAB=false` : agents `Explore` avec le prompt de lentille seul, et recommandation `/ai-lab` au rapport — non bloquant.
+   **Affectation des modèles** : lire `.claude/lab-models.json` (absent → tous les rôles en `inherit`), puis appliquer les paires de `--models` pour cet audit seulement. Chaque auditeur est lancé avec le paramètre `model` de l'outil Agent valant celui de son rôle — `math` pour `fidelite`/`validite`/`fuites`, `neuro` pour `bio`, `director.cadrage` pour `route`, `validator` pour les mini-agents de la Phase 3 — **sauf si la valeur est `inherit`**, auquel cas le paramètre n'est pas passé. Annoncer l'affectation retenue en une ligne avant de lancer les auditeurs, pour que l'utilisateur puisse interrompre avant la dépense. Un rôle affecté à un modèle coûteux est traité comme une ressource rare : il reçoit la carte et sa lentille, jamais le journal entier (voir les bornes du point 6) ; les mini-validateurs restent sur un modèle économique par défaut — contester un extrait de trois lignes ne justifie pas le modèle le plus cher.
 4. **Factory** : présence de `.claude/skills/factory-run/SKILL.md` (détermine si les corrections peuvent devenir des specs en Phase 6).
 5. **Reprise** : si `<REPO>/AUDIT-lab.md` existe, charger toutes ses lignes (corrections, questions retenues / non retenues / rejetées) dans le registre cumulatif. Pour chaque question déjà retenue, vérifier dans le journal si une entrée postérieure à la date de l'audit l'a tranchée : si oui, la marquer `TRANCHEE (journal <date>)`.
 6. **Bornes** : si le journal dépasse 1 500 lignes, les auditeurs `validite` et `route` reçoivent les 15 dernières entrées plus le tableau des résultats, pas le journal entier ; marquer l'audit « échantillonné » pour le rapport.
@@ -134,7 +136,7 @@ Une spec `specs/SPEC-lab-<nn>-<slug>.md` par correction retenue, au **contrat fa
 
 Émettre un rapport structuré :
 
-- **Carte** : projet, stack, corpus détecté (chemins), dernière entrée de journal, `LAB`/factory, complet ou échantillonné, audit créé ou repris ;
+- **Carte** : projet, stack, corpus détecté (chemins), dernière entrée de journal, `LAB`/factory, complet ou échantillonné, audit créé ou repris, **affectation des modèles utilisée** (rôle → modèle, et si elle venait de `.claude/lab-models.json` ou d'un `--models`) ;
 - **Findings** : tableau `| Lentille | Bruts | Confirmés | Rejetés/dédupliqués | dont corrections | dont questions |` ;
 - **Corrections** : nombre, sévérités, specs écrites ou liste seule ;
 - **Questions retenues** : ordre, coût cumulé, dépendances envers des corrections ;
