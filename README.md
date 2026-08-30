@@ -97,6 +97,24 @@ Audite un **repo legacy en lecture seule** et en tire un plan d'assainissement e
 
 Garde-fous : lecture seule stricte hors livrables (même un `.gitignore` manquant est un finding, pas une action), « zéro finding » est une réponse acceptable, estimation T-shirt (XS→XL, les XL sont découpés en specs chaînées), idempotent (reprise d'une roadmap existante, statuts FAIT préservés, specs jamais écrasées).
 
+### `vibecode-audit`
+
+Diagnostique un **projet vibecodé** (généré par IA) repris par quelqu'un qui n'en est pas l'auteur, et répond à une seule question : par où attaquer avant la mise en production.
+
+```text
+/vibecode-audit
+/vibecode-audit C:/chemin/poc --axes "securite;maintenabilite" --max-findings 10
+```
+
+1. **Cartographie** : forme du projet, **frontières de confiance** (points d'entrée exposés, couche d'accès aux données), signaux de génération, vérifications déterministes (vulnérabilités, secrets) triées par atteignabilité en production ;
+2. **5 auditeurs parallèles** guidés par une taxonomie des signatures propres au code généré — contrôle d'accès absent ou déporté chez le client, injection et rendu non échappé, **logique métier exploitable** (invariants du domaine, concurrence, transitions d'état), réimplémentation entre sessions, adhérence au fournisseur — puis **validation adversariale** avec pouvoir de **scinder** un motif trop grossier ;
+3. **Gate humaine légère** (un seul appel) : ordre d'attaque et sort des motifs mineurs ;
+4. **Livrable unique** : `AUDIT-vibecode.md` — encadré de portée et limites, surfaces non auditables, tableau « par où attaquer », motifs détaillés.
+
+Ce qui le distingue de `legacy-audit` : deux distributions de défauts. `legacy-audit` vise la dette d'**accumulation** (code humain, dérive sur des années) ; `vibecode-audit` vise la dette de **génération** (chaque session régénère sans connaître la précédente, le modèle écrit le chemin nominal). Les enchaîner est le mode d'emploi normal — le diagnostic prémâche le travail, `/legacy-audit` en tire roadmap et specs.
+
+Garde-fous : **une seule écriture**, le rapport — ni spec, ni hook, ni correctif ; le finding est un **motif à N occurrences**, jamais une occurrence isolée ; la difficulté (T-shirt XS→XL) trie, le **risque de régression informe seulement** (il sature à « élevé » sur un projet sans tests et ne discriminerait rien) ; **aucune adhérence à une pile technique** — la taxonomie décrit des classes de défaut, jamais un écosystème ; **ce qui ne peut pas être audité est un finding**, jamais un silence rassurant.
+
 ### `ai-lab`
 
 Installe un **laboratoire de recherche IA multi-agents** dans un projet d'expérimentation (PoC d'architecture, mécanisme bio-inspiré, étude d'ablation) — le pendant scientifique de `software-factory` :

@@ -1,0 +1,6 @@
+factory-logs/
+
+# Artefacts de session, propres a une machine : jamais commites
+BRAINSTORM-*.md
+AUDIT-*.md
+ROADMAP-legacy.md
