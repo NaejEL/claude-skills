@@ -149,6 +149,22 @@ Revue externe d'un **projet de recherche IA en lecture seule** — le pendant sc
 
 Garde-fous : « zéro finding » est une réponse acceptable, une question dont dépend un banc d'éval fuyant attend la correction du banc, idempotent (reprise, questions tranchées par une entrée de journal postérieure marquées `TRANCHEE`). L'audit lit la même affectation de modèles que `/lab-run` (`.claude/lab-models.json`) : les mini-validateurs restent sur un modèle économique, contester un extrait de trois lignes ne justifie pas le modèle le plus cher.
 
+### `brainstorm`
+
+Co-réfléchit à une idée en la **challengeant** au lieu de la valider, et **s'arrête** :
+
+```text
+/brainstorm "monter une offre d'audit technique pour des PME"
+/brainstorm "remplacer notre file de messages par du polling" --rounds 2
+```
+
+1. **Ancrage** du sujet sur le répertoire courant, budget dur de 12 fichiers lus — reconnaissance écourtée et signalée si le sujet n'a aucun rapport avec le répertoire ; reprise d'un `BRAINSTORM-<slug>.md` antérieur pour ne pas reproposer une piste déjà écartée ;
+2. **5 lentilles parallèles en contexte vierge** à chaque tour (hypothèses implicites, alternatives radicales, contre-exemples et cas limites, coût et faisabilité, effets de second ordre) — chaque piste marquée `[énoncé]` ou `[hors énoncé]`, au moins une piste hors énoncé exigée par tour ;
+3. **Gate humaine à chaque tour** (AskUserQuestion) : creuser / écarter / amender chaque angle, le tour suivant part de vos réponses ;
+4. **Convergence** : synthèse en conversation (idée après confrontation, angles retenus, angles écartés avec leur raison), puis gate finale proposant de l'écrire dans `BRAINSTORM-<slug>.md` — en cas de refus, rien n'est écrit.
+
+**Condition de terminaison** : plafond dur de **3 tours** (`--rounds N` borné à `min(N, 3)`), passage forcé à la convergence au plafond, sortie anticipée observable dès qu'un tour ne produit plus aucun angle hors énoncé nouveau, et **5 pistes retenues au maximum** dans la synthèse. Le rapport final suggère `/factory-run` ou `/lab-run` quand un angle retenu est implémentable, sans jamais lancer la commande. Arrêt en erreur explicite en exécution headless : le skill est intrinsèquement dialogué.
+
 ## Ajouter un skill
 
 Créer `skills/<nom>/SKILL.md` (frontmatter `name` + `description` minimum), relancer le script d'installation, commiter.
