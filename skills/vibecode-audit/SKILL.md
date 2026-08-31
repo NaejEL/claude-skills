@@ -1,6 +1,6 @@
 ---
 name: vibecode-audit
-description: Audite en lecture seule un projet vibecodé (généré par IA) et écrit un unique rapport AUDIT-vibecode.md — cartographie, cinq auditeurs parallèles guidés par une taxonomie des signatures propres au code généré (contrôle d'accès absent, injection, rendu non échappé, logique métier exploitable, réimplémentation entre sessions, adhérence au fournisseur), validation adversariale, findings agrégés en motifs à N occurrences, estimation de difficulté et ordre d'attaque sur trois axes pondérés sécurité puis maintenabilité puis évolutivité. À utiliser quand l'utilisateur reprend un PoC généré par IA et veut savoir par où attaquer avant une mise en production ; prémâche le travail de /legacy-audit, qui vise au contraire la dette d'accumulation d'un code écrit par des humains.
+description: Audite en lecture seule un projet vibecodé (généré par IA) et écrit un unique rapport AUDIT-vibecode.md — cartographie, cinq auditeurs parallèles guidés par une taxonomie des signatures propres au code généré (contrôle d'accès absent, injection, rendu non échappé, logique métier exploitable, réimplémentation entre sessions, adhérence au fournisseur), validation adversariale, findings agrégés en motifs à N occurrences, difficulté en ordre de grandeur et ordre d'attaque par gravité d'abord, puis pondération sécurité, maintenabilité, évolutivité. À utiliser quand l'utilisateur reprend un PoC généré par IA et veut savoir par où attaquer avant une mise en production ; prémâche le travail de /legacy-audit, qui vise au contraire la dette d'accumulation d'un code écrit par des humains.
 context: fork
 user-invocable: true
 argument-hint: "[chemin du projet] [--axes \"securite;maintenabilite;evolutivite\"] [--max-findings N]"
@@ -58,7 +58,7 @@ Lancer **en un seul message** les auditeurs (type `Explore`, lecture seule) des 
 - **(d) `maintenabilite`** (ids `MNT-`) — **incohérences entre sessions de génération**. En priorité, et c'est un travail **transversal, invisible fichier par fichier** : la même fonction écrite plusieurs fois sous des noms différents ; les mêmes règles métier présentes à la fois dans l'interface et côté serveur, avec des divergences silencieuses ; la même entité décrite différemment de part et d'autre de la frontière réseau. Puis : contrats si larges qu'ils ne contraignent plus rien ; pistes abandonnées jamais retirées ; tests absents, ou dont les assertions portent sur les doublures et ne vérifient aucun comportement ; erreurs capturées sans traitement ni propagation ; style et structure discontinus d'un fichier à l'autre ; commentaires qui paraphrasent le code sans jamais dire pourquoi.
 - **(e) `evolutivite`** (ids `EVO-`) — **choix qui bloquent la suite**. Structure de données modifiée sans historique de migration, impossible à rejouer ailleurs ni à annuler. Appels à un service tiers disséminés dans le code applicatif sans frontière d'abstraction. Interrogation des données dans une boucle ; lecture non paginée de collections destinées à croître ; absence d'index sur les critères de filtrage. Adresses, identifiants et seuils inscrits dans le code au lieu d'être externalisés par environnement. Traitements longs ou faillibles exécutés dans le cycle de requête, sans travail différé. Code supposant un utilisateur à la fois là où le domaine garantit le contraire.
 
-Chaque prompt d'auditeur contient : la carte de la Phase 1 (frontières de confiance comprises), **sa famille et rien d'autre à chercher**, le budget de lecture, la phrase « **zéro finding est une réponse normale et acceptable** », l'interdiction absolue d'écrire ou d'exécuter quoi que ce soit, l'interdiction de nommer une pile technique dans ses findings, l'exigence de preuve vérifiable, le barème de difficulté (XS < 30 min, S < 2 h, M demi-journée, L 1-2 jours, XL à découper), et le format de sortie exigé — un unique bloc JSON final :
+Chaque prompt d'auditeur contient : la carte de la Phase 1 (frontières de confiance comprises), **sa famille et rien d'autre à chercher**, le budget de lecture, la phrase « **zéro finding est une réponse normale et acceptable** », l'interdiction absolue d'écrire ou d'exécuter quoi que ce soit, l'interdiction de nommer une pile technique dans ses findings, l'exigence de preuve vérifiable, le barème de difficulté — **un ordre de grandeur, pas une estimation** : XS < 30 min, S < 2 h, M demi-journée, L 1-2 jours, XL à découper ; en cas d'hésitation entre deux tailles, retenir la plus grande — et le format de sortie exigé — un unique bloc JSON final :
 
 ```json
 {"findings": [{"id": "ACC-01", "axis": "securite|maintenabilite|evolutivite",
@@ -100,7 +100,8 @@ Règles de remplissage à inscrire dans le prompt : `occurrences` contient jusqu
 
 Dans la session principale, sans sous-agent :
 
-- Appliquer les corrections et scissions des validateurs. Renuméroter en `VIB-01…` avec l'ordre par défaut : **axe** (sécurité, puis maintenabilité, puis évolutivité), **sévérité décroissante**, **difficulté croissante**. Le risque de régression n'intervient dans aucun tri.
+- Appliquer les corrections et scissions des validateurs. Renuméroter en `VIB-01…` avec l'ordre par défaut : **la sévérité prime sur l'axe**, puis l'axe (sécurité, puis maintenabilité, puis évolutivité), puis la difficulté croissante. Le risque de régression n'intervient dans aucun tri.
+  **Un `critical` n'est jamais relégué derrière un axe.** La pondération des axes ordonne ce qui est comparable ; elle ne doit pas enterrer un défaut grave parce que la lentille qui l'a trouvé n'était pas prioritaire. Un nom de ressource erroné qui empêche un composant de démarrer, une valeur de configuration qui est aussi un secret, une absence de transaction qui est aussi un contournement d'autorisation : ces motifs arrivent par les axes maintenabilité ou évolutivité et valent pourtant d'être traités en premier. Concrètement, **tous les `critical` sont ordonnés ensemble en tête, tous axes confondus**, avant le premier `major`. Signaler dans le rapport ceux dont l'axe n'est pas la sécurité — leur remontée est délibérée, pas une erreur de classement.
 - Compléter les **dépendances** évidentes : un motif dont la correction traverse une couche absente dépend de la création de cette couche ; un motif de configuration dépend de l'externalisation de la configuration.
 - Repérer les **gains rapides** : motifs `XS` ou `S` de sévérité `major` ou `critical`. Ils sont signalés comme tels dans le rapport, sans remonter dans le tri : un gain rapide reste second par rapport à un motif critique difficile, que l'ordre d'attaque ne doit jamais enterrer.
 - Regrouper les motifs par axe pour la phase interactive.
@@ -109,7 +110,7 @@ Dans la session principale, sans sous-agent :
 
 Volontairement légère — la rapidité du diagnostic est le critère premier du skill. **Un seul appel AskUserQuestion**, deux questions :
 
-1. « Ordre d'attaque ? » — *Sécurité d'abord puis maintenabilité puis évolutivité (défaut)* / *Gains rapides d'abord, à sévérité égale* / *Tout ce qui bloque la mise en production d'abord* / *Garder l'ordre proposé*.
+1. « Ordre d'attaque ? » — *Gravité d'abord, tous axes confondus, puis pondération sécurité > maintenabilité > évolutivité (défaut)* / *Gains rapides d'abord, à sévérité égale* / *Tout ce qui bloque la mise en production d'abord* / *Garder l'ordre proposé*.
 2. « Que faire des motifs mineurs ? » — *Les détailler* / *Les lister en une ligne* / *Les omettre du rapport*.
 
 Ne jamais poser de question sur le risque de régression : il informe, il ne trie pas. Ne jamais présenter les motifs un par un.
@@ -134,6 +135,9 @@ Généré par /vibecode-audit le <date>. Axes : <liste>. Audit complet | échant
 >
 > **Validation.** <n> motifs sur <total> ont passé la validation adversariale. Les autres sont
 > marqués `non validé` : ils n'ont pas été réfutés, ils n'ont pas été vérifiés.
+>
+> **Les difficultés sont des ordres de grandeur, pas des estimations.** Elles varient d'un audit à
+> l'autre sur le même code. La gravité, elle, est stable : c'est sur elle que repose l'ordre.
 
 ## Surfaces non auditables
 | Surface | Pourquoi | Ce qu'il faudrait pour la couvrir |
@@ -145,7 +149,9 @@ Ordre retenu : <critère choisi>. <n> motifs, <m> occurrences au total.
 |---|---|---|---|---|---|---|---|---|---|---|
 | 1 | VIB-01 | Les points d'entrée de modification ne vérifient pas l'appartenance de la ressource | sécurité | critical | 14 | M | élevé | oui | — | A_FAIRE |
 
-Gains rapides (XS/S de sévérité major ou critical) : VIB-07, VIB-11.
+Gains rapides (XS/S de sévérité major ou critical) : VIB-07, VIB-11. Signalés, sans remonter dans l'ordre.
+
+Critiques remontés depuis un autre axe que la sécurité : VIB-03 (évolutivité). Remontée délibérée — la gravité prime sur l'axe.
 
 ## Motifs détaillés
 ### VIB-01 — <énoncé du motif>
