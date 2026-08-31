@@ -101,6 +101,7 @@ Le corps (rédigé intégralement, voix impérative, adapté à la stack) défin
    2. Si `verdict` vaut `APPROVED` **et** `tests_passed` vaut `true` : sortir de la boucle, succès.
    3. Sinon : relancer `factory-builder` avec la spec **et la liste complète des `issues` du Verifier** (fichier, sévérité, description) et la consigne de corriger sans régresser ; puis reprendre à l'étape 1 avec un nouveau Verifier.
    4. Tenir le compteur d'itérations ; après la 3e itération non approuvée, **échouer explicitement** en publiant les issues restantes. Ne jamais approuver par épuisement.
+   5. **Un Verifier muet n'est pas un Verifier satisfait.** Si le Builder ou le Verifier meurt (erreur d'API, connexion coupée) ou rend une sortie inexploitable au lieu de son bloc JSON, le relancer **une fois**. Si le second essai échoue, **échouer explicitement** en le disant : ne jamais traiter l'absence de verdict comme une approbation, ne jamais consommer une itération du compteur au profit d'un agent mort, ne jamais passer à la suite sur un verdict absent. Un cycle qui livre du code non vérifié parce que son vérificateur est tombé est pire qu'un cycle qui échoue.
 5. **Rapport final** : fichiers modifiés (`git status`), résultat des tests, verdict, nombre d'itérations, prochaine action suggérée (revue du diff par l'utilisateur ; ne pas commiter à sa place).
 
 ## Phase 4 — Scripts CI minces `ci/factory.sh` et `ci/factory.ps1`
