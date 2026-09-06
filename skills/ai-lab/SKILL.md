@@ -218,6 +218,14 @@ Créer ou fusionner `.vscode/tasks.json` (version `2.0.0`) avec :
 
 En cas de fusion, préserver les tâches et inputs existants ; ne pas dupliquer si les tâches Lab existent déjà.
 
+## Phase 6b — Base de connaissance du dépôt (optionnelle)
+
+Un laboratoire accumule deux choses que le code ne dit pas : ce qui a déjà été mesuré, et pourquoi une piste a été abandonnée. Le journal les porte en prose ; le skill `code-index` installe un serveur local adossé à ripgrep qui les rend **interrogeables** — index de code versionné sous `.knowledge/`, plus des notes attachées à un fichier, à un symbole ou à un sujet libre, partagées par git avec les autres utilisateurs du dépôt. Un Director qui interroge les notes avant de cadrer ne repropose pas une expérience déjà faite.
+
+Poser à l'utilisateur, en un appel `AskUserQuestion`, s'il veut l'installer maintenant. En cas d'accord, invoquer le skill `code-index` : il détecte le laboratoire qui vient d'être installé et branche seul les cinq agents et `/lab-run` dessus. En cas de refus, ne rien faire : le labo fonctionne entièrement sans, et `code-index` s'installe à tout moment sur un dépôt déjà équipé. **Ne jamais installer sans accord** : la base ajoute un dossier versionné au dépôt, ce qui se décide.
+
+En exécution headless, ne pas poser la question et ne rien installer.
+
 ## Phase 7 — Rapport final
 
 Terminer par un rapport structuré : projet détecté (stack, framework, interpréteur, matériel et disponibilité réelle du GPU, commande de test) ; corpus scientifique retenu (chemins du journal, de l'architecture, de la feuille de route, documents figés, évals existantes, classe de config, contraintes non négociables recopiées dans les prompts) ; domaine et références utilisés pour spécialiser Neuro et Math ; liste des fichiers avec leur état (créé / fusionné / identique / personnalisé-conservé) ; **affectation des modèles retenue** (tableau rôle → modèle, chemin `.claude/lab-models.json`, rappel qu'elle se modifie en éditant ce fichier ou ponctuellement avec `/lab-run "…" --models "math=opus"`, et qu'elle peut être versionnée ou ignorée par git selon la préférence) ; absence de journal ou d'outillage de test le cas échéant ; mode d'emploi en trois lignes (session : `/lab-run "question"` ou `/lab-run suivant` ; headless : `ci/lab.sh experiments/EXP-x.md`, qui suit le fichier d'affectation ; les protocoles sont versionnés, les résultats bruts non). Si `$ARGUMENTS` contenait une question, conclure par la commande exacte à lancer : `/lab-run "<la question>"`.

@@ -18,6 +18,18 @@ Cloner le dépôt puis lier les skills dans `~/.claude/skills` :
 
 Les scripts sont idempotents : relancer après un `git pull` ou l'ajout d'un skill ne casse rien. Les skills sont disponibles dans toute nouvelle session Claude Code.
 
+Ils installent aussi les **outils externes** dont les skills ont besoin — aujourd'hui le seul est **ripgrep**, requis par `code-index` — en détectant le gestionnaire de paquets de la machine : `winget`, puis `scoop`, puis `chocolatey` sous Windows ; `brew` (ou MacPorts) sous macOS ; `apt`, `dnf`, `paru`/`yay`/`pacman`, `zypper`, `apk`, `xbps`, `nix` sous Linux ; `cargo install` en dernier recours. Le `PATH` de la session est rafraîchi après l'installation. Si rien n'aboutit, les skills restent installés et le script explique quoi faire, sans échouer.
+
+```powershell
+.\install_skills.ps1 -SkipTools   # lier les skills sans toucher aux paquets
+```
+
+```bash
+./install_skills.sh --skip-tools
+```
+
+La détection du gestionnaire de paquets est **factorisée** et indépendante de ripgrep. Pour ajouter un outil demain : une entrée dans `tool_package` (bash) ou `Get-ToolPackage` (PowerShell), qui donne l'identifiant de paquet par gestionnaire, puis une ligne `ensure_tool` / `Install-ToolIfMissing` dans la section « Outils externes ».
+
 ## Skills
 
 ### `software-factory`
@@ -164,6 +176,45 @@ Co-réfléchit à une idée en la **challengeant** au lieu de la valider, et **s
 4. **Convergence** : synthèse en conversation (idée après confrontation, angles retenus, angles écartés avec leur raison), puis gate finale proposant de l'écrire dans `BRAINSTORM-<slug>.md` — en cas de refus, rien n'est écrit.
 
 **Condition de terminaison** : plafond dur de **3 tours** (`--rounds N` borné à `min(N, 3)`), passage forcé à la convergence au plafond, sortie anticipée observable dès qu'un tour ne produit plus aucun angle hors énoncé nouveau, et **5 pistes retenues au maximum** dans la synthèse. Le rapport final suggère `/factory-run` ou `/lab-run` quand un angle retenu est implémentable, sans jamais lancer la commande. Arrêt en erreur explicite en exécution headless : le skill est intrinsèquement dialogué.
+
+### `code-index`
+
+Installe un **serveur de connaissance local adossé à ripgrep** dans le projet courant, et branche dessus l'usine ou le labo déjà présents :
+
+```text
+/code-index
+/code-index --reindex
+/code-index --no-wire
+```
+
+Le serveur (`.claude/rgkb/rgkb.py`) est un programme Python de bibliothèque standard, **sans aucune dépendance à installer** ; seul `rg` doit être disponible. Il s'expose de deux façons équivalentes : un **serveur MCP stdio** déclaré dans `.mcp.json` (outils `mcp__rgkb__search`, `definition`, `symbols`, `neighbors`, `file_card`, `notes`, `note_add`, `status`, `reindex`) et une **CLI** utilisable en Bash comme en headless.
+
+Tout vit sous `.knowledge/`, **versionné dans le dépôt** — c'est le point : un `git clone` transmet la base de connaissance d'un utilisateur à l'autre, sans rien à reconstruire.
+
+| Fichier | Rôle | Vérité |
+|---|---|---|
+| `config.json` | périmètre de l'index (globs, exclusions, plafonds) | source |
+| `config.local.json` | réglages propres à une machine, **seul fichier non versionné** | source |
+| `notes.jsonl` | notes écrites par les humains et les agents | source |
+| `files.jsonl` / `symbols.jsonl` | fichiers indexés, définitions trouvées par ripgrep | dérivé |
+| `graph.json` | arêtes fichier → symbole mentionné | dérivé |
+| `index.sqlite` | cache de requête, reconstruit depuis le texte | dérivé |
+
+Les sources sont du **texte, une ligne par élément** : un conflit git se lit et se fusionne. `index.sqlite` est déclaré binaire dans `.knowledge/.gitattributes` — en cas de conflit on prend n'importe quel côté et on relance `index --force`, qui le régénère depuis les sources. Une réindexation sans changement de code ne produit **aucun diff**.
+
+**Fraîcheur de l'index.** Pendant un cycle `/factory-run` ou `/lab-run`, elle est automatique : vérification avant la première phase qui dépense, réindexation par le Builder après ses modifications. Hors cycle, des **hooks git** s'en chargent :
+
+```text
+python .claude/rgkb/rgkb.py hooks install --with-commit
+python .claude/rgkb/rgkb.py hooks status
+python .claude/rgkb/rgkb.py hooks remove
+```
+
+`post-merge` (donc `git pull`) et `post-rewrite` (rebase) réindexent après coup ; `--with-commit` ajoute `pre-commit`, qui réindexe et met `.knowledge/` à l'index, de sorte que **tout commit porte un index cohérent avec son code**. Les hooks n'écrivent que si le contenu a changé et ne font jamais échouer une opération git ; `RGKB_NO_HOOK=1 git pull` les neutralise ponctuellement. Un hook existant est complété par un bloc délimité, jamais écrasé. `.git/hooks/` n'est pas versionné, mais l'**intention** l'est : `hooks install` écrit `"hooks": "commit"` dans `.knowledge/config.json`, et tout `status` ou `index` réconcilie les hooks locaux avec elle. Un utilisateur qui clone les obtient donc au premier cycle, sans rien lancer.
+
+`post-checkout` est **volontairement absent** : réindexer après un changement de branche salit l'arbre à chaque fois et git refuse le checkout suivant. Avec `pre-commit`, il n'a de toute façon rien à faire.
+
+Le câblage (sauf `--no-wire`) ajoute aux agents existants un bloc délimité `<!-- rgkb:debut -->` / `<!-- rgkb:fin -->`, réentrant, sans jamais réécrire leur prompt : fiche de fichier avant de lire un fichier entier, lecture des notes avant de formuler un avis, réindexation après modification pour le Builder, et à la consignation finale d'un cycle une proposition de note (1 à 3 par cycle, jamais ce que l'index retrouve seul). `/software-factory` et `/ai-lab` proposent son installation en fin de parcours (Phase 6b), toujours avec accord explicite.
 
 ## Ajouter un skill
 

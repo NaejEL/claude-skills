@@ -130,6 +130,14 @@ Créer ou fusionner `.vscode/tasks.json` (version `2.0.0`) avec :
 
 En cas de fusion, préserver les tâches et inputs existants ; ne pas dupliquer si les tâches Factory existent déjà.
 
+## Phase 6b — Base de connaissance du dépôt (optionnelle)
+
+L'usine passe l'essentiel de son budget à redécouvrir le dépôt : chaque Planner repart d'un contexte vierge, chaque Verifier relit ce que le Builder vient d'écrire. Le skill `code-index` installe un serveur local adossé à ripgrep qui répond à ces questions depuis un index versionné sous `.knowledge/`, et qui porte en plus les **notes** que les cycles laissent derrière eux — décisions, pièges, zones sensibles — partagées par git avec les autres utilisateurs du dépôt.
+
+Poser à l'utilisateur, en un appel `AskUserQuestion`, s'il veut l'installer maintenant. En cas d'accord, invoquer le skill `code-index` : il détecte l'usine qui vient d'être installée et branche seul les trois agents et `/factory-run` dessus. En cas de refus, ne rien faire : l'usine fonctionne entièrement sans, et `code-index` s'installe à tout moment sur un dépôt déjà équipé. **Ne jamais installer sans accord** : la base ajoute un dossier versionné au dépôt, ce qui se décide.
+
+En exécution headless, ne pas poser la question et ne rien installer.
+
 ## Phase 7 — Rapport final
 
 Terminer par un rapport structuré : stack détectée (langages, commandes retenues) ; liste des fichiers avec leur état (créé / fusionné / identique / personnalisé-conservé) ; absence d'outillage de test le cas échéant ; mode d'emploi en deux lignes (session : `/factory-run "besoin"` ; CI : `ci/factory.sh specs/SPEC-x.md`). Si `$ARGUMENTS` contenait un besoin, conclure par la commande exacte à lancer : `/factory-run "<le besoin>"`.
