@@ -1,0 +1,89 @@
+# gh simule pour les rejeux de ship-pr (pas un module de test).
+#
+# Etat persiste dans le fichier JSON designe par HCORE_FAKE_GH_STATE. Les
+# commandes git reelles s'executent dans le dossier courant (depot jetable).
+
+import json
+import os
+import subprocess
+import sys
+
+
+def git(*args):
+    return subprocess.run(["git"] + list(args), capture_output=True, text=True, encoding="utf-8").stdout
+
+
+def opt(args, name):
+    return args[args.index(name) + 1] if name in args else None
+
+
+def fields(args):
+    out = {}
+    for i, a in enumerate(args):
+        if a in ("-f", "-F") and i + 1 < len(args):
+            key, _, value = args[i + 1].partition("=")
+            out[key] = value
+    return out
+
+
+def main(argv):
+    path = os.environ["HCORE_FAKE_GH_STATE"]
+    state = json.load(open(path, encoding="utf-8")) if os.path.exists(path) else {
+        "prs": [], "comments": [], "replies": [], "resolved": [], "merged": False, "calls": []}
+    state["calls"].append(argv)
+    out, code = "", 0
+    if argv[:2] == ["auth", "status"]:
+        pass
+    elif argv[:2] == ["repo", "view"]:
+        out = "acme/toy\n"
+    elif argv[:2] == ["pr", "list"]:
+        out = json.dumps([p for p in state["prs"] if p["head"] == opt(argv, "--head")])
+    elif argv[:2] == ["pr", "create"]:
+        head = git("rev-parse", "--abbrev-ref", "HEAD").strip()
+        state["prs"].append({"number": 7, "url": "https://github.com/acme/toy/pull/7", "title": opt(argv, "--title"),
+                             "body": opt(argv, "--body"), "head": head, "base": opt(argv, "--base")})
+        out = "https://github.com/acme/toy/pull/7\n"
+    elif argv[:2] == ["pr", "view"] and argv[2] == "--json":
+        pr = state["prs"][-1]
+        out = json.dumps({"number": pr["number"], "url": pr["url"]})
+    elif argv[:2] == ["pr", "view"]:
+        out = json.dumps({"headRefOid": git("rev-parse", "HEAD").strip(), "mergeable": "MERGEABLE",
+                          "mergeStateStatus": "CLEAN"})
+    elif argv[:2] == ["pr", "diff"]:
+        out = git("diff", "origin/%s...HEAD" % state["prs"][-1]["base"])
+    elif argv[:2] == ["pr", "comment"]:
+        state["comments"].append({"id": None, "body": opt(argv, "--body")})
+    elif argv[:2] == ["pr", "merge"]:
+        pr = state["prs"][-1]
+        subprocess.run(["git", "push", "-q", "origin", "HEAD:" + pr["base"]], capture_output=True)
+        state["merged"] = True
+    elif argv[:2] == ["api", "graphql"]:
+        f = fields(argv)
+        if "resolveReviewThread" in f["query"]:
+            state["resolved"].append(f["t"])
+            out = json.dumps({"data": {"resolveReviewThread": {"thread": {"id": f["t"], "isResolved": True}}}})
+        else:
+            nodes = [{"id": "T%d" % c["id"], "isResolved": "T%d" % c["id"] in state["resolved"],
+                      "comments": {"nodes": [{"databaseId": c["id"]}]}}
+                     for c in state["comments"] if c["id"] is not None]
+            out = json.dumps({"data": {"repository": {"pullRequest": {"reviewThreads": {"nodes": nodes}}}}})
+    elif argv[0] == "api" and argv[1].endswith("/replies"):
+        state["replies"].append({"to": int(argv[1].split("/")[-2]), "body": fields(argv)["body"]})
+        out = json.dumps({"id": 1000 + len(state["replies"])})
+    elif argv[0] == "api" and argv[1].endswith("/comments"):
+        f = fields(argv)
+        new_id = 100 + len(state["comments"])
+        state["comments"].append({"id": new_id, "path": f.get("path"), "line": f.get("line"),
+                                  "commit_id": f.get("commit_id")})
+        out = json.dumps({"id": new_id})
+    else:
+        sys.stderr.write("fake gh : commande non simulee %r\n" % (argv,))
+        code = 2
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(state, fh)
+    sys.stdout.write(out)
+    return code
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
