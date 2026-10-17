@@ -8,6 +8,8 @@
 #   failure with the remaining issues. Never an approval by exhaustion.
 # - FR-04: dead agent or unusable output -> one relaunch without consuming an
 #   iteration, then explicit failure.
+# - MD-07 (wiring): each agent has a model role (AGENT_ROLES); the
+#   assignment resolved at start is kept in the state and logged.
 
 from __future__ import annotations
 
@@ -20,6 +22,7 @@ PLANNER = "factory-planner"
 BUILDER = "factory-builder"
 VERIFIER = "factory-verifier"
 AGENTS = (PLANNER, BUILDER, VERIFIER)
+AGENT_ROLES = {PLANNER: "factory.planner", BUILDER: "factory.builder", VERIFIER: "factory.verifier"}
 APPROVED_LINE = "Statut : APPROUVEE"
 
 
@@ -50,8 +53,9 @@ def entry(arguments: str, root: Path) -> Dict[str, Any]:
     return {"mode": "plan", "spec": None}
 
 
-def new_state() -> Dict[str, Any]:
+def new_state(models: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     return {
+        "models": dict(models or {}),
         "iteration": 1,
         "max_iterations": counters.MAX_ITERATIONS,
         "failures": {},

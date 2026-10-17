@@ -1,0 +1,213 @@
+# Module hcore.gates and the 'gate' CLI: policy, decision, headless
+# fallback, journal events (GT-01 to GT-08, CA-10, CA-11).
+
+import json
+import re
+import unittest
+from pathlib import Path
+
+import helpers
+from hcore import gates, journal, runs, shippr
+from hcore.gates import GateError
+
+SKILLS_DIR = helpers.CORE.parent
+
+
+def check_ok(test, res):
+    test.assertEqual(res.returncode, 0, "stdout=%s\nstderr=%s" % (res.stdout, res.stderr))
+    return json.loads(res.stdout)
+
+
+class PolicyTest(helpers.TempDirCase):
+    def policy(self, text):
+        path = self.tmp / ".claude" / "harness.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(text, encoding="utf-8")
+
+    def test_gt01_missing_file_or_key_means_gate(self):
+        self.assertEqual(gates.read_policy(self.tmp), "gate")
+        self.policy('{"other": 1}')
+        self.assertEqual(gates.read_policy(self.tmp), "gate")
+        self.policy('{"autonomy": "auto"}')
+        self.assertEqual(gates.read_policy(self.tmp), "auto")
+
+    def test_gt01_invalid_value_or_unreadable_json_is_exit_2(self):
+        for text in ('{"autonomy": "yolo"}', "{", "[1]"):
+            self.policy(text)
+            with self.assertRaises(GateError):
+                gates.read_policy(self.tmp)
+            res = helpers.harness(["gate", "decide", "--id", "ship-pr.merge"], self.tmp)
+            self.assertEqual(res.returncode, 2, text)
+
+    def test_gt02_decision_table(self):
+        for kind in gates.KINDS:
+            self.assertEqual(gates.decision(kind, "gate"), gates.ASK)
+        self.assertEqual(gates.decision("a", "auto"), gates.ASK)
+        self.assertEqual(gates.decision("b", "auto"), gates.DEFAULT)
+        self.assertEqual(gates.decision("c", "auto"), gates.DEFAULT)
+        with self.assertRaises(GateError):
+            gates.decision("d", "gate")
+
+    def test_ca10_absent_file_asks_for_a_b_and_c(self):
+        for gid in ("ship-pr.merge", "ship-pr.conflict", "factory-run.approval"):
+            event = gates.decide(gid, gates.read_policy(self.tmp))
+            self.assertEqual(event["decision"], gates.ASK, gid)
+            self.assertNotIn("warning", event)
+
+    def test_gt03_auto_applied_as_gate_with_warning(self):
+        event = gates.decide("ship-pr.conflict", "auto")
+        self.assertEqual((event["decision"], event["policy"]), (gates.ASK, "gate"))
+        self.assertIn("applied as 'gate'", event["warning"])
+        # Without the Phase 1 guard, the same gate would take its default.
+        self.assertEqual(gates.decide("ship-pr.conflict", "auto", auto_as_gate=False)["decision"], gates.DEFAULT)
+
+    def test_gt04_dialogue_gate_always_asks(self):
+        for gid in ("brainstorm.subject", "brainstorm.round", "brainstorm.write"):
+            self.assertTrue(gates.get(gid).dialogue)
+            self.assertEqual(gates.decide(gid, "auto", auto_as_gate=False)["decision"], gates.ASK, gid)
+
+    def test_gt05_no_default_and_decision_default_is_stop(self):
+        event = gates.decide("factory-run.questions", "auto", auto_as_gate=False)
+        self.assertEqual(event["decision"], gates.STOP)
+        self.assertEqual(gates.decide("factory-run.approval", "auto", auto_as_gate=False)["decision"],
+                         gates.DEFAULT)
+        with self.assertRaises(GateError):
+            gates.answer("factory-run.questions", event, "user", "x")
+
+
+class CatalogTest(unittest.TestCase):
+    def test_gt08_catalog_has_the_27_gates(self):
+        self.assertEqual(len(gates.CATALOG), 27)
+        for gate in gates.CATALOG.values():
+            self.assertIn(gate.kind, gates.KINDS, gate.id)
+            self.assertIn(gate.headless, gates.HEADLESS, gate.id)
+            self.assertTrue(gate.options and all(gate.options), gate.id)
+            self.assertTrue(gate.rationale.strip(), gate.id)
+            self.assertIn(gate.skill, journal.SKILLS, gate.id)
+            if gate.headless == gates.DEFAULT:
+                self.assertIsNotNone(gate.default, gate.id)
+
+    def test_gt08_unknown_id_refused(self):
+        with self.assertRaises(GateError):
+            gates.get("ship-pr.nope")
+
+    def test_gt06_every_gate_returns_its_headless_fallback(self):
+        expected = {"ship-pr.target": "stop", "ship-pr.dirty": "default", "ship-pr.conflict": "default",
+                    "ship-pr.merge": "default", "software-factory.code-index": "skip",
+                    "factory-run.questions": "stop", "factory-run.approval": "stop"}
+        for gid, fallback in expected.items():
+            self.assertEqual(gates.decide(gid, "gate")["headless"], fallback, gid)
+
+    @unittest.skipUnless((SKILLS_DIR / "ship-pr" / "SKILL.md").is_file(), "SKILL.md files absent")
+    def test_ca11_partial_gates_of_software_factory_and_ship_pr_are_in_their_skill(self):
+        """CA-11 for the L2 skills: id and every option found in the source SKILL.md."""
+        files = {"software-factory": "software-factory", "factory-run": "software-factory", "ship-pr": "ship-pr"}
+        for gate in gates.CATALOG.values():
+            if gate.skill not in files or gate.id == "factory-run.need":
+                continue
+            text = (SKILLS_DIR / files[gate.skill] / "SKILL.md").read_text(encoding="utf-8")
+            self.assertIn(gate.id, text)
+            for option in gate.options:
+                self.assertIn(option, text, (gate.id, option))
+
+
+class CliTest(helpers.TempDirCase):
+    def h(self, *args):
+        return helpers.harness(list(args), self.tmp)
+
+    def test_gt08_cli_unknown_id_is_exit_2(self):
+        res = self.h("gate", "decide", "--id", "ship-pr.nope")
+        self.assertEqual(res.returncode, 2)
+        self.assertIn("unknown gate", res.stderr)
+        self.assertFalse((self.tmp / ".claude" / "runs").exists())
+
+    def test_gt07_decision_then_answer_logged(self):
+        """GT-07, CA-10: both events in the run journal, valid schema (JR-02)."""
+        d = check_ok(self, self.h("gate", "decide", "--id", "software-factory.code-index"))
+        self.assertEqual((d["decision"], d["headless"], d["options"]), ("ask", "skip", ["installer", "refus"]))
+        self.assertRegex(Path(d["run"]).name, r"^software-factory-[0-9]{8}-[0-9]{6}\.jsonl$")
+        a = check_ok(self, self.h("gate", "answer", "--run", d["run"], "--id", "software-factory.code-index",
+                                  "--answer", "installer"))
+        self.assertEqual((a["answer"], a["source"], a["apply"]), ("installer", "user", "answer"))
+        lines = journal.read(self.tmp / d["run"])
+        self.assertEqual([x["phase"] for x in lines], ["decision", "answer"])
+        self.assertEqual((lines[0]["answer"], lines[0]["source"]), (None, None))
+        self.assertEqual((lines[1]["answer"], lines[1]["source"], lines[1]["policy"]), ("installer", "user", "gate"))
+        check_ok(self, self.h("journal", "validate", d["run"]))
+        # An answer needs a pending decision.
+        again = self.h("gate", "answer", "--run", d["run"], "--id", "software-factory.code-index", "--answer", "x")
+        self.assertEqual(again.returncode, 2)
+
+    def test_gt03_cli_auto_logs_the_warning(self):
+        (self.tmp / ".claude").mkdir()
+        (self.tmp / ".claude" / "harness.json").write_text('{"autonomy": "auto"}', encoding="utf-8")
+        d = check_ok(self, self.h("gate", "decide", "--id", "software-factory.code-index"))
+        self.assertEqual(d["decision"], "ask")
+        self.assertIn("applied as 'gate'", journal.read(self.tmp / d["run"])[0]["warning"])
+
+    def test_gt06_headless_fallbacks_applied_and_declared(self):
+        run = runs.create(self.tmp, "ship-pr", shippr.new_state("main", 3, ["t"]))
+        for gid, apply, answer in (("ship-pr.merge", "default", "Laisser la PR ouverte"),
+                                   ("ship-pr.dirty", "default", "abandonner")):
+            check_ok(self, self.h("gate", "decide", "--run", str(run), "--id", gid))
+            a = check_ok(self, self.h("gate", "answer", "--run", str(run), "--id", gid, "--headless"))
+            self.assertEqual((a["apply"], a["answer"], a["source"]), (apply, answer, "headless"))
+        check_ok(self, self.h("gate", "decide", "--run", str(run), "--id", "ship-pr.target"))
+        stop = self.h("gate", "answer", "--run", str(run), "--id", "ship-pr.target", "--headless")
+        self.assertEqual(stop.returncode, 1)
+        self.assertIn("STOP: gate ship-pr.target", stop.stderr)
+        sf = check_ok(self, self.h("gate", "decide", "--id", "software-factory.code-index"))
+        skip = check_ok(self, self.h("gate", "answer", "--run", sf["run"], "--id", "software-factory.code-index",
+                                     "--headless"))
+        self.assertEqual((skip["apply"], skip["answer"]), ("skip", "skip"))
+        lines = journal.read(run)
+        self.assertEqual([x["source"] for x in lines if x["phase"] == "answer"], ["headless"] * 3)
+        self.assertEqual(journal.validate_file(run), [])
+
+    def test_gate_of_another_skill_and_answer_without_run_refused(self):
+        run = runs.create(self.tmp, "ship-pr", shippr.new_state("main", 3, ["t"]))
+        self.assertEqual(self.h("gate", "decide", "--run", str(run), "--id", "factory-run.approval").returncode, 2)
+        self.assertEqual(self.h("gate", "answer", "--id", "ship-pr.merge", "--answer", "Merger").returncode, 2)
+        check_ok(self, self.h("gate", "decide", "--run", str(run), "--id", "ship-pr.merge"))
+        both = self.h("gate", "answer", "--run", str(run), "--id", "ship-pr.merge", "--answer", "Merger", "--headless")
+        self.assertEqual(both.returncode, 2)
+        default = self.h("gate", "answer", "--run", str(run), "--id", "ship-pr.merge", "--default")
+        self.assertEqual(default.returncode, 2)
+
+    def test_free_answer_travels_by_file_and_is_consumed(self):
+        d = check_ok(self, self.h("gate", "decide", "--id", "ship-pr.target"))
+        answer = helpers.write_output(self.tmp, "gate-answer.txt", "release/`date`-$(whoami)\n")
+        a = check_ok(self, self.h("gate", "answer", "--run", d["run"], "--id", "ship-pr.target",
+                                  "--answer-file", answer))
+        self.assertEqual(a["answer"], "release/`date`-$(whoami)")
+        self.assertFalse((self.tmp / answer).exists())
+
+    def test_gt05_stop_decision_expects_no_answer(self):
+        """A logged stop decision (GT-05) accepts no answer (exit 2)."""
+        run = runs.create(self.tmp, "factory-run", {})
+        event = gates.decide("factory-run.questions", "auto", auto_as_gate=False)
+        journal.append(run, event)
+        self.assertEqual(journal.validate_file(run), [])
+        res = self.h("gate", "answer", "--run", str(run), "--id", "factory-run.questions", "--answer", "x")
+        self.assertEqual(res.returncode, 2)
+        self.assertIn("decision was stop", res.stderr)
+
+
+class SkillWiringTest(unittest.TestCase):
+    @unittest.skipUnless((SKILLS_DIR / "ship-pr" / "SKILL.md").is_file(), "SKILL.md files absent")
+    def test_gates_wired_in_ship_pr_and_software_factory(self):
+        """L2: every gate of the two skills goes through 'gate decide' / 'gate answer'."""
+        ship = (SKILLS_DIR / "ship-pr" / "SKILL.md").read_text(encoding="utf-8")
+        sf = (SKILLS_DIR / "software-factory" / "SKILL.md").read_text(encoding="utf-8")
+        for text in (ship, sf):
+            self.assertIn("gate decide", text)
+            self.assertIn("gate answer", text)
+            self.assertIn("--headless", text)
+        for gid in ("ship-pr.target", "ship-pr.dirty", "ship-pr.conflict", "ship-pr.merge"):
+            self.assertRegex(ship, r"--id %s\b" % re.escape(gid))
+        for gid in ("software-factory.code-index", "factory-run.questions", "factory-run.approval"):
+            self.assertRegex(sf, r"(--id |gate `)%s\b" % re.escape(gid))
+
+
+if __name__ == "__main__":
+    unittest.main()

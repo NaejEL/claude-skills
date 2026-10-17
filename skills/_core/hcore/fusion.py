@@ -19,6 +19,9 @@
 #   unreadable file makes the whole operation fail without modifying anything.
 # - D1: copy of _core into the project under .claude/harness/, never mixed
 #   with a different existing core (nothing is copied in that case).
+# - X1: a generated agent file carries its model in the harness.model block
+#   of its frontmatter (install_agent). The block is regenerated in place even
+#   in a customized file; a file without the block (generated before) is kept.
 
 from __future__ import annotations
 
@@ -27,7 +30,7 @@ import os
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
-from . import jsonc
+from . import jsonc, models
 
 CREATED = "créé"
 MERGED = "fusionné"
@@ -217,6 +220,31 @@ def install_file(dest: Path, content: str) -> str:
     if state == CREATED:
         _write(dest, content)
     return state
+
+
+def install_agent(dest: Path, content: str, model: str) -> Dict[str, str]:
+    """SF-04 and X1: installs a generated agent whose frontmatter receives the
+    model block. Returns the file state and what happened to the block."""
+    dest = Path(dest)
+    generated = models.with_model_block(content, model)
+    if not dest.exists():
+        _write(dest, generated)
+        return {"state": CREATED, "model_block": "written"}
+    current = _read_text(dest) or ""
+    norm = lambda text: text.replace("\r\n", "\n")  # noqa: E731
+    if norm(current) == norm(generated):
+        return {"state": IDENTICAL, "model_block": "unchanged"}
+    if not models.has_block(current):
+        return {"state": KEPT, "model_block": "absent"}
+    try:
+        regenerated = models.with_model_block(current, model)
+    except models.ModelsError:
+        return {"state": KEPT, "model_block": "absent"}
+    same_rest = norm(models.without_model_block(current)) == norm(models.without_model_block(generated))
+    if regenerated != current:
+        _write(dest, regenerated)
+    return {"state": MERGED if same_rest else KEPT,
+            "model_block": "updated" if regenerated != current else "unchanged"}
 
 
 def file_state(dest: Path, content: str) -> str:

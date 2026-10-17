@@ -300,6 +300,66 @@ class ShipPrReplayTest(helpers.TempDirCase):
         self.assertEqual([x["of"] for x in reg if x["verdict"] == "DUPLICATE"], [a])
 
 
+    def test_md07_x6_ship_pr_models_and_target_gate_run(self):
+        """X6, MD-07: --models for this cycle; reviewers and validators logged with
+        the model of their role. GT-07: the ship-pr.target gate opens the run,
+        start continues it (one journal, gate events first)."""
+        bad = self.h("ship-pr", "start", "--target", "main", "--models", "shippr.validator=gpt")
+        self.assertEqual(bad.returncode, 2)
+        self.assertFalse((self.work / ".claude" / "runs").exists())
+        gate = check_ok(self, self.h("gate", "decide", "--id", "ship-pr.target"))
+        self.assertEqual(gate["decision"], "ask")
+        answer = helpers.write_output(self.work, "gate-answer.txt", "main\n")
+        check_ok(self, self.h("gate", "answer", "--run", gate["run"], "--id", "ship-pr.target",
+                              "--answer-file", answer))
+        start = check_ok(self, self.h("ship-pr", "start", "--run", gate["run"], "--target", "main",
+                                      "--themes", "logic", "--models", "shippr.validator=haiku"))
+        self.assertEqual(start["run"], gate["run"])
+        self.assertFalse(start["dirty"])
+        self.assertEqual(start["models"], {"shippr.reviewer": {"model": "inherit", "pass_param": False},
+                                           "shippr.validator": {"model": "haiku", "pass_param": True}})
+        again = self.h("ship-pr", "start", "--run", gate["run"], "--target", "main")
+        self.assertEqual(again.returncode, 2)
+        run = start["run"]
+        check_ok(self, self.h("ship-pr", "sync", "--run", run))
+        body = helpers.write_output(self.work, "pr-body.md", "Body\n")
+        check_ok(self, self.h("ship-pr", "pr", "--run", run, "--title", "Sum", "--body-file", body))
+        out = helpers.write_output(self.work, "reviewer.md", helpers.reviewer_block(
+            [helpers.finding(file="src/sum.js", line=2, title="Empty crash")]))
+        fid = check_ok(self, self.h("ship-pr", "reviewer", "--run", run, "--theme", "logic",
+                                    "--duration-ms", "9", "--output", out))["to_validate"][0]["id"]
+        out = helpers.write_output(self.work, "validator.md", helpers.validator_block("REJECTED"))
+        check_ok(self, self.h("ship-pr", "validator", "--run", run, "--finding", fid, "--duration-ms", "3",
+                              "--output", out))
+        lines = journal.read(self.work / run)
+        self.assertEqual([x.get("event", x.get("agent")) for x in lines], ["gate", "gate", "reviewer", "validator"])
+        self.assertEqual([x["model"] for x in lines[2:]], ["inherit", "haiku"])
+        self.assertEqual(lines[1]["answer"], "main")
+        check_ok(self, self.h("journal", "validate", run))
+
+    def test_consumed_transit_file_is_an_explicit_usage_error(self):
+        """L1 remainder: a transit file under .claude/runs/ already consumed (or never
+        written) is exit 2 with an explicit message, not [Errno 2]."""
+        run = check_ok(self, self.h("ship-pr", "start", "--target", "main", "--themes", "logic"))["run"]
+        check_ok(self, self.h("ship-pr", "sync", "--run", run))
+        body = helpers.write_output(self.work, "pr-body.md", "Body\n")
+        check_ok(self, self.h("ship-pr", "pr", "--run", run, "--title", "Sum", "--body-file", body))
+        expected = ("transit file %s was already consumed or never written: rewrite it with Write "
+                    "before this call" % body)
+        cases = [("ship-pr", "pr", "--run", run, "--title", "Sum", "--body-file", body),
+                 ("ship-pr", "commit", "--run", run, "--summary-file", ".claude/runs/summary.txt"),
+                 ("ship-pr", "reviewer", "--run", run, "--theme", "logic", "--output", ".claude/runs/r.md")]
+        for case in cases:
+            res = self.h(*case)
+            self.assertEqual(res.returncode, 2, case)
+            self.assertIn("was already consumed or never written: rewrite it with Write before this call",
+                          res.stderr, case)
+            self.assertNotIn("Errno", res.stderr, case)
+        self.assertIn(expected, self.h(*cases[0]).stderr)
+        outside = self.h("ship-pr", "reviewer", "--run", run, "--theme", "logic", "--output", "missing.md")
+        self.assertEqual(outside.returncode, 2)
+        self.assertNotIn("transit file", outside.stderr)
+
     def _one_confirmed(self):
         """Run with an open PR and one CONFIRMED finding, fix applied, not committed."""
         run = check_ok(self, self.h("ship-pr", "start", "--target", "main", "--themes", "logic"))["run"]
@@ -426,6 +486,32 @@ class UntrustedContentTest(helpers.TempDirCase):
             self.assertTrue(required in sf, required)
         self.assertLessEqual(len(ship.splitlines()), 118)
         self.assertLessEqual(len(sf.splitlines()), 96)
+
+    @unittest.skipUnless(all(p.is_file() for p in SKILL_FILES), "SKILL.md files absent (core copied into a project)")
+    def test_skill_sizes_transit_rule_once_and_model_wiring(self):
+        """Q-G: line counts and maximum line length never above HEAD 31579e0 (no
+        joined lines); ship-pr states 'rewrite before each call' once, in its core
+        section, for every phase; X1, X6 and MD-07 wiring prescribed."""
+        limits = {"software-factory": (96, 1060), "ship-pr": (118, 1273)}
+        texts = {}
+        for name, (max_lines, max_width) in limits.items():
+            text = (SKILLS_DIR / name / "SKILL.md").read_text(encoding="utf-8")
+            texts[name] = text
+            lines = text.split("\n")[:-1] if text.endswith("\n") else text.split("\n")
+            self.assertLessEqual(len(lines), max_lines, name)
+            self.assertLessEqual(max(len(line) for line in lines), max_width, name)
+        ship = texts["ship-pr"]
+        self.assertEqual(ship.count("le réécrire avant chaque appel"), 1)
+        core = ship[ship.index("## Noyau déterministe"):ship.index("## Règles impératives")]
+        self.assertIn("le réécrire avant chaque appel, dans toutes les phases", core)
+        for required in ("--models", "pass_param", "shippr.reviewer", "shippr.validator", "jamais pour `inherit`"):
+            self.assertIn(required, ship, required)
+        sf = texts["software-factory"]
+        for required in ("--model-role factory.planner", "harness.model", "pass_param", "--models",
+                         "jamais pour `inherit`", "factory.verifier"):
+            self.assertIn(required, sf, required)
+        for text in texts.values():
+            self.assertNotIn("--model <modèle ou inherit>", text)
 
     def test_sf04_generated_file_transits_by_file_unchanged(self):
         """SF-04: an agent or script containing $ARGUMENTS, $1, $(date), backticks and

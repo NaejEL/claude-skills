@@ -19,7 +19,19 @@ class NameTest(unittest.TestCase):
 
     def test_unknown_skill_refused(self):
         with self.assertRaises(ValueError):
-            journal.journal_name("ai-lab", datetime.now())
+            journal.journal_name("unknown-skill", datetime.now())
+
+    def test_jr01_the_ten_skill_names(self):
+        names = ("software-factory", "factory-run", "ship-pr", "code-index", "ai-lab", "lab-run",
+                 "ai-lab-audit", "legacy-audit", "vibecode-audit", "brainstorm")
+        self.assertEqual(journal.SKILLS, names)
+        ca09 = (r"^(software-factory|factory-run|ship-pr|code-index|ai-lab|lab-run|ai-lab-audit|"
+                r"legacy-audit|vibecode-audit|brainstorm)-[0-9]{8}-[0-9]{6}\.jsonl$")
+        for skill in names:
+            name = journal.journal_name(skill, datetime(2026, 10, 17, 9, 5, 7))
+            self.assertRegex(name, journal.NAME_RE)
+            self.assertRegex(name, ca09)
+        self.assertNotRegex("ai-lab-x-20261017-090507.jsonl", journal.NAME_RE)
 
 
 class ValidateTest(helpers.TempDirCase):
@@ -58,6 +70,27 @@ class ValidateTest(helpers.TempDirCase):
         self.assertNotEqual(helpers.harness(["journal", "validate", str(path)], self.tmp).returncode, 0)
         path = self.write(["{"])
         self.assertNotEqual(helpers.harness(["journal", "validate", str(path)], self.tmp).returncode, 0)
+
+    def test_jr02_ca09_agent_lines_and_gate_events_mixed(self):
+        """JR-02, CA-09: a line without 'event' is an agent line; a gate event
+        follows GT-07; a gate event without decision, or an unknown event, is refused."""
+        from hcore import gates
+        decision = gates.decide("ship-pr.merge", "gate")
+        answer = gates.answer("ship-pr.merge", decision, "user", "Merger")
+        path = self.write([json.dumps(GOOD), json.dumps(decision), json.dumps(answer)])
+        self.assertEqual(journal.validate_file(path), [])
+        self.assertEqual(helpers.harness(["journal", "validate", str(path)], self.tmp).returncode, 0)
+        no_decision = dict(decision)
+        del no_decision["decision"]
+        path = self.write([json.dumps(GOOD), json.dumps(no_decision)])
+        self.assertTrue(any("decision" in e for e in journal.validate_file(path)))
+        self.assertNotEqual(helpers.harness(["journal", "validate", str(path)], self.tmp).returncode, 0)
+        bad = [dict(decision, event="party"), dict(decision, kind="z"), dict(decision, answer="x"),
+               dict(answer, source="robot"), dict(answer, answer=""), dict(decision, policy="yolo")]
+        for case in bad:
+            self.assertTrue(journal.validate_record(case), case)
+        # An agent line keeps its own schema (backward compatible).
+        self.assertTrue(journal.validate_record({"agent": "x"}))
 
     def test_append_refuses_invalid_record(self):
         with self.assertRaises(ValueError):

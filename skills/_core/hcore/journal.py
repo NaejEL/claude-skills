@@ -10,6 +10,10 @@
 # after the reviewer/validator/agent call, they complete the last entry of that
 # slot (agent name, reviewer:<theme> or validator:<id>); a value already
 # logged is never overwritten (reported instead).
+# - JR-01: journal names of the ten skills (SKILLS).
+# - JR-02: typed events. A line without "event" is an agent line (backward
+#   compatible with existing journals); "event": "gate" follows the GT-07
+#   schema (hcore/gates.py). Any other event type is invalid.
 
 from __future__ import annotations
 
@@ -19,8 +23,12 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-SKILLS = ("factory-run", "ship-pr")
-NAME_RE = re.compile(r"^(factory-run|ship-pr)-[0-9]{8}-[0-9]{6}\.jsonl$")
+from . import gates
+
+SKILLS = ("software-factory", "factory-run", "ship-pr", "code-index", "ai-lab", "lab-run",
+          "ai-lab-audit", "legacy-audit", "vibecode-audit", "brainstorm")
+NAME_RE = re.compile(r"^(%s)-[0-9]{8}-[0-9]{6}\.jsonl$" % "|".join(re.escape(s) for s in SKILLS))
+EVENTS = ("gate",)
 REQUIRED = ("agent", "model", "duration_ms", "iteration", "verdict", "findings", "tokens")
 FINDING_KEYS = ("produced", "validated", "rejected")
 FALLBACK_TEXT = "unknown"   # fallback value of an invalid text field (sanitize)
@@ -55,6 +63,10 @@ def make_record(agent: str, model: str, duration_ms: Optional[int], iteration: i
 def validate_record(obj: Any) -> List[str]:
     if not isinstance(obj, dict):
         return ["the line is not a JSON object"]
+    if "event" in obj:
+        if obj["event"] not in EVENTS:
+            return ["unknown event type: %r" % (obj["event"],)]
+        return gates.validate_event(obj)
     errors = ["missing field: %s" % k for k in REQUIRED if k not in obj]
     if errors:
         return errors

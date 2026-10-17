@@ -1,8 +1,8 @@
 # Backlog — claude-skills v2
 
-Mémoire de travail du chantier v2. Ce fichier prime sur `ROADMAP.md`, qui reste le texte d'origine, quand les deux divergent. Branche de travail actuelle : `v2/increment-1-noyau`. Spec en cours : `specs/SPEC-noyau-core-journal.md`.
+Mémoire de travail du chantier v2. Ce fichier prime sur `ROADMAP.md`, qui reste le texte d'origine, quand les deux divergent. Branche de travail actuelle : `v2/phase-1-core`. Spec en cours : `specs/SPEC-phase1-rebranchement.md` (APPROUVEE, état des lots en §8).
 
-Dernière mise à jour : 2026-10-16.
+Dernière mise à jour : 2026-10-17.
 
 ---
 
@@ -222,3 +222,30 @@ Projet jetable, avec `.claude/skills/probe` (jonction Windows) et `.claude/skill
 - Les installeurs lient chaque dossier de `skills/`, `_core` compris (`install_skills.sh:176`, `install_skills.ps1:167`).
 
 Résultat : **R1 OK**. Le partage `${CLAUDE_SKILL_DIR}/../_core` est confirmé.
+
+---
+
+## 8. Phase 1 — état des lots (2026-10-17)
+
+Spec : `specs/SPEC-phase1-rebranchement.md`, statut APPROUVEE, décisions X1 à X11 et Q-G1 (la section « Décisions » prime sur le reste de la spec).
+
+| Lot | Contenu | État |
+|---|---|---|
+| L0 | Recette R1 et arbitrage X1 à X11 | **fait** (R1 OK, §7 ; décisions du 2026-10-17 dans la spec) |
+| L1 | Corrections §7 : verrou, `--summary-file`, `--not-fixed-file`, `--title-file`, `--trailer`, `drop`, `journal amend` | **fait**, commit `31579e0` ; reliquat (fichier de transit déjà consommé = exit 2 explicite) livré avec L2 |
+| L2 | JR-01, JR-02 ; gates GT-01 à GT-08 ; câblage software-factory (gabarit) et ship-pr (C3) | **livré, non commité** (arbre de travail) |
+| L3 | Modèles MD-01 à MD-08 ; câblage factory-run (gabarit) et ship-pr ; `--models` (X6) | **livré, non commité** (arbre de travail) |
+| L4 | Régénération de l'usine du dépôt (UF-01 à UF-07) | à faire (dépend de L2, L3) |
+| L5 | Finding FD-01 à FD-11, registre projet RG-01 à RG-07 | à faire |
+| L6 | Stack, T-shirt, fusion générique, blocs | à faire |
+| L7 | Moteur d'audit AU-01 à AU-16 | à faire |
+| L8 à L13 | Rebranchement de code-index, ai-lab, ai-lab-audit, legacy-audit, vibecode-audit, brainstorm | à faire |
+| L14 | README, BACKLOG, rafraîchissement de `.claude/harness`, passage complet des CA | à faire |
+
+### L2 et L3 : ce qui est en place
+
+- **Journal** : dix noms de skill admis (`journal.SKILLS`) ; une ligne sans `event` reste une ligne d'agent ; `event: "gate"` suit GT-07 (`phase` = `decision` puis `answer`).
+- **Gates** : `hcore/gates.py`, catalogue des 27 gates (options citées telles qu'à BASE1, défaut, justification, repli headless). CLI `harness.py gate decide --id <id> [--run <run>]` et `gate answer --run <run> --id <id> (--answer | --answer-file | --headless | --default)`. Sans `--run`, `decide` ouvre un run du skill de la gate ; `ship-pr start --run <run>` poursuit le run ouvert par `ship-pr.target`. `auto` lu dans `.claude/harness.json` est appliqué comme `gate`, avec un avertissement journalisé (Q-G1).
+- **Modèles** : `hcore/models.py`, 14 rôles fermés, migration `lab-models.json` → `models.json`, alias `lab`, préréglages `lab-inherit`, `lab-experts`, `lab-interpretation`, `lab-custom`, `economy`, `quality`. CLI `models resolve` et `models write`. `factory-run start` retire `--models` de `$ARGUMENTS` ; `ship-pr start --models`. Le modèle consigné au journal est celui du rôle quand `--model` est omis. `sf install --model-role <rôle>` écrit le bloc `# >>> harness.model >>>` dans le frontmatter de l'agent généré (X1).
+- **Écart à la spec** : MD-03 (« valeur inconnue dans le fichier → `inherit` avec avertissement ») et la ligne correspondante de CA-18 sont remplacés par X8 : erreur explicite (exit 2). MD-09 est remplacé par X1.
+- **Point d'attention** : un agent généré avant X1 (sans bloc) devient `personnalisé-conservé` à la relance de software-factory, et son bloc n'est pas ajouté. La mise à niveau relève de la Phase 3 (`--upgrade`).

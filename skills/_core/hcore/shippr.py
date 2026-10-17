@@ -16,6 +16,8 @@
 #   reviewed.
 # - SP-09: a confirmed finding not fixed is recorded NOT_FIXED with its reason.
 # - SP-10: raw / confirmed / rejected / deduplicated counters per round.
+# - MD-07 (wiring): reviewers and validators have a model role
+#   (AGENT_ROLES); the assignment resolved at start is kept in the state.
 
 from __future__ import annotations
 
@@ -25,14 +27,17 @@ from . import counters, registry as registry_mod, relaunch, verdicts
 
 REVIEWER = "reviewer"
 VALIDATOR = "validator"
+AGENT_ROLES = {REVIEWER: "shippr.reviewer", VALIDATOR: "shippr.validator"}
 
 
 class LoopError(RuntimeError):
     """Refused transition: out-of-sequence call or inconsistent state."""
 
 
-def new_state(target: str, rounds: int, themes: List[str]) -> Dict[str, Any]:
+def new_state(target: str, rounds: int, themes: List[str],
+              models: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
     return {
+        "models": dict(models or {}),
         "target": target,
         "rounds": rounds,
         "themes": list(themes),

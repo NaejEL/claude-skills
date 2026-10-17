@@ -3,7 +3,7 @@ name: ship-pr
 description: Pilote le cycle complet d'une pull request GitHub depuis la branche courante — création ou reprise de la PR, rondes de revue par 3 agents relecteurs parallèles avec validation adversariale des findings, commentaires inline, correctifs commités et threads résolus, puis merge (commit de merge) après validation utilisateur. À utiliser quand l'utilisateur veut faire relire, corriger et merger sa branche courante vers une branche cible.
 context: fork
 user-invocable: true
-argument-hint: "<branche-cible> [--rounds N] [--themes \"t1;t2;t3\"]"
+argument-hint: "<branche-cible> [--rounds N] [--themes \"t1;t2;t3\"] [--models \"role=modele;...\"]"
 ---
 
 # Ship PR — revue itérative et merge d'une pull request
@@ -12,7 +12,7 @@ Piloter le cycle complet de la branche courante vers une branche cible : créer 
 
 ## Noyau déterministe
 
-Bornes, compteurs, registre, journal et séquences `gh`/`git` de ce skill sont du code Python (bibliothèque standard, ≥ 3.9) dans `${CLAUDE_SKILL_DIR}/../_core/` : CLI `harness.py`, paquet `hcore/`, tests `tests/`. Ne jamais les rejouer à la main : appeler la CLI et suivre son JSON. Exit 1 = arrêt explicite : afficher le message de stderr tel quel et s'arrêter. Exit 2 = erreur d'usage ou borne invalide : l'afficher et s'arrêter. Règles portées : SP-01, SP-02 (`hcore/counters.py`) ; SP-03, SP-04 (`hcore/verdicts.py`) ; SP-05 à SP-10 (`hcore/shippr.py`, `registry.py`, `relaunch.py`) ; SP-11 à SP-19 (`hcore/ghflow.py`).
+Bornes, compteurs, registre, journal et séquences `gh`/`git` de ce skill sont du code Python (bibliothèque standard, ≥ 3.9) dans `${CLAUDE_SKILL_DIR}/../_core/` : CLI `harness.py`, paquet `hcore/`, tests `tests/`. Ne jamais les rejouer à la main : appeler la CLI et suivre son JSON. Exit 1 = arrêt explicite : afficher le message de stderr tel quel et s'arrêter. Exit 2 = erreur d'usage ou borne invalide : l'afficher et s'arrêter. Règles portées : SP-01, SP-02 (`hcore/counters.py`) ; SP-03, SP-04 (`hcore/verdicts.py`) ; SP-05 à SP-10 (`hcore/shippr.py`, `registry.py`, `relaunch.py`) ; SP-11 à SP-19 (`hcore/ghflow.py`) ; GT-01 à GT-08 (`hcore/gates.py`) ; MD-01 à MD-08 (`hcore/models.py`) ; JR-01, JR-02 (`hcore/journal.py`).
 
 **Interpréteur** (règle unique, reproduite et testée par `hcore/interp.py`) : `<PY>` = le premier de `python`, `python3`, `py -3`, cherché dans le PATH, qui répond en moins de 5 s avec une version ≥ 3.9 ; aucun → s'arrêter en le disant. Le retenir par cette boucle Bash, portable (le délai n'est posé que si `timeout` existe ; absent, comme sur macOS, lancer la boucle avec le délai de l'outil Bash) :
 
@@ -20,14 +20,19 @@ Bornes, compteurs, registre, journal et séquences `gh`/`git` de ce skill sont d
 t=; command -v timeout >/dev/null && t="timeout 5"; for c in python python3 "py -3"; do $t $c -c "import sys; print(sys.version_info >= (3, 9))" 2>/dev/null | grep -q True && { echo "$c"; break; }; done
 ```
 
-Ci-dessous, `K` = `<PY> "${CLAUDE_SKILL_DIR}/../_core/harness.py" ship-pr` et `<run>` = le chemin du journal rendu par `start`.
+Ci-dessous, `H` = `<PY> "${CLAUDE_SKILL_DIR}/../_core/harness.py"`, `K` = `H ship-pr` et `<run>` = le chemin du journal rendu par `start`.
 
-**Journal** : chaque sous-agent est consigné dans `.claude/runs/ship-pr-<horodatage>.jsonl` par sa commande `reviewer` ou `validator`, avec `--model <modèle ou inherit> --duration-ms <ms> --tokens <n>` tirés du bloc d'usage de l'outil Agent (sans durée : `<PY> "${CLAUDE_SKILL_DIR}/../_core/harness.py" begin --run <run> --slot "reviewer:<thème>"` ou `--slot "validator:<id>"` juste avant l'agent ; sans tokens : omettre l'option), `--output <fichier>` où la sortie de l'agent est écrite telle quelle avec l'outil Write sous `.claude/runs/` (jamais par stdin ni par une commande shell : backticks, `$` et apostrophes y seraient interprétés ou tronqués), `--dead` s'il est mort. Une mesure manquante ou invalide est journalisée `null` et signalée (`journal_warnings`) sans rien bloquer ; une durée ou des tokens connus seulement après l'appel complètent la dernière entrée du slot par `<PY> "${CLAUDE_SKILL_DIR}/../_core/harness.py" journal amend --run <run> --slot "<slot>" --duration-ms <ms> --tokens <n>`. Le champ `action` rendu dicte la suite ; ne jamais sauter un appel.
+**Fichiers de transit** : tout texte non fiable passé au noyau (titre et corps de la PR, raisons, résumé, réponse libre d'une gate, sortie d'un agent) est écrit tel quel avec l'outil Write dans un fichier sous `.claude/runs/`, jamais par stdin ni par une commande shell (backticks, `$` et apostrophes y seraient interprétés ou tronqués). Le noyau supprime chaque fichier de transit dès sa lecture, réussie ou non : le réécrire avant chaque appel, dans toutes les phases ; un fichier déjà consommé est une erreur d'usage (exit 2) qui le nomme.
+
+**Journal** : chaque sous-agent est consigné dans `.claude/runs/ship-pr-<horodatage>.jsonl` par sa commande `reviewer` ou `validator`, avec `--duration-ms <ms> --tokens <n>` tirés du bloc d'usage de l'outil Agent (sans durée : `H begin --run <run> --slot "reviewer:<thème>"` ou `--slot "validator:<id>"` juste avant l'agent ; sans tokens : omettre l'option ; le modèle consigné est celui du rôle), `--output <fichier de transit>` où la sortie de l'agent est écrite, `--dead` s'il est mort. Une mesure manquante ou invalide est journalisée `null` et signalée (`journal_warnings`) sans rien bloquer ; une durée ou des tokens connus seulement après l'appel complètent la dernière entrée du slot par `H journal amend --run <run> --slot "<slot>" --duration-ms <ms> --tokens <n>`. Le champ `action` rendu dicte la suite ; ne jamais sauter un appel.
+
+**Gates** (GT-01 à GT-08) : chaque question à l'utilisateur passe par `H gate decide --run <run> --id <id>`, qui la journalise et rend `decision`, `options`, `default` et `headless`. `ask` → AskUserQuestion avec ces options, puis `H gate answer --run <run> --id <id> --answer "<option retenue>"` (saisie libre : `--answer-file .claude/runs/gate-answer.txt`). AskUserQuestion indisponible (headless) → `H gate answer --run <run> --id <id> --headless`, qui rend `apply` : `stop` (exit 1, s'arrêter), sinon appliquer `answer` (le défaut déclaré) et le signaler au rapport comme repli headless.
 
 Parser `$ARGUMENTS` :
 
-- **1er token** = branche cible (`main`, `develop`…). S'il est absent, demander la branche cible via AskUserQuestion avant toute chose.
+- **1er token** = branche cible (`main`, `develop`…). S'il est absent, avant toute chose : `H gate decide --id ship-pr.target` (sans `--run` : ouvre le run), saisie libre de la branche cible, puis `K start --run <run> --target <cible> …`, qui poursuit ce run.
 - **`--rounds N`** (SP-01) et **`--themes "a;b;c"`** (SP-02) : transmis tels quels à `start`, qui borne les rondes à `min(N, 3)` (défaut 3) et accepte de 1 à 4 thèmes séparés par `;` (un thème = un agent relecteur ; défaut : les trois thèmes de 3.2). Une valeur hors bornes est une erreur explicite.
+- **`--models "role=modele;…"`** (X6, MD-01 à MD-08) : transmis tel quel à `start`, qui lit `.claude/models.json` (absent → `inherit`) puis applique ces paires pour ce cycle seulement, sans jamais réécrire le fichier ; rôles `shippr.reviewer` et `shippr.validator`, valeurs `inherit`, `opus`, `fable`, `sonnet`, `haiku` ou un identifiant `claude-*` ; rôle ou valeur inconnus → exit 2. `start` rend `models` : lancer chaque relecteur et chaque validateur avec le paramètre `model` de l'outil Agent valant le `model` de son rôle quand `pass_param` est vrai, jamais pour `inherit`.
 
 ## Règles impératives (toutes les phases)
 
@@ -36,21 +41,21 @@ Parser `$ARGUMENTS` :
 - **Frugalité** : relecteurs = agents lecture seule recevant uniquement les hunks du diff et un contexte minimal (jamais une mission « explore le repo ») ; validateurs = mini-agents à prompt court et effort faible ; 3 rondes maximum ; sortie anticipée dès qu'une ronde ne produit aucun finding confirmé ; à partir de la ronde 2, seuls les commits de correctif et les zones déjà signalées sont revus — jamais de re-revue des fichiers inchangés.
 - **Un thème muet n'est pas un thème relu — et bloque le merge** (SP-05). Un relecteur mort (erreur d'API, connexion coupée) ou dont la sortie est inexploitable (SP-03) rend le même silence qu'un vrai « zéro finding », et la sortie anticipée le transformerait en feu vert. `reviewer` rend `relaunch` : relancer **une fois** ; au second échec il rend `uncovered` : le thème est **non couvert**, à signaler dans le commentaire de synthèse de la PR et au rapport. Le noyau ne compte jamais ce silence comme une ronde sans finding et **refuse le merge** : la gate humaine n'est même pas proposée, le skill s'arrête en expliquant quel angle n'a pas été relu et invite à relancer. Ce skill agit sur le dépôt distant : contrairement à un audit, il ne peut pas se contenter de déclarer son amputation. Même règle pour les validateurs (SP-06) : un validateur mort deux fois laisse son finding **non validé** (`unvalidated`) — ni posté en commentaire inline, ni corrigé d'office, il figure au rapport comme restant à trancher.
 - **Un commit par ronde** (SP-17), message `fix(review): round N fixes — <résumé>`. Jamais d'amend, jamais de force-push.
-- **Jamais de merge sans validation explicite de l'utilisateur** (AskUserQuestion en Phase 4).
+- **Jamais de merge sans validation explicite de l'utilisateur** (gate `ship-pr.merge` en Phase 4 ; son repli headless laisse la PR ouverte).
 - **Registre cumulatif des findings** (SP-07) : `.claude/runs/ship-pr-<horodatage>.registry.jsonl`, tenu par le noyau pour tous les findings, **y compris les REJETÉS**. `reviewer` dédoublonne chaque nouveau finding contre lui (même fichier, titre normalisé) avant validation : un finding rejeté ne ressuscite pas d'une ronde à l'autre. Écarter aussi, au jugement, un finding `to_validate` qui double un finding connu (même sujet, autre titre), avant tout validateur : `K drop --run <run> --finding <id> --of <id> [--reason-file .claude/runs/drop.txt]` (raison écrite avec l'outil Write) le consigne en doublon, et `end-round` ne l'attend plus.
 
 ## Phase 1 — Préflight
 
 `K start --target <cible> [--rounds N] [--themes "…"]` (SP-11) vérifie dans l'ordre l'authentification `gh`, le remote GitHub, la branche courante ≠ cible et l'existence de `origin/<cible>`, et s'arrête au premier échec avec son message : ne jamais continuer sur un préflight rouge. Il ajoute `.claude/runs/` à `.git/info/exclude` s'il n'y figure pas, ouvre le journal et le registre, et rend `run`, `themes`, `dirty` et `owner_repo`.
 
-1. Si `dirty` est vrai → AskUserQuestion : **commiter maintenant** (proposer un message) / **stash** (le noter pour le rappeler au rapport final) / **abandonner**.
+1. Si `dirty` est vrai → gate `--id ship-pr.dirty` : **commiter maintenant** (proposer un message) / **stash** (le noter pour le rappeler au rapport final) / **abandonner**.
 2. `K sync --run <run>` (SP-12) : pousse la branche (`git push -u origin HEAD`) si l'upstream manque ou si des commits ne sont pas poussés.
 
 ## Phase 2 — Pull request
 
 `K pr --run <run>` (SP-13) reprend la PR ouverte de la branche courante vers la cible. S'il n'y en a pas, il rend `log` et `stat` : en tirer le titre (l'intention du changement) et le corps (résumé + liste des changements notables), écrire le titre (une ligne) dans `.claude/runs/pr-title.txt` et le corps dans `.claude/runs/pr-body.md`, tels quels avec l'outil Write (jamais par stdin ni par le shell), puis `K pr --run <run> --title-file .claude/runs/pr-title.txt --body-file .claude/runs/pr-body.md` crée la PR. La réponse porte `number`, `url`, `created`, `headRefOid` et l'état de merge (SP-14).
 
-Si `conflicting` est vrai → AskUserQuestion : **résoudre maintenant** (merger `origin/<cible>` dans la branche, résoudre, commiter, pousser) / **continuer la revue quand même** / **abandonner**.
+Si `conflicting` est vrai → gate `--id ship-pr.conflict` : **résoudre maintenant** (merger `origin/<cible>` dans la branche, résoudre, commiter, pousser) / **continuer la revue quand même** / **abandonner**.
 
 ## Phase 3 — Boucle de revue (3 rondes maximum)
 
@@ -86,7 +91,7 @@ Pour chaque finding `post` : `K comment --run <run> --finding <id>` (SP-16) post
 
 ### 3.5 Correctifs
 
-Appliquer soi-même chaque correctif confirmé (édition directe, pas de sous-agent), au plus près de la correction suggérée — sans élargir le périmètre. Écrire ensuite avec l'outil Write le résumé dans `.claude/runs/summary.txt` et les raisons des findings non corrigés dans `.claude/runs/not-fixed.json` (`{"<id>": "<raison>"}`) : ce texte dérive des findings, il ne passe jamais par la ligne de commande (backticks et `$()` y seraient exécutés). Puis `K commit --run <run> --summary-file .claude/runs/summary.txt --fixed <id>… [--not-fixed-file .claude/runs/not-fixed.json] [--trailer "<ligne>"]…` (SP-17, SP-09) : un commit `fix(review)` poussé, et chaque finding confirmé consigné au registre, corrigé (avec le hash) ou volontairement **non** corrigé avec sa raison (faux positif découvert au moment du fix, correctif impossible sans élargir le périmètre). Passer en `--trailer` la ligne d'attribution des commits demandée par l'environnement, s'il en existe une. Push en échec (exit 1) : relancer la même commande, qui pousse le commit consigné sans le refaire. Le noyau supprime chaque fichier de transit lu sous `.claude/runs/` (`pr-title.txt`, `pr-body.md`, `drop.txt`, `summary.txt`, `not-fixed.json`) dès sa lecture, réussie ou non : le réécrire avant chaque appel.
+Appliquer soi-même chaque correctif confirmé (édition directe, pas de sous-agent), au plus près de la correction suggérée — sans élargir le périmètre. Écrire ensuite avec l'outil Write le résumé dans `.claude/runs/summary.txt` et les raisons des findings non corrigés dans `.claude/runs/not-fixed.json` (`{"<id>": "<raison>"}`) : ce texte dérive des findings, il ne passe jamais par la ligne de commande (backticks et `$()` y seraient exécutés). Puis `K commit --run <run> --summary-file .claude/runs/summary.txt --fixed <id>… [--not-fixed-file .claude/runs/not-fixed.json] [--trailer "<ligne>"]…` (SP-17, SP-09) : un commit `fix(review)` poussé, et chaque finding confirmé consigné au registre, corrigé (avec le hash) ou volontairement **non** corrigé avec sa raison (faux positif découvert au moment du fix, correctif impossible sans élargir le périmètre). Passer en `--trailer` la ligne d'attribution des commits demandée par l'environnement, s'il en existe une. Push en échec (exit 1) : relancer la même commande, qui pousse le commit consigné sans le refaire.
 
 ### 3.6 Réponse et résolution des threads
 
@@ -95,7 +100,7 @@ Appliquer soi-même chaque correctif confirmé (édition directe, pas de sous-ag
 ## Phase 4 — Merge (gate humaine)
 
 1. `K merge --run <run> --check` (SP-05, SP-19) refuse — et le skill s'arrête là, sans gate — si un thème n'a pas été couvert. Sinon il rend le résumé (SP-10 : findings bruts/confirmés/rejetés/dédoublonnés par ronde, commits de correctif avec leurs hashes, threads résolus et restés ouverts, findings non validés) et l'état de merge à jour : le présenter. Si `conflicting`, le signaler et proposer de résoudre avant la question de merge.
-2. **AskUserQuestion** : « Merger la PR #<n> vers <cible> ? » — options : **Merger** / **Laisser la PR ouverte**.
+2. Gate `--id ship-pr.merge` : « Merger la PR #<n> vers <cible> ? » — options : **Merger** / **Laisser la PR ouverte**.
 3. Si l'utilisateur valide : `K merge --run <run>` (SP-19) — commit de merge explicite (`gh pr merge --merge --delete-branch`, jamais `--squash` ni `--rebase`) qui supprime la branche distante et la branche locale, puis `git checkout <cible> && git pull`. Si un stash a été fait en Phase 1, rappeler à l'utilisateur de faire `git stash pop` — sans le faire d'office.
 
 ## Phase 5 — Rapport final

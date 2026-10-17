@@ -23,7 +23,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from hcore import CORE_VERSION  # noqa: E402
-from hcore import (blocks, counters, factory, fusion, ghflow, interp, journal,  # noqa: E402
+from hcore import (blocks, counters, factory, fusion, gates, ghflow, interp, journal,  # noqa: E402
                    models, registry, runs, shippr)
 from hcore import proc  # noqa: E402
 from hcore.proc import Runner  # noqa: E402
@@ -40,17 +40,32 @@ def emit(obj: Any) -> None:
     sys.stdout.write(json.dumps(obj, ensure_ascii=False, indent=1) + "\n")
 
 
+TRANSIT_MISSING = ("transit file %s was already consumed or never written: "
+                   "rewrite it with Write before this call")
+
+
+def _input_path(value: str) -> Path:
+    """Path of an input file. A missing file under .claude/runs/ is a transit
+    file already consumed (or never written): explicit usage error."""
+    path = Path(value)
+    if not path.is_file():
+        parts = path.resolve().parts
+        if any(parts[i:i + 2] == (".claude", "runs") for i in range(len(parts) - 1)):
+            raise Usage(TRANSIT_MISSING % value)
+    return path
+
+
 def read_output(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
     if value == "-":
         return sys.stdin.buffer.read().decode("utf-8", "replace")
-    return Path(value).read_text(encoding="utf-8", errors="replace")
+    return _input_path(value).read_text(encoding="utf-8", errors="replace")
 
 
 def read_file(value: str) -> str:
     """Text written by the Write tool (never stdin, never the shell)."""
-    return Path(value).read_text(encoding="utf-8-sig", errors="replace")
+    return _input_path(value).read_text(encoding="utf-8-sig", errors="replace")
 
 
 def _one_line(option: str, text: str) -> str:
@@ -96,10 +111,18 @@ def _measure(state: Dict[str, Any], args: argparse.Namespace, slot: str) -> Dict
     return {"duration_ms": duration, "tokens": tokens, "warnings": warnings}
 
 
+def _model(args: argparse.Namespace, state: Dict[str, Any], role: str) -> str:
+    """Model logged for an agent: --model if given, otherwise the model
+    resolved for its role at start (MD-07), inherit for an older run."""
+    if args.model is not None:
+        return args.model
+    return state.get("models", {}).get(role, "inherit")
+
+
 def _log(run: Path, args: argparse.Namespace, agent: str, measure: Dict[str, Any],
-         fields: Dict[str, Any], decision: Dict[str, Any], **extra: Any) -> None:
+         fields: Dict[str, Any], decision: Dict[str, Any], model: str, **extra: Any) -> None:
     record = journal.make_record(
-        agent=agent, model=args.model, duration_ms=measure["duration_ms"],
+        agent=agent, model=model, duration_ms=measure["duration_ms"],
         iteration=fields["iteration"], verdict=fields["verdict"],
         produced=fields.get("produced", 0), validated=fields.get("validated", 0),
         rejected=fields.get("rejected", 0), tokens=measure["tokens"], **extra)
@@ -171,12 +194,69 @@ def cmd_begin(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_models(args: argparse.Namespace) -> int:
-    roles = args.roles.split(",") if args.roles else None
+def cmd_models_resolve(args: argparse.Namespace) -> int:
     try:
-        emit(models.resolve(Path(args.file), args.models, roles))
+        emit(models.resolve_root(Path(args.root), models.roles_of(args.roles), args.models, args.aliases))
     except models.ModelsError as exc:
         raise Usage(str(exc))
+    return 0
+
+
+def cmd_models_write(args: argparse.Namespace) -> int:
+    if args.preset is None and args.set is None:
+        raise Usage("models write expects --preset and/or --set")
+    try:
+        emit(models.write_preset(Path(args.root), args.preset, args.set))
+    except models.ModelsError as exc:
+        raise Usage(str(exc))
+    return 0
+
+
+# --------------------------------------------------------------------- gates
+
+def _gate_run(args: argparse.Namespace, gate: gates.Gate) -> Path:
+    """Run of a gate: --run, or a new run of the gate's skill (JR-01)."""
+    if args.run:
+        run = _run_path(args.run)
+        skill = runs.load_state(run).get("skill")
+        if skill != gate.skill:
+            raise Usage("gate %s belongs to %s, the run is a %s run" % (gate.id, gate.skill, skill))
+        return run
+    if args.gcmd == "answer":
+        raise Usage("gate answer expects --run (the run returned by 'gate decide')")
+    return runs.create(Path(args.root), gate.skill, {"gate_only": True})
+
+
+def cmd_gate_decide(args: argparse.Namespace) -> int:
+    gate = gates.get(args.id)
+    run = _gate_run(args, gate)
+    root = Path(runs.load_state(run)["root"])
+    event = gates.decide(gate.id, gates.read_policy(root))
+    journal.append(run, event)
+    if event["decision"] == gates.STOP:
+        raise gates.GateStop(gates.stop_message(gate, "decision default without a default to apply"))
+    emit(dict(event, options=list(gate.options), dialogue=gate.dialogue, run=runs.display(run)))
+    return 0
+
+
+def cmd_gate_answer(args: argparse.Namespace) -> int:
+    gate = gates.get(args.id)
+    run = _gate_run(args, gate)
+    root = Path(runs.load_state(run)["root"])
+    try:
+        given = [x for x in (args.answer, args.answer_file) if x is not None]
+        if int(args.headless) + int(args.default) + len(given) != 1:
+            raise Usage("gate answer expects exactly one of --answer, --answer-file, --headless, --default")
+        text = read_file(args.answer_file) if args.answer_file is not None else args.answer
+    finally:
+        _remove_transit(root, args.answer_file)
+    source = "headless" if args.headless else "default" if args.default else "user"
+    event = gates.answer(gate.id, gates.last_decision(journal.read(run), gate.id), source, text)
+    journal.append(run, event)
+    apply = gates.applied(gate.id, event)
+    if apply == gates.STOP:
+        raise gates.GateStop(gates.stop_message(gate, "no interaction possible (headless fallback: stop)"))
+    emit({"id": gate.id, "answer": event["answer"], "source": source, "apply": apply})
     return 0
 
 
@@ -221,7 +301,17 @@ def cmd_sf_install(args: argparse.Namespace) -> int:
     try:
         content = read_output(args.source)
         dest = Path(args.root) / args.dest
-        emit({args.dest: fusion.install_file(dest, content or "")})
+        if args.model_role is None:
+            emit({args.dest: fusion.install_file(dest, content or "")})
+            return 0
+        try:
+            # X1: the frontmatter reflects models.json, never the --models of a cycle.
+            resolved = models.resolve_root(Path(args.root), (args.model_role,))
+            value = resolved["roles"][args.model_role]["model"]
+            result = fusion.install_agent(dest, content or "", value)
+        except models.ModelsError as exc:
+            raise Usage("%s: %s" % (args.dest, exc))
+        emit({args.dest: result["state"], "model": value, "model_block": result["model_block"]})
     finally:
         _remove_transit(Path(args.root), args.source)
     return 0
@@ -244,10 +334,22 @@ def cmd_fr_start(args: argparse.Namespace) -> int:
     root = Path(args.root)
     arguments = ""
     if args.arguments_file:
-        arguments = Path(args.arguments_file).read_text(encoding="utf-8-sig", errors="replace")
-    choice = factory.entry(arguments, root)
-    run = runs.create(root, "factory-run", factory.new_state())
-    emit(dict(choice, run=runs.display(run)))
+        arguments = read_file(args.arguments_file)
+    try:
+        # X6: --models "role=model;..." taken out of $ARGUMENTS, for this cycle only.
+        rest, override = models.extract_option(arguments)
+        resolved = models.resolve_root(root, models.FACTORY_ROLES, override)
+    except models.ModelsError as exc:
+        raise Usage(str(exc))
+    choice = factory.entry(rest, root)
+    state = factory.new_state({r: e["model"] for r, e in resolved["roles"].items()})
+    run = runs.create(root, "factory-run", state)
+    result = dict(choice, run=runs.display(run), models=resolved["roles"])
+    if choice["mode"] == "plan":
+        result["need"] = rest
+    if resolved["warnings"]:
+        result["model_warnings"] = resolved["warnings"]
+    emit(result)
     return 0
 
 
@@ -256,7 +358,8 @@ def cmd_fr_record(args: argparse.Namespace) -> int:
     state = runs.load_state(run)
     measure = _measure(state, args, args.agent)
     decision, fields = factory.record(state, args.agent, read_output(args.output), args.dead)
-    _log(run, args, args.agent, measure, fields, decision)
+    model = _model(args, state, factory.AGENT_ROLES[args.agent])
+    _log(run, args, args.agent, measure, fields, decision, model)
     runs.save_state(run, state)
     emit(decision)
     return 0
@@ -286,15 +389,35 @@ def cmd_sp_start(args: argparse.Namespace) -> int:
     except counters.BoundsError as exc:
         raise Usage(str(exc))
     root = Path(args.root).resolve()
+    adopted, previous = None, {}
+    if args.run:
+        # Run opened by the ship-pr.target gate: its journal (gate events) is continued.
+        adopted = _run_path(args.run)
+        previous = runs.load_state(adopted)
+        if previous.get("skill") != "ship-pr" or not previous.get("gate_only"):
+            raise Usage("--run %s: start only continues a run opened by 'gate decide'" % args.run)
+        root = Path(previous["root"])
+    try:
+        resolved = models.resolve_root(root, models.SHIPPR_ROLES, args.models)
+    except models.ModelsError as exc:
+        raise Usage(str(exc))
     run_cmd = Runner(cwd=str(root))
     info = ghflow.preflight_checks(run_cmd, args.target)
     excluded = ghflow.ensure_exclude(run_cmd, root)
     info.update(ghflow.worktree_and_repo(run_cmd))
-    state = shippr.new_state(args.target, rounds, themes)
+    assignment = {r: e["model"] for r, e in resolved["roles"].items()}
+    state = shippr.new_state(args.target, rounds, themes, assignment)
     state.update(branch=info["branch"], owner_repo=info["owner_repo"])
-    run = runs.create(root, "ship-pr", state)
-    emit(dict(info, run=runs.display(run), registry=runs.display(runs.registry_path(run)),
-              rounds=rounds, themes=themes, round=1, exclude_added=excluded))
+    if adopted is None:
+        run = runs.create(root, "ship-pr", state)
+    else:
+        run = adopted
+        runs.save_state(run, dict(state, skill="ship-pr", root=str(root), begun=previous.get("begun", {})))
+    result = dict(info, run=runs.display(run), registry=runs.display(runs.registry_path(run)),
+                  rounds=rounds, themes=themes, round=1, exclude_added=excluded, models=resolved["roles"])
+    if resolved["warnings"]:
+        result["model_warnings"] = resolved["warnings"]
+    emit(result)
     return 0
 
 
@@ -340,7 +463,8 @@ def cmd_sp_reviewer(args: argparse.Namespace) -> int:
     run, state, _, reg = _ship_ctx(args)
     measure = _measure(state, args, "reviewer:" + args.theme)
     decision, fields = shippr.record_reviewer(state, reg, args.theme, read_output(args.output), args.dead)
-    _log(run, args, shippr.REVIEWER, measure, fields, decision, theme=args.theme)
+    model = _model(args, state, shippr.AGENT_ROLES[shippr.REVIEWER])
+    _log(run, args, shippr.REVIEWER, measure, fields, decision, model, theme=args.theme)
     runs.save_state(run, state)
     emit(decision)
     return 0
@@ -350,7 +474,8 @@ def cmd_sp_validator(args: argparse.Namespace) -> int:
     run, state, _, reg = _ship_ctx(args)
     measure = _measure(state, args, "validator:" + args.finding)
     decision, fields = shippr.record_validator(state, reg, args.finding, read_output(args.output), args.dead)
-    _log(run, args, shippr.VALIDATOR, measure, fields, decision, finding=args.finding)
+    model = _model(args, state, shippr.AGENT_ROLES[shippr.VALIDATOR])
+    _log(run, args, shippr.VALIDATOR, measure, fields, decision, model, finding=args.finding)
     runs.save_state(run, state)
     emit(decision)
     return 0
@@ -461,7 +586,8 @@ def cmd_sp_merge(args: argparse.Namespace) -> int:
 
 def _agent_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--run", required=True, help="run journal (.claude/runs/<skill>-<timestamp>.jsonl)")
-    p.add_argument("--model", required=True, help="agent model (inherit if not passed)")
+    p.add_argument("--model", default=None,
+                   help="model used; default: the model resolved for the agent's role at start")
     p.add_argument("--duration-ms", default=None, help="duration from the usage block; otherwise 'begin' (absent = null)")
     p.add_argument("--tokens", default=None, help="tokens from the usage block, absent = null")
     p.add_argument("--dead", action="store_true", help="the agent died (API error, disconnection)")
@@ -491,11 +617,31 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--run", required=True)
     p.add_argument("--slot", required=True, help="agent, reviewer:<theme> or validator:<id>")
     p.set_defaults(func=cmd_begin)
-    p = sub.add_parser("models", help="reads models.json and --models (D6, not wired)")
-    p.add_argument("--file", default=".claude/models.json")
-    p.add_argument("--models", default=None)
-    p.add_argument("--roles", default=None)
-    p.set_defaults(func=cmd_models)
+    p = sub.add_parser("models", help="model per role: .claude/models.json and --models (MD-01 to MD-08)")
+    msub = p.add_subparsers(dest="mcmd", required=True)
+    q = msub.add_parser("resolve", help="effective assignment {role: {model, pass_param}}")
+    q.add_argument("--root", default=".")
+    q.add_argument("--roles", default=None, help="factory, shippr, audit, lab or roles, comma-separated")
+    q.add_argument("--models", default=None, help='"role=model;..." for this cycle only')
+    q.add_argument("--aliases", default=None, choices=sorted(models.ALIAS_TABLES), help="short role names")
+    q.set_defaults(func=cmd_models_resolve)
+    q = msub.add_parser("write", help="merges a preset and explicit choices into .claude/models.json")
+    q.add_argument("--root", default=".")
+    q.add_argument("--preset", default=None, choices=sorted(models.PRESETS))
+    q.add_argument("--set", default=None, help='explicit choices "role=model;...", they win')
+    q.set_defaults(func=cmd_models_write)
+    p = sub.add_parser("gate", help="human gates (GT-01 to GT-08)")
+    gsub = p.add_subparsers(dest="gcmd", required=True)
+    for name, func in (("decide", cmd_gate_decide), ("answer", cmd_gate_answer)):
+        q = gsub.add_parser(name)
+        q.add_argument("--id", required=True, help="gate id of the GT-08 catalog")
+        q.add_argument("--run", default=None, help="run journal; absent (decide only): a new run of the gate's skill")
+        q.add_argument("--root", default=".")
+        q.set_defaults(func=func)
+    q.add_argument("--answer", default=None, help="option chosen by the user")
+    q.add_argument("--answer-file", default=None, help="free answer, file written by Write (consumed)")
+    q.add_argument("--headless", action="store_true", help="AskUserQuestion unavailable: headless fallback (GT-06)")
+    q.add_argument("--default", action="store_true", help="applies the default (decision default)")
     p = sub.add_parser("block", help="delimited blocks (D9, unused)")
     p.add_argument("action", choices=("get", "upsert", "remove"))
     p.add_argument("--file", required=True)
@@ -515,6 +661,8 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--dest", required=True)
     q.add_argument("--source", required=True,
                    help="content file, '-' = stdin; removed once read when it lies under .claude/runs/")
+    q.add_argument("--model-role", default=None, choices=models.ROLES,
+                   help="generated agent: its role's model written in a frontmatter block (X1)")
     q.set_defaults(func=cmd_sf_install)
     q = ssub.add_parser("copy-core", help="copies the core under .claude/harness/ (D1); exit 1 if blocked")
     q.add_argument("--root", default=".")
@@ -537,6 +685,8 @@ def build_parser() -> argparse.ArgumentParser:
     q = psub.add_parser("start")
     q.add_argument("--root", default=".")
     q.add_argument("--target", required=True)
+    q.add_argument("--run", default=None, help="run opened by the ship-pr.target gate")
+    q.add_argument("--models", default=None, help='"role=model;..." for this cycle only (X6)')
     q.add_argument("--rounds", default=None)
     q.add_argument("--themes", default=None,
                    help="1 to 4 themes separated by ';' (default: 3 themes); empty list, more than 4 "
@@ -602,7 +752,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             return args.func(args)
         with runs.locked(run):
             return args.func(args)
-    except (ghflow.Stop, runs.LockTimeout) as exc:
+    except (ghflow.Stop, runs.LockTimeout, gates.GateStop) as exc:
         sys.stderr.write("STOP: %s\n" % exc)
         return 1
     except (Usage, ValueError, factory.RunOver, shippr.LoopError, fusion.FusionError,
