@@ -6,6 +6,10 @@
 # (neither usage block nor 'begin'): a measurement defect is reported, never
 # blocking; any other invalid field is replaced by a reported fallback value
 # (sanitize). The journal changes no other behavior.
+# Deferred completion (amend): when the duration or the tokens are only known
+# after the reviewer/validator/agent call, they complete the last entry of that
+# slot (agent name, reviewer:<theme> or validator:<id>); a value already
+# logged is never overwritten (reported instead).
 
 from __future__ import annotations
 
@@ -107,6 +111,45 @@ def append(path: Path, record: Dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "a", encoding="utf-8", newline="\n") as fh:
         fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+
+def slot_of(record: Dict[str, Any]) -> str:
+    """Slot of a journal entry: reviewer:<theme>, validator:<id>, or the agent name."""
+    agent = record.get("agent")
+    if agent == "reviewer" and "theme" in record:
+        return "reviewer:%s" % record["theme"]
+    if agent == "validator" and "finding" in record:
+        return "validator:%s" % record["finding"]
+    return str(agent)
+
+
+def amend(records: List[Dict[str, Any]], slot: str, duration_ms: Optional[int],
+          tokens: Optional[int]) -> Tuple[List[str], List[str]]:
+    """Completes, in place, the null measurements of the last entry of `slot`.
+    Returns (amended fields, warnings); never raises on a measurement defect."""
+    matches = [i for i, r in enumerate(records) if slot_of(r) == slot]
+    if not matches:
+        return [], ["no journal entry for slot %s: nothing amended" % slot]
+    record = records[matches[-1]]
+    amended: List[str] = []
+    warnings: List[str] = []
+    for key, value in (("duration_ms", duration_ms), ("tokens", tokens)):
+        if value is None:
+            continue
+        if record.get(key) is None:
+            record[key] = value
+            amended.append(key)
+        elif record[key] != value:
+            warnings.append("%s already logged for %s (%r): kept, %r ignored" % (key, slot, record[key], value))
+    return amended, warnings
+
+
+def dumps(records: List[Dict[str, Any]]) -> str:
+    for record in records:
+        errors = validate_record(record)
+        if errors:
+            raise ValueError("invalid journal record: " + "; ".join(errors))
+    return "".join(json.dumps(r, ensure_ascii=False) + "\n" for r in records)
 
 
 def read(path: Path) -> List[Dict[str, Any]]:

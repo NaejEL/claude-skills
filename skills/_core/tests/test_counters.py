@@ -2,7 +2,7 @@
 
 import unittest
 
-import helpers  # noqa: F401
+import helpers
 from hcore import counters
 from hcore.counters import BoundsError
 
@@ -46,6 +46,18 @@ class ThemesTest(unittest.TestCase):
         for bad in ("", " ", ";", " ; ; "):
             with self.assertRaises(BoundsError):
                 counters.parse_themes(bad)
+
+
+    def test_sp02_duplicate_theme_is_explicit_error_naming_it(self):
+        """SP-02 / D8 (BACKLOG section 7): a theme given twice is an explicit
+        error naming it, documented in the help of --themes."""
+        with self.assertRaises(BoundsError) as ctx:
+            counters.parse_themes("logic; regressions ;logic")
+        self.assertIn("'logic'", str(ctx.exception))
+        self.assertIn("give each theme once", str(ctx.exception))
+        res = helpers.harness(["ship-pr", "start", "--help"], helpers.TESTS)
+        self.assertEqual(res.returncode, 0)
+        self.assertIn("theme given twice", " ".join(res.stdout.split()))
 
 
 class CapTest(unittest.TestCase):

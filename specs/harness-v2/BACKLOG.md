@@ -161,19 +161,27 @@ Le cycle s'est arrêté en **échec explicite** après 3 itérations Build/Verif
    - Des appels concurrents `K reviewer` ou `K validator` perdent des mises à jour. Sur 8 essais : 7 donnent des identifiants en collision, 8 perdent un thème, et certains lèvent une `PermissionError` sur `os.replace` sous Windows.
    - Conséquence possible : un verdict appliqué au mauvais finding, qui est ensuite posté sur la PR.
    - Correction : un verrou de fichier autour de `load`/`save`, et/ou des appels strictement séquentiels prescrits, avec un test de concurrence.
+   - **Corrigé (phase 1)** : verrou OS exclusif `<run>.lock` (`fcntl.flock` / `msvcrt.locking`, libéré par l'OS à la mort du détenteur, délai de 120 s puis arrêt exit 1), tenu par chaque commande CLI sur un run existant pendant tout le cycle lecture → modification → écriture ; écriture atomique conservée, `os.replace` réessayé sur `PermissionError` sous Windows. Tests : `test_runs_lock.ConcurrencyTest.test_parallel_reviewers_and_validators_lose_nothing` (4 `reviewer` puis 12 `validator` en sous-processus parallèles, 3 essais), `test_runs_lock.LockTest` (`test_lock_held_by_another_process_times_out`, `test_orphan_lock_released_when_its_holder_dies`, `test_cli_waits_then_stops_with_exit_1_on_lock_timeout`, `test_replace_retried_on_permission_error`).
 2. **`skills/ship-pr/SKILL.md` : `--summary "<résumé>"` et `--not-fixed "<id>:<raison>"` passent par le shell.**
    - Ce texte est dérivé des findings, entre guillemets doubles. Des backticks ou un `$()` y sont exécutés, et le commit `fix(review)` est corrompu sans retour possible, puisque l'amend est interdit.
    - Le défaut existait déjà à `BASE`, mais il contredit la règle que le skill pose lui-même.
    - Correction : options `--summary-file` / `--not-fixed-file`, écrites par Write.
+   - **Corrigé (phase 1)** : `ship-pr commit --summary-file` et `--not-fixed-file` (JSON `{"<id>": "<raison>"}`), `ship-pr pr --title-file` ; le SKILL.md prescrit ces fichiers, écrits par Write sous `.claude/runs/`. Tests : `test_replay.ShipPrReplayTest.test_untrusted_text_travels_by_file_drop_and_trailer`, `test_replay.UntrustedContentTest.test_skills_prescribe_files_for_untrusted_text_and_new_commands`.
 
 ### Défauts mineurs restants
 
 - `--title`, `--target`, `--themes` et `--theme` passent par le shell. Ils viennent de sources fiables, mais `--slot reviewer:<thème>` n'est pas entre guillemets alors que les thèmes contiennent des espaces.
+  - **Corrigé (phase 1)** : `--slot "reviewer:<thème>"` et `--slot "validator:<id>"` entre guillemets, `--title` remplacé par `--title-file` dans le SKILL.md. Test : `test_replay.UntrustedContentTest.test_skills_prescribe_files_for_untrusted_text_and_new_commands`.
 - Après un 422 suivi d'un échec d'une autre nature (non 422) sur le repli au niveau fichier, le code se replie quand même sur `gh pr comment`.
+  - **Corrigé (phase 1)** : arrêt exit 1, sans repli `gh pr comment`. Test : `test_ghflow.RoundFlowTest.test_sp16_file_level_failure_other_than_422_stops_without_pr_comment`.
 - L'état n'est pas sauvegardé sur les chemins d'erreur : si le push échoue après le commit, ou si les threads sont interrompus, une relance re-poste les réponses.
+  - **Corrigé (phase 1)** : le hash du commit et les issues sont consignés (`unpushed`) et sauvegardés avant le push ; une relance pousse sans recommiter, et `end-round` refuse tant que le push n'est pas fait. Chaque réponse postée, puis chaque thread traité, est marqué et sauvegardé avant le suivant. Tests : `test_ghflow.RoundFlowTest.test_sp17_failed_push_keeps_hash_and_relaunch_does_not_recommit`, `test_sp17_cli_failed_push_saved_then_resumed`, `test_sp18_interrupted_threads_never_repost_a_reply`, `test_shippr.ExitTest.test_sp17_round_does_not_end_on_an_unpushed_fix_commit`.
 - Les fichiers de transit de `sf install` restent dans `.claude/runs/` si le skill s'arrête avant la Phase 5.
+  - **Corrigé (phase 1)** : `sf install` supprime son fichier source situé sous `.claude/runs/` dès sa lecture (try/finally, installation réussie ou non). Test : `test_fusion.BacklogFixesTest.test_sf04_transit_file_removed_once_read_even_on_failure`.
 - `parse_themes` rejette les thèmes en double, une règle hors D8.
+  - **Corrigé (phase 1)** : erreur explicite conservée, alignée sur D8 (borne invalide = erreur explicite, jamais de correction silencieuse) : le message nomme le thème en double, et l'aide de `--themes` documente la règle. Test : `test_counters.ThemesTest.test_sp02_duplicate_theme_is_explicit_error_naming_it`.
 - `copy-core` bloqué rend exit 0 avec `copied:false`, signalé trop faiblement.
+  - **Corrigé (phase 1)** : exit 1 avec un message `STOP: core not copied` qui nomme les fichiers en cause ; le SKILL.md de software-factory dit de s'arrêter. Test : `test_fusion.BacklogFixesTest.test_d1_cli_blocked_copy_core_is_an_explicit_stop`.
 
 ### Revue ship-pr de la PR #2 (2026-10-17)
 
@@ -181,8 +189,18 @@ Premier passage réel de `ship-pr` rebranché sur le noyau. Sortie par épuiseme
 
 - **Corrigé dans `cfea95e`** : `commit_round` acceptait un id en double. Le commit était poussé, puis l'état n'était pas sauvegardé.
 - **Friction constatée** : SKILL.md SP-07 demande d'« écarter au jugement » un doublon sémantique. Le noyau n'a aucune sous-commande pour le faire, donc il faut un validateur même pour un doublon évident. Le finding a été rejeté sur la forme, mais la friction est réelle. À trancher : une sous-commande `drop`, ou retirer la consigne.
+  - **Corrigé (phase 1)** : `ship-pr drop --run <run> --finding <id> --of <id> [--reason-file <fichier>]` passe un candidat PENDING de la ronde à l'état `DUPLICATE` (état et registre), le compte dans `duplicates`, refuse un `--of` inconnu ; `end-round` ne l'attend plus. SP-07 du SKILL.md prescrit `K drop`. Tests : `test_shippr.SemanticDuplicateTest`, `test_replay.ShipPrReplayTest.test_untrusted_text_travels_by_file_drop_and_trailer`.
 - **Journal** : une durée est restée `null` quand la notification de fin d'un agent arrive après l'enregistrement de son résultat.
+  - **Corrigé (phase 1)** : `harness.py journal amend --run <run> --slot <slot> --duration-ms N --tokens N` complète la dernière entrée du slot (valeurs `null` seulement ; une valeur déjà consignée est conservée et signalée ; jamais bloquant) ; complétion différée documentée dans les deux SKILL.md. Test : `test_journal.RunFilesTest.test_journal_amend_completes_last_entry_of_the_slot`.
 - **Message de commit `fix(review)`** : il est écrit par le noyau, sans la ligne d'attribution `Co-Authored-By`.
+  - **Corrigé (phase 1)** : `ship-pr commit --trailer "<ligne>"` (répétable), ajouté après une ligne vide ; le SKILL.md demande de passer le trailer d'attribution de l'environnement s'il en existe un. Tests : `test_ghflow.RoundFlowTest.test_sp17_trailers_added_after_a_blank_line`, `test_replay.ShipPrReplayTest.test_untrusted_text_travels_by_file_drop_and_trailer`.
+- **Itération 2 du lot L1 (Verifier, CHANGES_REQUESTED)** :
+  - `drop` acceptait un cycle (`drop A --of B` puis `drop B --of A`), et le vrai finding disparaissait. **Corrigé (phase 1)** : un `--of` déjà `DUPLICATE` est refusé, la cible reste un finding validé ou à valider. Test : `test_shippr.SemanticDuplicateTest.test_sp07_drop_refuses_a_cycle_or_a_chain_of_duplicates`.
+  - `--not-fixed-file` gardait en silence la dernière valeur d'une clé en double. **Corrigé (phase 1)** : `object_pairs_hook` qui refuse la clé en double (exit 2). Test : `test_replay.ShipPrReplayTest.test_not_fixed_file_duplicate_key_refused`.
+  - Un résumé sur plusieurs lignes collait un corps au sujet du commit, sans ligne vide. **Corrigé (phase 1)** : refusé (exit 2 dans la CLI, arrêt avant tout appel git dans `commit_round`). Test : `test_replay.ShipPrReplayTest.test_multiline_summary_refused_before_any_commit`.
+  - Les fichiers de transit de ship-pr (`pr-title.txt`, `pr-body.md`, `drop.txt`, `summary.txt`, `not-fixed.json`) n'étaient jamais supprimés, et un fichier périmé pouvait être réutilisé. **Corrigé (phase 1)** : chaque fichier lu sous `.claude/runs/` par `--title-file`, `--body-file`, `--reason-file`, `--summary-file` et `--not-fixed-file` est supprimé une fois consommé (try/finally). La relance de `commit` après un push en échec n'a pas besoin de ces fichiers. Tests : `test_replay.ShipPrReplayTest.test_transit_files_removed_once_consumed`, `test_ghflow.RoundFlowTest.test_sp17_cli_failed_push_saved_then_resumed`.
+- **`--not-fixed` en double** (constaté en phase 1) : `--not-fixed A:r1 --not-fixed A:r2` s'écrasaient dans un dict.
+  - **Corrigé (phase 1)** : refusé (exit 2), y compris entre `--not-fixed` et `--not-fixed-file`. Tests : `test_ghflow.RoundFlowTest.test_sp09_not_fixed_given_twice_refused_by_the_cli`, `test_replay.ShipPrReplayTest.test_untrusted_text_travels_by_file_drop_and_trailer`.
 
 ### Code en anglais (décision de l'utilisateur, 2026-10-17)
 
@@ -194,3 +212,13 @@ Le code est en anglais, y compris les commentaires, les identifiants et les text
 - le libellé de tâche `Factory: nouvelle spec (session)`, qui sert de clé de dédoublonnage dans les projets déjà équipés.
 
 À faire dans un incrément ultérieur, avec une migration : ajouter la règle « code en anglais » aux templates d'agents générés par `software-factory` (builder, et planner pour les specs), sur suggestion de l'utilisateur.
+
+### Recette R1 (2026-10-17, faite en headless)
+
+Projet jetable, avec `.claude/skills/probe` (jonction Windows) et `.claude/skills/realprobe` (vrai dossier). `.claude/skills/_core` est une jonction vers ce dépôt. Commande : `claude -p "/probe"` (Claude Code 2.1.301), avec `MSYS_NO_PATHCONV=1` pour empêcher Git Bash de convertir le `/`.
+
+- `${CLAUDE_SKILL_DIR}` vaut le chemin du lien, sans résolution de la jonction. `${CLAUDE_SKILL_DIR}/../_core/harness.py version` rend `{"core_version": "1.0.0"}`, dans les deux cas.
+- `/_core` répond « isn't a command available » : `_core`, sans SKILL.md, n'est pas exposé comme skill.
+- Les installeurs lient chaque dossier de `skills/`, `_core` compris (`install_skills.sh:176`, `install_skills.ps1:167`).
+
+Résultat : **R1 OK**. Le partage `${CLAUDE_SKILL_DIR}/../_core` est confirmé.

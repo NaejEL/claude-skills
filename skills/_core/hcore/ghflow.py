@@ -9,12 +9,14 @@
 #   git diff <HEAD before the previous round's fix>..HEAD, hence the fix
 #   commit, + files already flagged).
 # - SP-16: inline comment with the headRefOid re-read at posting time;
-#   on HTTP 422 only, file-level fallback then, as a last resort, a PR
-#   comment. Any other error stops the skill.
+#   on HTTP 422 only, file-level fallback then, if that also fails with
+#   HTTP 422, a PR comment as a last resort. Any other error stops the skill.
 # - SP-17: one commit per round "fix(review): round N fixes — <summary>",
-#   then a plain push (never an amend, never a force-push).
+#   optional trailers after a blank line, then a plain push (never an amend,
+#   never a force-push); a failed push is resumed without a second commit.
 # - SP-18: reply to and resolve the threads of fixed findings; threads of
-#   findings not fixed: reply with the reason, left open.
+#   findings not fixed: reply with the reason, left open. Progress saved
+#   after each step (no reply posted twice on a relaunch).
 # - SP-19: merge with a merge commit and branch deletion, refused if a theme
 #   is not covered or if the loop is not finished.
 # - D3: adds .claude/runs/ to .git/info/exclude, idempotent.
@@ -24,7 +26,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Sequence
 
 from . import registry as registry_mod, shippr
 from .proc import Result
@@ -179,6 +181,8 @@ def post_comment(run: Run, state: Dict[str, Any], fid: str) -> Dict[str, Any]:
             raise Stop("inline comment refused (not HTTP 422): %s" % (res.err or res.out).strip())
         res = run(base + ["-f", "subject_type=file"])
         mode = "file"
+        if not res.ok and not HTTP_422.search(res.err + res.out):
+            raise Stop("file-level comment refused (not HTTP 422): %s" % (res.err or res.out).strip())
     if res.ok:
         c["comment_id"] = json.loads(res.out)["id"]
         return {"finding": fid, "mode": mode, "comment_id": c["comment_id"], "commit_id": sha}
@@ -187,9 +191,38 @@ def post_comment(run: Run, state: Dict[str, Any], fid: str) -> Dict[str, Any]:
     return {"finding": fid, "mode": "pr", "comment_id": None, "commit_id": sha}
 
 
+def _no_checkpoint() -> None:
+    pass
+
+
+def commit_message(round_number: int, summary: str, trailers: Sequence[str] = ()) -> str:
+    """SP-17: subject, then each trailer (attribution) after a blank line."""
+    message = "fix(review): round %d fixes — %s" % (round_number, summary.strip())
+    if trailers:
+        message += "\n\n" + "\n".join(trailers)
+    return message
+
+
 def commit_round(run: Run, state: Dict[str, Any], reg: registry_mod.Registry, summary: str,
-                 fixed: List[str], not_fixed: Dict[str, str]) -> Dict[str, Any]:
-    """SP-17 and SP-09."""
+                 fixed: List[str], not_fixed: Dict[str, str], trailers: Sequence[str] = (),
+                 checkpoint: Callable[[], None] = _no_checkpoint) -> Dict[str, Any]:
+    """SP-17 and SP-09.
+
+    The fix commit and the outcomes are recorded (state 'unpushed', then
+    checkpoint) BEFORE the push: a failed push leaves the hash recorded, and a
+    relaunch of the round only pushes again, it never commits a second time."""
+    pending = state.get("unpushed")
+    if pending and pending["round"] == state["round"]:
+        _must(run(["git", "push"]), "git push")
+        state["commits"].append({"round": pending["round"], "hash": pending["hash"], "summary": pending["summary"]})
+        state["unpushed"] = None
+        checkpoint()
+        return {"commit": pending["hash"], "fixed": pending["fixed"], "not_fixed": pending["not_fixed"],
+                "resumed": True}
+    if "\n" in summary.strip() or "\r" in summary.strip():
+        # Subject line only: a body glued to it without a blank line cannot be
+        # amended afterwards (never an amend).
+        raise Stop("the commit summary must be a single line")
     ids = fixed + list(not_fixed)
     duplicates = sorted({fid for fid in ids if ids.count(fid) > 1})
     if duplicates:
@@ -202,21 +235,28 @@ def commit_round(run: Run, state: Dict[str, Any], reg: registry_mod.Registry, su
     if fixed:
         pre = _must(run(["git", "rev-parse", "HEAD"]), "git rev-parse").out.strip()
         shippr.mark_pre_fix(state, pre)
-        message = "fix(review): round %d fixes — %s" % (state["round"], summary.strip())
         _must(run(["git", "add", "-A"]), "git add -A")
-        _must(run(["git", "commit", "-m", message]), "git commit")
-        _must(run(["git", "push"]), "git push")
+        _must(run(["git", "commit", "-m", commit_message(state["round"], summary, trailers)]), "git commit")
         commit = _must(run(["git", "rev-parse", "HEAD"]), "git rev-parse").out.strip()
-        state["commits"].append({"round": state["round"], "hash": commit, "summary": summary.strip()})
+        state["unpushed"] = {"round": state["round"], "hash": commit, "summary": summary.strip(),
+                             "fixed": list(fixed), "not_fixed": list(not_fixed)}
     for fid in fixed:
         shippr.set_outcome(state, reg, fid, True, commit=commit)
     for fid, reason in not_fixed.items():
         shippr.set_outcome(state, reg, fid, False, reason=reason)
+    if commit is not None:
+        checkpoint()
+        _must(run(["git", "push"]), "git push")
+        state["commits"].append({"round": state["round"], "hash": commit, "summary": summary.strip()})
+        state["unpushed"] = None
     return {"commit": commit, "fixed": fixed, "not_fixed": list(not_fixed)}
 
 
-def handle_threads(run: Run, state: Dict[str, Any]) -> Dict[str, Any]:
-    """SP-18."""
+def handle_threads(run: Run, state: Dict[str, Any],
+                   checkpoint: Callable[[], None] = _no_checkpoint) -> Dict[str, Any]:
+    """SP-18. Each posted reply, then each finished thread, is marked and
+    checkpointed before the next step: a relaunch after an interruption never
+    posts a reply twice."""
     owner, repo = state["owner_repo"].split("/", 1)
     res = _must(run(["gh", "api", "graphql", "-f", "query=" + THREADS_QUERY, "-f", "owner=" + owner,
                      "-f", "repo=" + repo, "-F", "number=%d" % state["pr"]]), "gh api graphql")
@@ -231,7 +271,10 @@ def handle_threads(run: Run, state: Dict[str, Any]) -> Dict[str, Any]:
             continue
         replies = "repos/%s/pulls/%d/comments/%d/replies" % (state["owner_repo"], state["pr"], c["comment_id"])
         if c["outcome"] == "FIXED":
-            _must(run(["gh", "api", replies, "-f", "body=Fixed in %s." % c["commit"]]), "thread reply")
+            if not c.get("replied"):
+                _must(run(["gh", "api", replies, "-f", "body=Fixed in %s." % c["commit"]]), "thread reply")
+                c["replied"] = True
+                checkpoint()
             thread = thread_of.get(c["comment_id"])
             if thread is None:
                 raise Stop("thread not found for comment %s" % c["comment_id"])
@@ -242,6 +285,7 @@ def handle_threads(run: Run, state: Dict[str, Any]) -> Dict[str, Any]:
             _must(run(["gh", "api", replies, "-f", "body=" + c["reason"]]), "thread reply")
             left_open.append(c["id"])
         c["thread_done"] = True
+        checkpoint()
     return {"resolved": resolved, "left_open": left_open}
 
 

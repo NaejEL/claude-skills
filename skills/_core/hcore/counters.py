@@ -4,7 +4,9 @@
 # - SP-01: ship-pr --rounds N, hard cap min(N, 3), default 3; N <= 0 or not an
 #   integer -> explicit error (D8).
 # - SP-02: ship-pr --themes "a;b;c", separator ';', at most 4, 3 by default;
-#   empty list or more than 4 entries -> explicit error (D8).
+#   empty list, more than 4 entries or a theme given twice -> explicit error
+#   naming the culprit (D8: an invalid bound is an explicit error, never a
+#   silent correction).
 
 from __future__ import annotations
 
@@ -46,8 +48,10 @@ def parse_themes(value: Optional[str]) -> List[str]:
         raise BoundsError("--themes is empty: at least one theme is required")
     if len(themes) > MAX_THEMES:
         raise BoundsError("--themes accepts at most %d themes, got: %d" % (MAX_THEMES, len(themes)))
-    if len(set(themes)) != len(themes):
-        raise BoundsError("--themes contains a duplicate theme")
+    twice = sorted({t for t in themes if themes.count(t) > 1})
+    if twice:
+        raise BoundsError("--themes contains a duplicate theme: %s (one theme = one reviewer: "
+                          "give each theme once)" % ", ".join(repr(t) for t in twice))
     return themes
 
 

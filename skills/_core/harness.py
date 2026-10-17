@@ -13,7 +13,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 # D1: no bytecode, even when called without -B (versioned copy under .claude/harness/).
 sys.dont_write_bytecode = True
@@ -46,6 +46,18 @@ def read_output(value: Optional[str]) -> Optional[str]:
     if value == "-":
         return sys.stdin.buffer.read().decode("utf-8", "replace")
     return Path(value).read_text(encoding="utf-8", errors="replace")
+
+
+def read_file(value: str) -> str:
+    """Text written by the Write tool (never stdin, never the shell)."""
+    return Path(value).read_text(encoding="utf-8-sig", errors="replace")
+
+
+def _one_line(option: str, text: str) -> str:
+    text = text.strip()
+    if not text or "\n" in text or "\r" in text:
+        raise Usage("%s expects a single non-empty line" % option)
+    return text
 
 
 def _count_arg(name: str, value: Optional[str], warnings: List[str]) -> Optional[int]:
@@ -98,6 +110,18 @@ def _log(run: Path, args: argparse.Namespace, agent: str, measure: Dict[str, Any
         decision["journal_warnings"] = warnings
 
 
+def _existing_run(args: argparse.Namespace) -> Optional[Path]:
+    """Run of the command, if it exists: the command then holds its lock for
+    the whole read -> modify -> write cycle (concurrent calls serialized)."""
+    value = getattr(args, "run", None)
+    if not value:
+        return None
+    try:
+        return Path(value) if runs.state_path(Path(value)).exists() else None
+    except ValueError:
+        return None
+
+
 # ------------------------------------------------------------------- generic
 
 def cmd_version(args: argparse.Namespace) -> int:
@@ -116,6 +140,26 @@ def cmd_journal_validate(args: argparse.Namespace) -> int:
     name_ok = bool(journal.NAME_RE.match(Path(args.path).name))
     emit({"path": args.path, "valid": not errors, "errors": errors, "name_conforms": name_ok})
     return 0 if not errors else 1
+
+
+def cmd_journal_amend(args: argparse.Namespace) -> int:
+    """Deferred completion of the last entry of a slot (measurements known
+    after the call). A measurement defect is reported, never blocking."""
+    run = _run_path(args.run)
+    if args.duration_ms is None and args.tokens is None:
+        raise Usage("journal amend expects --duration-ms and/or --tokens")
+    warnings: List[str] = []
+    duration = _count_arg("--duration-ms", args.duration_ms, warnings)
+    tokens = _count_arg("--tokens", args.tokens, warnings)
+    records = journal.read(run)
+    amended, more = journal.amend(records, args.slot, duration, tokens)
+    if amended:
+        runs.write_atomic(run, journal.dumps(records))
+    result: Dict[str, Any] = {"slot": args.slot, "amended": amended}
+    if warnings + more:
+        result["journal_warnings"] = warnings + more
+    emit(result)
+    return 0
 
 
 def cmd_begin(args: argparse.Namespace) -> int:
@@ -162,15 +206,35 @@ def cmd_sf_apply(args: argparse.Namespace) -> int:
     return 0
 
 
+def _remove_transit(root: Path, source: Optional[str]) -> None:
+    """The transit file written by Write under <root>/.claude/runs/ is removed
+    once consumed, the command succeeded or not: nothing is left if the skill
+    stops, and a stale file is never reused by a later call."""
+    if not source or source == "-":
+        return
+    path = Path(source).resolve()
+    if (Path(root) / runs.RUNS_DIR).resolve() in path.parents and path.is_file():
+        path.unlink()
+
+
 def cmd_sf_install(args: argparse.Namespace) -> int:
-    content = read_output(args.source)
-    dest = Path(args.root) / args.dest
-    emit({args.dest: fusion.install_file(dest, content or "")})
+    try:
+        content = read_output(args.source)
+        dest = Path(args.root) / args.dest
+        emit({args.dest: fusion.install_file(dest, content or "")})
+    finally:
+        _remove_transit(Path(args.root), args.source)
     return 0
 
 
 def cmd_sf_copy_core(args: argparse.Namespace) -> int:
-    emit(dict(fusion.copy_core(HERE, Path(args.root)), core_version=CORE_VERSION))
+    result = fusion.copy_core(HERE, Path(args.root))
+    emit(dict(result, core_version=CORE_VERSION))
+    if not result["copied"]:
+        raise ghflow.Stop("core not copied: .claude/harness/ holds a different core (customized or another "
+                          "version): %s; nothing was copied, the generated factory-run would not work. "
+                          "Restore or remove .claude/harness/, then run the installation again."
+                          % ", ".join(result["blocked_by"]))
     return 0
 
 
@@ -199,6 +263,15 @@ def cmd_fr_record(args: argparse.Namespace) -> int:
 
 
 # ------------------------------------------------------------------- ship-pr
+
+def _reject_duplicate_keys(pairs: List[Tuple[str, Any]]) -> Dict[str, Any]:
+    seen: Dict[str, Any] = {}
+    for key, value in pairs:
+        if key in seen:
+            raise Usage("--not-fixed-file: finding %s given twice" % key)
+        seen[key] = value
+    return seen
+
 
 def _ship_ctx(args: argparse.Namespace):
     run = _run_path(args.run)
@@ -233,10 +306,19 @@ def cmd_sp_sync(args: argparse.Namespace) -> int:
 
 def cmd_sp_pr(args: argparse.Namespace) -> int:
     run, state, run_cmd, _ = _ship_ctx(args)
-    if (args.title is None) != (args.body_file is None):
-        raise Usage("--title and --body-file go together")
-    body = read_output(args.body_file) if args.body_file else None
-    result = ghflow.find_or_create_pr(run_cmd, state, args.title, body)
+    try:
+        title = args.title
+        if args.title_file is not None:
+            if title is not None:
+                raise Usage("--title and --title-file are exclusive")
+            title = _one_line("--title-file", read_file(args.title_file))
+        if (title is None) != (args.body_file is None):
+            raise Usage("--title (or --title-file) and --body-file go together")
+        body = read_output(args.body_file) if args.body_file else None
+    finally:
+        for source in (args.title_file, args.body_file):
+            _remove_transit(Path(state["root"]), source)
+    result = ghflow.find_or_create_pr(run_cmd, state, title, body)
     runs.save_state(run, state)
     emit(result)
     return 0
@@ -274,6 +356,18 @@ def cmd_sp_validator(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_sp_drop(args: argparse.Namespace) -> int:
+    run, state, _, reg = _ship_ctx(args)
+    try:
+        reason = read_file(args.reason_file).strip() if args.reason_file else ""
+    finally:
+        _remove_transit(Path(state["root"]), args.reason_file)
+    result = shippr.drop_duplicate(state, reg, args.finding, args.of, reason or None)
+    runs.save_state(run, state)
+    emit(result)
+    return 0
+
+
 def cmd_sp_comment(args: argparse.Namespace) -> int:
     run, state, run_cmd, _ = _ship_ctx(args)
     result = ghflow.post_comment(run_cmd, state, args.finding)
@@ -282,17 +376,57 @@ def cmd_sp_comment(args: argparse.Namespace) -> int:
     return 0
 
 
-def cmd_sp_commit(args: argparse.Namespace) -> int:
-    run, state, run_cmd, reg = _ship_ctx(args)
-    not_fixed: Dict[str, str] = {}
+def _commit_inputs(args: argparse.Namespace) -> Tuple[str, Dict[str, str], List[str]]:
+    summary = args.summary or ""
+    if args.summary_file is not None:
+        if summary.strip():
+            raise Usage("--summary and --summary-file are exclusive")
+        summary = read_file(args.summary_file)
+    if summary.strip():
+        summary = _one_line("--summary-file" if args.summary_file is not None else "--summary", summary)
+    entries: List[Tuple[str, str]] = []
     for item in args.not_fixed or []:
         fid, sep, reason = item.partition(":")
         if not sep or not reason.strip():
             raise Usage("--not-fixed expects ID:reason, got: %r" % item)
-        not_fixed[fid.strip()] = reason.strip()
-    if args.fixed and not (args.summary or "").strip():
-        raise Usage("--summary is required when a fix is committed")
-    result = ghflow.commit_round(run_cmd, state, reg, args.summary or "", args.fixed or [], not_fixed)
+        entries.append((fid.strip(), reason.strip()))
+    if args.not_fixed_file is not None:
+        try:
+            data = json.loads(read_file(args.not_fixed_file), object_pairs_hook=_reject_duplicate_keys)
+        except ValueError as exc:
+            raise Usage("--not-fixed-file is not valid JSON: %s" % exc)
+        if not isinstance(data, dict):
+            raise Usage('--not-fixed-file expects a JSON object {"<id>": "<reason>"}')
+        for fid, reason in data.items():
+            if not isinstance(reason, str) or not reason.strip() or not fid.strip():
+                raise Usage("--not-fixed-file: %r needs a non-empty reason" % (fid,))
+            entries.append((fid.strip(), reason.strip()))
+    not_fixed: Dict[str, str] = {}
+    for fid, reason in entries:
+        if fid in not_fixed:
+            raise Usage("finding %s given twice as not fixed (--not-fixed / --not-fixed-file)" % fid)
+        not_fixed[fid] = reason
+    trailers = [_one_line("--trailer", t) for t in args.trailer or []]
+    if args.fixed and not summary.strip():
+        raise Usage("--summary or --summary-file is required when a fix is committed")
+    return summary, not_fixed, trailers
+
+
+def cmd_sp_commit(args: argparse.Namespace) -> int:
+    run, state, run_cmd, reg = _ship_ctx(args)
+    try:
+        pending = state.get("unpushed")
+        if pending and pending["round"] == state["round"]:
+            # Relaunch after a failed push: the recorded commit is pushed, the
+            # inputs (whose transit files are already consumed) are not needed.
+            summary, not_fixed, trailers = "", {}, []
+        else:
+            summary, not_fixed, trailers = _commit_inputs(args)
+    finally:
+        for source in (args.summary_file, args.not_fixed_file):
+            _remove_transit(Path(state["root"]), source)
+    result = ghflow.commit_round(run_cmd, state, reg, summary, args.fixed or [], not_fixed, trailers,
+                                 checkpoint=lambda: runs.save_state(run, state))
     runs.save_state(run, state)
     emit(result)
     return 0
@@ -300,7 +434,7 @@ def cmd_sp_commit(args: argparse.Namespace) -> int:
 
 def cmd_sp_threads(args: argparse.Namespace) -> int:
     run, state, run_cmd, _ = _ship_ctx(args)
-    result = ghflow.handle_threads(run_cmd, state)
+    result = ghflow.handle_threads(run_cmd, state, checkpoint=lambda: runs.save_state(run, state))
     runs.save_state(run, state)
     emit(result)
     return 0
@@ -347,6 +481,12 @@ def build_parser() -> argparse.ArgumentParser:
     q = jsub.add_parser("validate", help="validates the schema of a journal")
     q.add_argument("path")
     q.set_defaults(func=cmd_journal_validate)
+    q = jsub.add_parser("amend", help="completes the last entry of a slot (measurements known after the call)")
+    q.add_argument("--run", required=True)
+    q.add_argument("--slot", required=True, help="agent, reviewer:<theme> or validator:<id>")
+    q.add_argument("--duration-ms", default=None, help="fills a null duration_ms")
+    q.add_argument("--tokens", default=None, help="fills null tokens")
+    q.set_defaults(func=cmd_journal_amend)
     p = sub.add_parser("begin", help="timestamp before an agent call")
     p.add_argument("--run", required=True)
     p.add_argument("--slot", required=True, help="agent, reviewer:<theme> or validator:<id>")
@@ -373,9 +513,10 @@ def build_parser() -> argparse.ArgumentParser:
     q = ssub.add_parser("install", help="writes a generated file without overwriting (SF-04)")
     q.add_argument("--root", default=".")
     q.add_argument("--dest", required=True)
-    q.add_argument("--source", required=True, help="content file, '-' = stdin")
+    q.add_argument("--source", required=True,
+                   help="content file, '-' = stdin; removed once read when it lies under .claude/runs/")
     q.set_defaults(func=cmd_sf_install)
-    q = ssub.add_parser("copy-core", help="copies the core under .claude/harness/ (D1)")
+    q = ssub.add_parser("copy-core", help="copies the core under .claude/harness/ (D1); exit 1 if blocked")
     q.add_argument("--root", default=".")
     q.set_defaults(func=cmd_sf_copy_core)
 
@@ -397,7 +538,9 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--root", default=".")
     q.add_argument("--target", required=True)
     q.add_argument("--rounds", default=None)
-    q.add_argument("--themes", default=None)
+    q.add_argument("--themes", default=None,
+                   help="1 to 4 themes separated by ';' (default: 3 themes); empty list, more than 4 "
+                        "or a theme given twice = explicit error (D8)")
     q.set_defaults(func=cmd_sp_start)
     for name, func in (("sync", cmd_sp_sync), ("pr-state", cmd_sp_pr_state), ("diff", cmd_sp_diff),
                        ("threads", cmd_sp_threads), ("end-round", cmd_sp_end_round)):
@@ -407,6 +550,7 @@ def build_parser() -> argparse.ArgumentParser:
     q = psub.add_parser("pr")
     q.add_argument("--run", required=True)
     q.add_argument("--title", default=None)
+    q.add_argument("--title-file", default=None, help="file holding the title (one line), written by Write")
     q.add_argument("--body-file", default=None, help="body file, '-' = stdin")
     q.set_defaults(func=cmd_sp_pr)
     q = psub.add_parser("reviewer")
@@ -417,6 +561,12 @@ def build_parser() -> argparse.ArgumentParser:
     _agent_args(q)
     q.add_argument("--finding", required=True)
     q.set_defaults(func=cmd_sp_validator)
+    q = psub.add_parser("drop", help="sets aside a PENDING finding as a duplicate of another (SP-07)")
+    q.add_argument("--run", required=True)
+    q.add_argument("--finding", required=True, help="PENDING finding of the current round")
+    q.add_argument("--of", required=True, help="existing finding it duplicates")
+    q.add_argument("--reason-file", default=None, help="file holding the reason, written by Write")
+    q.set_defaults(func=cmd_sp_drop)
     q = psub.add_parser("comment")
     q.add_argument("--run", required=True)
     q.add_argument("--finding", required=True)
@@ -424,8 +574,13 @@ def build_parser() -> argparse.ArgumentParser:
     q = psub.add_parser("commit")
     q.add_argument("--run", required=True)
     q.add_argument("--summary", default="")
+    q.add_argument("--summary-file", default=None, help="file holding the summary, written by Write")
     q.add_argument("--fixed", nargs="*", default=[])
     q.add_argument("--not-fixed", action="append", default=[], help="ID:reason, repeatable")
+    q.add_argument("--not-fixed-file", default=None,
+                   help='JSON file {"<id>": "<reason>"}, written by Write; an id given twice is refused')
+    q.add_argument("--trailer", action="append", default=[],
+                   help="trailer line added after a blank line (attribution), repeatable")
     q.set_defaults(func=cmd_sp_commit)
     q = psub.add_parser("merge")
     q.add_argument("--run", required=True)
@@ -442,8 +597,12 @@ def main(argv: Optional[List[str]] = None) -> int:
             pass
     args = build_parser().parse_args(argv)
     try:
-        return args.func(args)
-    except ghflow.Stop as exc:
+        run = _existing_run(args)
+        if run is None:
+            return args.func(args)
+        with runs.locked(run):
+            return args.func(args)
+    except (ghflow.Stop, runs.LockTimeout) as exc:
         sys.stderr.write("STOP: %s\n" % exc)
         return 1
     except (Usage, ValueError, factory.RunOver, shippr.LoopError, fusion.FusionError,

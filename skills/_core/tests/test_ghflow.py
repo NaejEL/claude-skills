@@ -230,6 +230,101 @@ class RoundFlowTest(helpers.TempDirCase):
             self.assertNotIn(forbidden, flat)
         self.assertEqual(self.reg.current(self.st["candidates"][self.fid]["key"]), "FIXED")
 
+    def test_sp16_file_level_failure_other_than_422_stops_without_pr_comment(self):
+        """SP-16 (BACKLOG section 7): 422 inline, then a different failure on the
+        file-level fallback -> explicit stop, never the gh pr comment fallback."""
+        class Seq(helpers.FakeRunner):
+            def __call__(inner, args, input=None):
+                if args[:2] == ["gh", "api"]:
+                    inner.calls.append(list(args))
+                    if "subject_type=file" in args:
+                        return helpers.Result(1, "", "HTTP 502: Bad Gateway")
+                    return helpers.Result(1, "", "gh: Validation Failed (HTTP 422)")
+                return helpers.FakeRunner.__call__(inner, args, input)
+        run = pr_view_state(Seq())
+        with self.assertRaises(Stop) as ctx:
+            ghflow.post_comment(run, self.st, self.fid)
+        self.assertIn("502", str(ctx.exception))
+        self.assertEqual(len(run.called("gh", "api")), 2)
+        self.assertFalse(run.called("gh", "pr", "comment"))
+        self.assertIsNone(self.st["candidates"][self.fid]["comment_id"])
+
+    def test_sp17_trailers_added_after_a_blank_line(self):
+        """SP-17 (BACKLOG section 7, attribution): each --trailer after a blank line."""
+        run = helpers.FakeRunner().on(("git", "rev-parse", "HEAD"), out="c0ffee\n")
+        trailer = "Co-Authored-By: Claude <noreply@anthropic.com>"
+        ghflow.commit_round(run, self.st, self.reg, "bound fixed", [self.fid], {}, [trailer, "Refs: #7"])
+        self.assertEqual(run.called("git", "commit"), [["git", "commit", "-m",
+                         "fix(review): round 1 fixes — bound fixed\n\n%s\nRefs: #7" % trailer]])
+
+    def test_sp17_failed_push_keeps_hash_and_relaunch_does_not_recommit(self):
+        """SP-17 (BACKLOG section 7): the push fails after the commit -> the hash
+        is recorded and saved; the relaunch only pushes, it never commits again."""
+        saved = []
+        run = helpers.FakeRunner().on(("git", "rev-parse", "HEAD"), out="c0ffee\n").on(
+            ("git", "push"), code=1, err="network down")
+        with self.assertRaises(Stop):
+            ghflow.commit_round(run, self.st, self.reg, "bound", [self.fid], {},
+                                checkpoint=lambda: saved.append(json.dumps(self.st)))
+        self.assertTrue(saved)
+        on_disk = json.loads(saved[-1])
+        self.assertEqual(on_disk["unpushed"]["hash"], "c0ffee")
+        self.assertEqual(on_disk["candidates"][self.fid]["outcome"], "FIXED")
+        self.st = on_disk
+        run = helpers.FakeRunner().on(("git", "rev-parse", "HEAD"), out="c0ffee\n")
+        result = ghflow.commit_round(run, self.st, self.reg, "bound", [self.fid], {})
+        self.assertEqual((result["commit"], result["resumed"]), ("c0ffee", True))
+        self.assertEqual(run.called("git", "commit"), [])
+        self.assertEqual(run.called("git", "push"), [["git", "push"]])
+        self.assertEqual(self.st["commits"], [{"round": 1, "hash": "c0ffee", "summary": "bound"}])
+        self.assertIsNone(self.st["unpushed"])
+
+    def test_sp17_cli_failed_push_saved_then_resumed(self):
+        """SP-17 through the CLI: exit 1 on the push, state saved, the relaunch
+        pushes the same commit without a second one."""
+        repo, bare = self.tmp / "repo", self.tmp / "origin.git"
+        helpers.git(self.tmp, "init", "-q", "--bare", "-b", "main", str(bare))
+        helpers.init_repo(repo)
+        (repo / "a.txt").write_text("base\n", encoding="utf-8")
+        helpers.git(repo, "add", "-A")
+        helpers.git(repo, "commit", "-q", "-m", "base")
+        helpers.git(repo, "remote", "add", "origin", bare.as_posix())
+        helpers.git(repo, "push", "-q", "-u", "origin", "main")
+        helpers.git(repo, "checkout", "-q", "-b", "feature")
+        helpers.git(repo, "push", "-q", "-u", "origin", "feature")
+        (repo / ".git" / "info" / "exclude").write_text(".claude/runs/\n", encoding="utf-8")
+        self.st["root"] = str(repo)
+        run = runs.create(repo, "ship-pr", self.st)
+        (repo / "a.txt").write_text("fixed\n", encoding="utf-8")
+        helpers.git(repo, "remote", "set-url", "origin", (self.tmp / "missing.git").as_posix())
+        summary = helpers.write_output(repo, "summary.txt", "bound\n")
+        args = ["ship-pr", "commit", "--run", str(run), "--summary-file", summary, "--fixed", self.fid]
+        failed = helpers.harness(args, repo)
+        self.assertEqual(failed.returncode, 1, failed.stderr)
+        self.assertIn("git push", failed.stderr)
+        # The transit file is consumed; the same command resumes without it.
+        self.assertFalse((repo / summary).exists())
+        head = helpers.git(repo, "rev-parse", "HEAD").strip()
+        self.assertEqual(runs.load_state(run)["unpushed"]["hash"], head)
+        helpers.git(repo, "remote", "set-url", "origin", bare.as_posix())
+        resumed = helpers.harness(args, repo)
+        self.assertEqual(resumed.returncode, 0, resumed.stderr)
+        self.assertEqual(json.loads(resumed.stdout)["commit"], head)
+        self.assertEqual(helpers.git(repo, "rev-parse", "HEAD").strip(), head)
+        self.assertEqual(helpers.git(repo, "rev-list", "--count", "main..HEAD").strip(), "1")
+        self.assertEqual(helpers.git(repo, "rev-parse", "origin/feature").strip(), head)
+
+    def test_sp09_not_fixed_given_twice_refused_by_the_cli(self):
+        """SP-09 (BACKLOG section 7): --not-fixed A:r1 --not-fixed A:r2 no longer
+        overwrite each other in a dict: refused (exit 2) before any git call."""
+        self.st["root"] = str(self.tmp)
+        run = runs.create(self.tmp, "ship-pr", self.st)
+        res = helpers.harness(["ship-pr", "commit", "--run", str(run), "--not-fixed", "%s:r1" % self.fid,
+                               "--not-fixed", "%s:r2" % self.fid], self.tmp)
+        self.assertEqual(res.returncode, 2, res.stderr)
+        self.assertIn("given twice", res.stderr)
+        self.assertIsNone(runs.load_state(run)["candidates"][self.fid]["outcome"])
+
     def test_sp17_duplicate_id_refused_before_any_git_call(self):
         """SP-17, SP-09: an id recorded twice is refused before commit and push."""
         for fixed, not_fixed in (([self.fid, self.fid], {}), ([self.fid], {self.fid: "false positive"})):
@@ -254,6 +349,42 @@ class RoundFlowTest(helpers.TempDirCase):
         self.assertIn(["gh", "api", "repos/acme/toy/pulls/7/comments/99/replies", "-f", "body=Fixed in c0ffee."], run.calls)
         self.assertIn("t=T1", run.calls[-1])
         self.assertEqual(ghflow.handle_threads(run, self.st), {"resolved": [], "left_open": []})
+
+    def test_sp18_interrupted_threads_never_repost_a_reply(self):
+        """SP-18 (BACKLOG section 7): each thread is marked and saved before the
+        next one; a relaunch after a failure posts no reply twice."""
+        out = helpers.reviewer_block([helpers.finding(file="src/y.py", line=8, title="Second bug"),
+                                      helpers.finding(file="src/z.py", line=9, title="Third bug")])
+        self.st["themes"].append("b")
+        others = [f["id"] for f in shippr.record_reviewer(self.st, self.reg, "b", out, False)[0]["to_validate"]]
+        for i, fid in enumerate([self.fid] + others):
+            if fid != self.fid:
+                shippr.record_validator(self.st, self.reg, fid, helpers.validator_block("CONFIRMED"), False)
+            self.st["candidates"][fid]["comment_id"] = 99 + i
+        ghflow.commit_round(helpers.FakeRunner().on(("git", "rev-parse"), out="c0ffee\n"),
+                            self.st, self.reg, "fix", [self.fid, others[0]], {others[1]: "out of scope"})
+        graph = {"data": {"repository": {"pullRequest": {"reviewThreads": {"nodes": [
+            {"id": "T%d" % n, "isResolved": False, "comments": {"nodes": [{"databaseId": n}]}}
+            for n in (99, 100, 101)]}}}}}
+        saved = []
+        checkpoint = lambda: saved.append(json.dumps(self.st))  # noqa: E731
+        # The resolution of the second thread fails after its reply was posted.
+        run = (helpers.FakeRunner().on(("gh", "api", "graphql", "-f", "query=" + ghflow.THREADS_QUERY),
+                                       out=json.dumps(graph))
+               .on(("gh", "api", "graphql", "-f", "query=" + ghflow.RESOLVE_MUTATION, "-f", "t=T100"),
+                   code=1, err="HTTP 502"))
+        with self.assertRaises(Stop):
+            ghflow.handle_threads(run, self.st, checkpoint)
+        first = [c for c in run.calls if c[2].endswith("/replies")]
+        self.assertEqual(len(first), 2)
+        self.st = json.loads(saved[-1])
+        run = helpers.FakeRunner().on(("gh", "api", "graphql", "-f", "query=" + ghflow.THREADS_QUERY),
+                                      out=json.dumps(graph))
+        result = ghflow.handle_threads(run, self.st, checkpoint)
+        self.assertEqual(result, {"resolved": [others[0]], "left_open": [others[1]]})
+        again = [c for c in run.calls if c[2].endswith("/replies")]
+        self.assertEqual([c[2] for c in again], ["repos/acme/toy/pulls/7/comments/101/replies"])
+        self.assertIn("t=T100", [a for c in run.calls for a in c])
 
     def test_sp18_not_fixed_thread_left_open(self):
         """SP-18."""

@@ -18,7 +18,7 @@ import unittest
 from pathlib import Path
 
 import helpers
-from hcore import fusion, journal
+from hcore import fusion, ghflow, journal, registry
 
 APPROVED_SPEC = "# SPEC\n\nStatut : APPROUVEE\n\nBody.\n"
 
@@ -236,6 +236,162 @@ class ShipPrReplayTest(helpers.TempDirCase):
         self.assertEqual(helpers.git(self.work, "status", "--porcelain", "--untracked-files=all"), "")
 
 
+    def test_untrusted_text_travels_by_file_drop_and_trailer(self):
+        """BACKLOG section 7: --title-file, --summary-file, --not-fixed-file carry
+        backticks and $() unchanged; --not-fixed given twice is refused; drop of
+        a semantic duplicate; --trailer after a blank line."""
+        start = check_ok(self, self.h("ship-pr", "start", "--target", "main", "--themes", "logic;regressions"))
+        run = start["run"]
+        check_ok(self, self.h("ship-pr", "sync", "--run", run))
+        title = "Sum: `date` and $(whoami) for O'Brien"
+        title_file = helpers.write_output(self.work, "pr-title.txt", title + "\n")
+        body = helpers.write_output(self.work, "pr-body.md", "Body\n")
+        self.assertEqual(self.h("ship-pr", "pr", "--run", run, "--title", "x", "--title-file", title_file,
+                                "--body-file", body).returncode, 2)
+        # Transit files are consumed even by a refused call: written again.
+        title_file = helpers.write_output(self.work, "pr-title.txt", title + "\n")
+        body = helpers.write_output(self.work, "pr-body.md", "Body\n")
+        check_ok(self, self.h("ship-pr", "pr", "--run", run, "--title-file", title_file, "--body-file", body))
+        self.assertEqual(self.gh_state()["prs"][-1]["title"], title)
+
+        def review(theme, findings):
+            out = helpers.write_output(self.work, "reviewer.md", helpers.reviewer_block(findings))
+            return check_ok(self, self.h("ship-pr", "reviewer", "--run", run, "--theme", theme, "--model", "haiku",
+                                         "--duration-ms", "9", "--output", out))["to_validate"]
+
+        a, b = [f["id"] for f in review("logic", [helpers.finding(file="src/sum.js", line=2, title="Empty crash"),
+                                                  helpers.finding(file="src/sum.js", line=1, title="Naming")])]
+        dup = review("regressions", [helpers.finding(file="src/sum.js", line=2, title="reduce on []")])[0]["id"]
+        reason = helpers.write_output(self.work, "drop.txt", "same crash as `%s`\n" % a)
+        self.assertEqual(self.h("ship-pr", "drop", "--run", run, "--finding", dup, "--of", "R7-F7").returncode, 2)
+        dropped = check_ok(self, self.h("ship-pr", "drop", "--run", run, "--finding", dup, "--of", a,
+                                        "--reason-file", reason))
+        self.assertEqual((dropped["action"], dropped["reason"]), ("dropped", "same crash as `%s`" % a))
+        for fid in (a, b):
+            out = helpers.write_output(self.work, "validator.md", helpers.validator_block("CONFIRMED"))
+            check_ok(self, self.h("ship-pr", "validator", "--run", run, "--finding", fid, "--model", "haiku",
+                                  "--duration-ms", "3", "--output", out))
+        (self.work / "src" / "sum.js").write_text(
+            "function sum(v) {\n    return v.reduce((a, b) => a + b, 0);\n}\n", encoding="utf-8")
+        head = helpers.git(self.work, "rev-parse", "HEAD").strip()
+        twice = self.h("ship-pr", "commit", "--run", run, "--summary", "s", "--fixed", a,
+                       "--not-fixed", "%s:r1" % b, "--not-fixed", "%s:r2" % b)
+        self.assertEqual(twice.returncode, 2)
+        self.assertIn("twice", twice.stderr)
+        nf_file = helpers.write_output(self.work, "not-fixed.json", json.dumps({b: helpers.TRAP}))
+        twice = self.h("ship-pr", "commit", "--run", run, "--summary", "s", "--fixed", a,
+                       "--not-fixed", "%s:r1" % b, "--not-fixed-file", nf_file)
+        self.assertEqual(twice.returncode, 2)
+        self.assertEqual(helpers.git(self.work, "rev-parse", "HEAD").strip(), head)
+        nf_file = helpers.write_output(self.work, "not-fixed.json", json.dumps({b: helpers.TRAP}))
+        summary = "initial value for `date` and $(whoami)"
+        summary_file = helpers.write_output(self.work, "summary.txt", summary + "\n")
+        trailer = "Co-Authored-By: Claude <noreply@anthropic.com>"
+        commit = check_ok(self, self.h("ship-pr", "commit", "--run", run, "--summary-file", summary_file,
+                                       "--fixed", a, "--not-fixed-file", nf_file, "--trailer", trailer))
+        self.assertEqual(commit["not_fixed"], [b])
+        self.assertEqual(helpers.git(self.work, "log", "-1", "--format=%B").strip(),
+                         "fix(review): round 1 fixes — %s\n\n%s" % (summary, trailer))
+        end = check_ok(self, self.h("ship-pr", "end-round", "--run", run))
+        self.assertEqual(end["counts"]["duplicates"], 1)
+        reg_path = (self.work / run).with_name(Path(run).name[: -len(".jsonl")] + ".registry.jsonl")
+        reg = [json.loads(x) for x in reg_path.read_text(encoding="utf-8").splitlines()]
+        self.assertEqual([x["reason"] for x in reg if x["verdict"] == "NOT_FIXED"], [helpers.TRAP.strip()])
+        self.assertEqual([x["of"] for x in reg if x["verdict"] == "DUPLICATE"], [a])
+
+
+    def _one_confirmed(self):
+        """Run with an open PR and one CONFIRMED finding, fix applied, not committed."""
+        run = check_ok(self, self.h("ship-pr", "start", "--target", "main", "--themes", "logic"))["run"]
+        check_ok(self, self.h("ship-pr", "sync", "--run", run))
+        body = helpers.write_output(self.work, "pr-body.md", "Body\n")
+        check_ok(self, self.h("ship-pr", "pr", "--run", run, "--title", "Sum", "--body-file", body))
+        out = helpers.write_output(self.work, "reviewer.md", helpers.reviewer_block(
+            [helpers.finding(file="src/sum.js", line=2, title="Empty crash")]))
+        fid = check_ok(self, self.h("ship-pr", "reviewer", "--run", run, "--theme", "logic", "--model", "haiku",
+                                    "--duration-ms", "9", "--output", out))["to_validate"][0]["id"]
+        out = helpers.write_output(self.work, "validator.md", helpers.validator_block("CONFIRMED"))
+        check_ok(self, self.h("ship-pr", "validator", "--run", run, "--finding", fid, "--model", "haiku",
+                              "--duration-ms", "3", "--output", out))
+        (self.work / "src" / "sum.js").write_text(
+            "function sum(v) {\n    return v.reduce((a, b) => a + b, 0);\n}\n", encoding="utf-8")
+        return run, fid
+
+    def test_not_fixed_file_duplicate_key_refused(self):
+        """BACKLOG section 7, iteration 2: a key given twice in --not-fixed-file
+        (json.loads would keep the last one silently) is refused, exit 2."""
+        run, fid = self._one_confirmed()
+        nf_file = helpers.write_output(self.work, "not-fixed.json",
+                                       '{"%s": "first reason", "%s": "second reason"}' % (fid, fid))
+        res = self.h("ship-pr", "commit", "--run", run, "--not-fixed-file", nf_file)
+        self.assertEqual(res.returncode, 2, res.stderr)
+        self.assertIn("given twice", res.stderr)
+        self.assertIsNone(json.loads(Path(self.work / run).with_name(
+            Path(run).name[: -len(".jsonl")] + ".state.json").read_text(encoding="utf-8"))["candidates"][fid]["outcome"])
+
+    def test_multiline_summary_refused_before_any_commit(self):
+        """BACKLOG section 7, iteration 2: a multi-line summary would glue a body to
+        the subject without a blank line, on a commit that cannot be amended."""
+        run, fid = self._one_confirmed()
+        head = helpers.git(self.work, "rev-parse", "HEAD").strip()
+        summary_file = helpers.write_output(self.work, "summary.txt", "first line\nsecond line\n")
+        res = self.h("ship-pr", "commit", "--run", run, "--summary-file", summary_file, "--fixed", fid)
+        self.assertEqual(res.returncode, 2, res.stderr)
+        self.assertIn("single", res.stderr)
+        self.assertEqual(helpers.git(self.work, "rev-parse", "HEAD").strip(), head)
+        fake = helpers.FakeRunner()
+        with self.assertRaises(ghflow.Stop):
+            ghflow.commit_round(fake, {"candidates": {}, "round": 1}, registry.Registry(self.tmp / "x.jsonl"),
+                                "a\nb", [], {})
+        self.assertEqual(fake.calls, [])
+
+    def test_transit_files_removed_once_consumed(self):
+        """BACKLOG section 7, iteration 2: every transit file read by ship-pr under
+        .claude/runs/ (title, body, drop reason, summary, not fixed) is removed
+        once consumed, the call succeeded or not; a file elsewhere is kept."""
+        runs_dir = self.work / ".claude" / "runs"
+        run = check_ok(self, self.h("ship-pr", "start", "--target", "main", "--themes", "logic;b"))["run"]
+        check_ok(self, self.h("ship-pr", "sync", "--run", run))
+        transit = ("pr-title.txt", "pr-body.md", "drop.txt", "summary.txt", "not-fixed.json")
+        names = lambda: sorted(p.name for p in runs_dir.iterdir() if p.name in transit)  # noqa: E731
+        title = helpers.write_output(self.work, "pr-title.txt", "Sum\n")
+        body = helpers.write_output(self.work, "pr-body.md", "Body\n")
+        self.assertEqual(self.h("ship-pr", "pr", "--run", run, "--title", "x", "--title-file", title,
+                                "--body-file", body).returncode, 2)
+        self.assertEqual(names(), [])
+        title = helpers.write_output(self.work, "pr-title.txt", "Sum\n")
+        body = helpers.write_output(self.work, "pr-body.md", "Body\n")
+        check_ok(self, self.h("ship-pr", "pr", "--run", run, "--title-file", title, "--body-file", body))
+        self.assertEqual(names(), [])
+        found = [helpers.finding(file="src/sum.js", line=2, title="Empty crash"),
+                 helpers.finding(file="src/sum.js", line=1, title="Naming")]
+        out = helpers.write_output(self.work, "reviewer.md", helpers.reviewer_block(found[:1]))
+        a = check_ok(self, self.h("ship-pr", "reviewer", "--run", run, "--theme", "logic", "--model", "haiku",
+                                  "--duration-ms", "9", "--output", out))["to_validate"][0]["id"]
+        out = helpers.write_output(self.work, "reviewer.md", helpers.reviewer_block(found[1:]))
+        b = check_ok(self, self.h("ship-pr", "reviewer", "--run", run, "--theme", "b", "--model", "haiku",
+                                  "--duration-ms", "9", "--output", out))["to_validate"][0]["id"]
+        reason = helpers.write_output(self.work, "drop.txt", "same subject\n")
+        check_ok(self, self.h("ship-pr", "drop", "--run", run, "--finding", b, "--of", a, "--reason-file", reason))
+        self.assertFalse((self.work / reason).exists())
+        out = helpers.write_output(self.work, "validator.md", helpers.validator_block("CONFIRMED"))
+        check_ok(self, self.h("ship-pr", "validator", "--run", run, "--finding", a, "--model", "haiku",
+                              "--duration-ms", "3", "--output", out))
+        (self.work / "src" / "sum.js").write_text(
+            "function sum(v) {\n    return v.reduce((a, b) => a + b, 0);\n}\n", encoding="utf-8")
+        summary = helpers.write_output(self.work, "summary.txt", "initial value\n")
+        nf_file = helpers.write_output(self.work, "not-fixed.json", "{}")
+        check_ok(self, self.h("ship-pr", "commit", "--run", run, "--summary-file", summary, "--fixed", a,
+                              "--not-fixed-file", nf_file))
+        self.assertEqual(names(), [])
+        outside = self.work / "summary-outside.txt"
+        outside.write_text("kept\n", encoding="utf-8")
+        self.assertEqual(self.h("ship-pr", "drop", "--run", run, "--finding", a, "--of", b,
+                                "--reason-file", "summary-outside.txt").returncode, 2)
+        self.assertTrue(outside.exists())
+        outside.unlink()
+
+
 SKILLS_DIR = helpers.CORE.parent
 SKILL_FILES = [SKILLS_DIR / "software-factory" / "SKILL.md", SKILLS_DIR / "ship-pr" / "SKILL.md"]
 STDIN_OPTION = re.compile(r"--(?:output|source|body-file|content)\s+-(?![\w-])")
@@ -251,6 +407,25 @@ class UntrustedContentTest(helpers.TempDirCase):
             self.assertEqual(STDIN_OPTION.findall(text), [], path)
             self.assertIn("Write", text, path)
             self.assertIn(".claude/runs/", text, path)
+
+    @unittest.skipUnless(all(p.is_file() for p in SKILL_FILES), "SKILL.md files absent (core copied into a project)")
+    def test_skills_prescribe_files_for_untrusted_text_and_new_commands(self):
+        """BACKLOG section 7: ship-pr prescribes --summary-file, --not-fixed-file,
+        --title-file (never the text on the command line), K drop, --trailer,
+        quoted slots and the deferred journal completion; software-factory stops
+        on a blocked copy-core and documents the deferred completion."""
+        ship = (SKILLS_DIR / "ship-pr" / "SKILL.md").read_text(encoding="utf-8")
+        for forbidden in ('--summary "', '--not-fixed "', '--title "', "--slot reviewer:", "`validator:<id>`"):
+            self.assertFalse(forbidden in ship, forbidden)
+        for required in ("--summary-file .claude/runs/", "--not-fixed-file .claude/runs/",
+                         "--title-file .claude/runs/", "K drop --run <run> --finding <id> --of <id>",
+                         '--trailer "', '--slot "reviewer:<thème>"', '--slot "validator:<id>"', "journal amend"):
+            self.assertTrue(required in ship, required)
+        sf = (SKILLS_DIR / "software-factory" / "SKILL.md").read_text(encoding="utf-8")
+        for required in ("journal amend", "exit 1", "fichier de transit"):
+            self.assertTrue(required in sf, required)
+        self.assertLessEqual(len(ship.splitlines()), 118)
+        self.assertLessEqual(len(sf.splitlines()), 96)
 
     def test_sf04_generated_file_transits_by_file_unchanged(self):
         """SF-04: an agent or script containing $ARGUMENTS, $1, $(date), backticks and

@@ -4,7 +4,8 @@
 # finding event, keys file/line/title/verdict. The last event of a key gives
 # its current status. Deterministic deduplication on file + normalized title,
 # all statuses included (a REJECTED finding does not come back to life).
-# Semantic dedup (same subject, other title) is left to the prompt's judgment.
+# Semantic dedup (same subject, other title) is left to the prompt's judgment;
+# the prompt records it with 'ship-pr drop' (status DUPLICATE, key 'of').
 # Adding is idempotent: an event identical to the last event of its key is
 # not rewritten (a relaunch after an interruption does not duplicate).
 
@@ -16,7 +17,7 @@ import unicodedata
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-STATUSES = ("CONFIRMED", "REJECTED", "UNVALIDATED", "FIXED", "NOT_FIXED")
+STATUSES = ("CONFIRMED", "REJECTED", "UNVALIDATED", "FIXED", "NOT_FIXED", "DUPLICATE")
 
 
 def normalize_title(title: str) -> str:

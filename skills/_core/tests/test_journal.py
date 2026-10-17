@@ -111,6 +111,54 @@ class RunFilesTest(helpers.TempDirCase):
         self.assertEqual([x["tokens"] for x in lines[4:]], [None, None, None])
         self.assertEqual(journal.validate_file(self.tmp / run), [])
 
+    def test_journal_amend_completes_last_entry_of_the_slot(self):
+        """BACKLOG section 7: duration and tokens known only after the call
+        complete the last entry of that slot; a logged value is never overwritten."""
+        from hcore import shippr
+        run = runs.create(self.tmp, "ship-pr", shippr.new_state("main", 3, ["logic and edge cases", "b"]))
+        out = helpers.write_output(self.tmp, "r.md", helpers.reviewer_block([helpers.finding()]))
+        fid = None
+        for theme in ("logic and edge cases", "b", "logic and edge cases"):
+            if theme == "logic and edge cases" and fid is not None:
+                args = ["ship-pr", "validator", "--run", str(run), "--finding", fid, "--model", "haiku", "--dead"]
+            else:
+                args = ["ship-pr", "reviewer", "--run", str(run), "--theme", theme, "--model", "haiku",
+                        "--output", out]
+            res = helpers.harness(args, self.tmp)
+            self.assertEqual(res.returncode, 0, res.stderr)
+            fid = fid or json.loads(res.stdout)["to_validate"][0]["id"]
+        self.assertIn("journal amend", " ".join(json.loads(res.stdout)["journal_warnings"]))
+        amend = ["journal", "amend", "--run", str(run)]
+        res = helpers.harness(amend + ["--slot", "reviewer:logic and edge cases", "--duration-ms", "900",
+                                       "--tokens", "1200"], self.tmp)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(json.loads(res.stdout)["amended"], ["duration_ms", "tokens"])
+        res = helpers.harness(amend + ["--slot", "validator:%s" % fid, "--duration-ms", "30"], self.tmp)
+        self.assertEqual(json.loads(res.stdout)["amended"], ["duration_ms"])
+        lines = journal.read(run)
+        self.assertEqual((lines[0]["duration_ms"], lines[0]["tokens"]), (900, 1200))
+        self.assertEqual((lines[1]["duration_ms"], lines[1]["tokens"]), (None, None))
+        self.assertEqual((lines[2]["duration_ms"], lines[2]["tokens"]), (30, None))
+        # Already logged: kept and reported; unknown slot: reported; never blocking.
+        res = helpers.harness(amend + ["--slot", "reviewer:logic and edge cases", "--duration-ms", "1"], self.tmp)
+        self.assertEqual(res.returncode, 0)
+        self.assertEqual(json.loads(res.stdout)["amended"], [])
+        self.assertIn("kept", json.loads(res.stdout)["journal_warnings"][0])
+        res = helpers.harness(amend + ["--slot", "reviewer:nope", "--tokens", "abc"], self.tmp)
+        self.assertEqual(res.returncode, 0)
+        self.assertEqual(len(json.loads(res.stdout)["journal_warnings"]), 2)
+        self.assertEqual(journal.read(run)[0]["duration_ms"], 900)
+        self.assertEqual(helpers.harness(amend + ["--slot", "b"], self.tmp).returncode, 2)
+        self.assertEqual(journal.validate_file(run), [])
+        # factory-run: the slot is the agent name.
+        start = json.loads(helpers.harness(["factory-run", "start"], self.tmp).stdout)
+        helpers.harness(["factory-run", "record", "--run", start["run"], "--agent", "factory-planner",
+                         "--model", "inherit"], self.tmp)
+        res = helpers.harness(["journal", "amend", "--run", start["run"], "--slot", "factory-planner",
+                               "--duration-ms", "77", "--tokens", "5"], self.tmp)
+        self.assertEqual(json.loads(res.stdout)["amended"], ["duration_ms", "tokens"])
+        self.assertEqual(journal.read(self.tmp / start["run"])[0]["duration_ms"], 77)
+
     def test_duration_from_core_timestamps(self):
         state = {}
         runs.mark_begin(state, "x", clock=lambda: 10.0)

@@ -7,7 +7,8 @@
 #   no early exit on its silence.
 # - SP-06: validator dead (twice) -> finding UNVALIDATED, neither posted nor fixed.
 # - SP-07: deduplication against the registry and the pending candidates,
-#   REJECTED included, before any validator.
+#   REJECTED included, before any validator; semantic duplicates (same
+#   subject, other title) dropped by the prompt with drop_duplicate.
 # - SP-08: loop exit by exhaustion (zero CONFIRMED, all themes covered) or by
 #   the round cap. A round without CONFIRMED in which a theme is not covered
 #   does not exit: next round (or cap). The diff reference of the next round
@@ -141,6 +142,35 @@ def record_validator(state: Dict[str, Any], reg: registry_mod.Registry, fid: str
     return {"action": "drop", "finding": fid, "reason": parsed["reason"]}, log
 
 
+def drop_duplicate(state: Dict[str, Any], reg: registry_mod.Registry, fid: str, of: str,
+                   reason: Optional[str] = None) -> Dict[str, Any]:
+    """SP-07, semantic dedup decided by the prompt: a PENDING candidate of the
+    current round, same subject as `of` under another title, is set aside as a
+    duplicate (state and registry), counted in the round's duplicates, and no
+    longer awaits a validator."""
+    rd = _round(state)
+    cand = state["candidates"].get(fid)
+    if cand is None or cand["round"] != state["round"]:
+        raise LoopError("unknown finding for this round: %r" % (fid,))
+    if cand["status"] != "PENDING":
+        raise LoopError("finding %s already decided: %s" % (fid, cand["status"]))
+    if of == fid:
+        raise LoopError("a finding cannot be a duplicate of itself: %s" % fid)
+    if of not in state["candidates"]:
+        raise LoopError("--of %r: unknown finding, duplicate refused" % (of,))
+    if state["candidates"][of]["status"] == "DUPLICATE":
+        # The target must stay a finding that will be (or was) validated: a
+        # chain or a cycle of duplicates would make the real finding vanish.
+        raise LoopError("--of %s is itself a duplicate (of %s): point to the finding it duplicates"
+                        % (of, state["candidates"][of].get("duplicate_of")))
+    cand["status"] = "DUPLICATE"
+    cand["duplicate_of"] = of
+    cand["reason"] = reason or "duplicate of %s" % of
+    rd["duplicates"] += 1
+    reg.add(cand, "DUPLICATE", round=state["round"], id=fid, of=of, reason=cand["reason"])
+    return {"action": "dropped", "finding": fid, "of": of, "reason": cand["reason"]}
+
+
 def confirmed_of_round(state: Dict[str, Any]) -> List[Dict[str, Any]]:
     return [c for c in state["candidates"].values()
             if c["round"] == state["round"] and c["status"] == "CONFIRMED"]
@@ -184,6 +214,9 @@ def end_round(state: Dict[str, Any], head_sha: Optional[str]) -> Dict[str, Any]:
     open_ = [c["id"] for c in confirmed_of_round(state) if c["outcome"] is None]
     if open_:
         raise LoopError("CONFIRMED finding(s) with neither a fix nor a recorded reason: " + ", ".join(open_))
+    unpushed = state.get("unpushed")
+    if unpushed and unpushed["round"] == state["round"]:
+        raise LoopError("fix commit %s is not pushed: run 'commit' again" % unpushed["hash"])
     uncovered_now = [u["theme"] for u in state["uncovered"] if u["round"] == state["round"]]
     counts = round_counts(rd, state["round"])
     if rd["confirmed"] == 0 and not uncovered_now:

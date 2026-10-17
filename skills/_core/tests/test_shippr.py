@@ -134,6 +134,63 @@ class DedupTest(LoopCase):
         self.assertEqual(second["duplicates"][0]["previous"], "PENDING")
 
 
+class SemanticDuplicateTest(LoopCase):
+    def test_sp07_drop_semantic_duplicate_counted_and_not_awaited(self):
+        """SP-07 (BACKLOG section 7, review friction): a PENDING candidate, same
+        subject as another under another title, is dropped as a duplicate: state
+        and registry, counted in duplicates, end_round no longer waits for it."""
+        a = self.review("logic", [helpers.finding(title="Sum of empty list crashes")])[0]["to_validate"][0]["id"]
+        b = self.review("regressions", [helpers.finding(title="reduce() without initial value")])[0]["to_validate"][0]["id"]
+        self.review("consistency")
+        with self.assertRaises(shippr.LoopError):
+            shippr.drop_duplicate(self.state, self.reg, b, "R9-F9")
+        with self.assertRaises(shippr.LoopError):
+            shippr.drop_duplicate(self.state, self.reg, b, b)
+        result = shippr.drop_duplicate(self.state, self.reg, b, a, "same crash as %s" % a)
+        self.assertEqual((result["action"], result["of"]), ("dropped", a))
+        self.assertEqual(self.state["candidates"][b]["status"], "DUPLICATE")
+        last = self.registry_lines()[-1]
+        self.assertEqual((last["verdict"], last["id"], last["of"], last["reason"]),
+                         ("DUPLICATE", b, a, "same crash as %s" % a))
+        with self.assertRaises(shippr.LoopError):
+            shippr.drop_duplicate(self.state, self.reg, b, a)
+        with self.assertRaises(shippr.LoopError):
+            self.validate(b, "CONFIRMED")
+        self.validate(a, "REJECTED")
+        result = shippr.end_round(self.state, "s")
+        self.assertEqual(result["exit"], "exhaustion")
+        self.assertEqual((result["counts"]["duplicates"], result["counts"]["raw"]), (1, 2))
+        # The dropped key never comes back to life in a later review.
+        self.assertTrue(self.reg.known(self.state["candidates"][b]["key"]))
+
+    def test_sp07_drop_refuses_a_cycle_or_a_chain_of_duplicates(self):
+        """SP-07 (iteration 2): drop A --of B then drop B --of A would make both
+        DUPLICATE and the real finding vanish: the target must not be a duplicate."""
+        a = self.review("logic", [helpers.finding(title="Crash on empty")])[0]["to_validate"][0]["id"]
+        b = self.review("regressions", [helpers.finding(title="reduce on []")])[0]["to_validate"][0]["id"]
+        c = self.review("consistency", [helpers.finding(title="no initial value")])[0]["to_validate"][0]["id"]
+        shippr.drop_duplicate(self.state, self.reg, a, b)
+        with self.assertRaises(shippr.LoopError) as ctx:
+            shippr.drop_duplicate(self.state, self.reg, b, a)
+        self.assertIn("itself a duplicate", str(ctx.exception))
+        with self.assertRaises(shippr.LoopError):
+            shippr.drop_duplicate(self.state, self.reg, c, a)
+        self.assertEqual(self.state["candidates"][b]["status"], "PENDING")
+        self.assertEqual(self.state["candidates"][c]["status"], "PENDING")
+        shippr.drop_duplicate(self.state, self.reg, c, b)
+        with self.assertRaises(shippr.LoopError):
+            shippr.end_round(self.state, "s")   # b, the real finding, still awaits its validator
+        self.validate(b, "REJECTED")
+        self.assertEqual(shippr.end_round(self.state, "s")["counts"]["duplicates"], 2)
+
+    def test_sp07_drop_refuses_a_decided_finding(self):
+        a = self.review("logic", [helpers.finding(title="x")])[0]["to_validate"][0]["id"]
+        b = self.review("regressions", [helpers.finding(title="y")])[0]["to_validate"][0]["id"]
+        self.validate(b, "REJECTED")
+        with self.assertRaises(shippr.LoopError):
+            shippr.drop_duplicate(self.state, self.reg, b, a)
+
+
 class ExitTest(LoopCase):
     def full_round(self, confirmed):
         fids = []
@@ -175,6 +232,20 @@ class ExitTest(LoopCase):
         shippr.set_outcome(self.state, self.reg, fid, True, commit="fix1")
         shippr.end_round(self.state, "fix1")
         self.assertEqual(self.state["prev_round_sha"], "before-fix")
+
+    def test_sp17_round_does_not_end_on_an_unpushed_fix_commit(self):
+        """SP-17 (BACKLOG section 7): a fix commit whose push failed blocks end-round."""
+        fid = self.review("logic", [helpers.finding()])[0]["to_validate"][0]["id"]
+        self.review("regressions")
+        self.review("consistency")
+        self.validate(fid, "CONFIRMED")
+        shippr.set_outcome(self.state, self.reg, fid, True, commit="fix1")
+        self.state["unpushed"] = {"round": 1, "hash": "fix1", "summary": "s", "fixed": [fid], "not_fixed": []}
+        with self.assertRaises(shippr.LoopError) as ctx:
+            shippr.end_round(self.state, "fix1")
+        self.assertIn("not pushed", str(ctx.exception))
+        self.state["unpushed"] = None
+        self.assertEqual(shippr.end_round(self.state, "fix1")["next_round"], 2)
 
 
 class OutcomeTest(LoopCase):

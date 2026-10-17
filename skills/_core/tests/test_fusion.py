@@ -327,6 +327,40 @@ class InstallFileTest(helpers.TempDirCase):
         self.assertEqual(init.read_text(encoding="utf-8"), old)
 
 
+class BacklogFixesTest(helpers.TempDirCase):
+    def test_d1_cli_blocked_copy_core_is_an_explicit_stop(self):
+        """D1 (BACKLOG section 7): a blocked copy-core exits 1 with a clear
+        message naming the files at fault, nothing copied."""
+        fusion.copy_core(helpers.CORE, self.tmp)
+        init = self.tmp / ".claude" / "harness" / "hcore" / "__init__.py"
+        init.write_text(init.read_text(encoding="utf-8").replace(CORE_VERSION, "0.9.0"), encoding="utf-8")
+        res = helpers.harness(["sf", "copy-core", "--root", "."], self.tmp)
+        self.assertEqual(res.returncode, 1, res.stdout)
+        self.assertIn("STOP: core not copied", res.stderr)
+        self.assertIn(".claude/harness/hcore/__init__.py", res.stderr)
+        self.assertFalse(json.loads(res.stdout)["copied"])
+
+    def test_sf04_transit_file_removed_once_read_even_on_failure(self):
+        """SF-04 (BACKLOG section 7): the transit file of sf install does not stay
+        in .claude/runs/, install succeeded or not; a file elsewhere is kept."""
+        src = helpers.write_output(self.tmp, "factory-planner.md", "prompt\n")
+        res = helpers.harness(["sf", "install", "--dest", ".claude/agents/factory-planner.md", "--source", src],
+                              self.tmp)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertFalse((self.tmp / src).exists())
+        (self.tmp / ".claude" / "agents" / "blocked.md").mkdir(parents=True)
+        src = helpers.write_output(self.tmp, "blocked.md", "prompt\n")
+        res = helpers.harness(["sf", "install", "--dest", ".claude/agents/blocked.md", "--source", src], self.tmp)
+        self.assertNotEqual(res.returncode, 0)
+        self.assertFalse((self.tmp / src).exists())
+        self.assertEqual(list((self.tmp / ".claude" / "runs").iterdir()), [])
+        outside = self.tmp / "keep.md"
+        outside.write_text("mine\n", encoding="utf-8")
+        res = helpers.harness(["sf", "install", "--dest", "ci/keep.md", "--source", "keep.md"], self.tmp)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertTrue(outside.exists())
+
+
 class CliTest(helpers.TempDirCase):
     def test_sf04_cli_apply_install_copy_core(self):
         """SF-01 SF-04: the CLI called by software-factory."""
