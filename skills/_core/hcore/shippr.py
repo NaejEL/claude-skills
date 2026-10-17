@@ -16,6 +16,9 @@
 #   reviewed.
 # - SP-09: a confirmed finding not fixed is recorded NOT_FIXED with its reason.
 # - SP-10: raw / confirmed / rejected / deduplicated counters per round.
+# - RG-04 (wiring): the project registry read by 'start' (state "project")
+#   sets aside a finding REJECTED or SETTLED in an earlier run, noted
+#   previous=<status>@<source>; FIXED / NOT_FIXED are passed on as history.
 # - MD-07 (wiring): reviewers and validators have a model role
 #   (AGENT_ROLES); the assignment resolved at start is kept in the state.
 
@@ -89,18 +92,29 @@ def record_reviewer(state: Dict[str, Any], reg: registry_mod.Registry, theme: st
                 "reason": "theme not covered after one relaunch (%s): merge refused" % reason}, log
     rd["themes"][theme] = "ok"
     pending = {c["key"] for c in state["candidates"].values()}
+    project = state.get("project") or {}
     to_validate, duplicates = [], []
     for f in findings:
         key = registry_mod.finding_key(f["file"], f["title"])
         if reg.known(key) or key in pending:
             duplicates.append(dict(f, key=key, previous=reg.current(key) or "PENDING"))
             continue
+        earlier = project.get(key)
+        seen = "%s@%s" % (earlier["status"], earlier["source"]) if earlier else None
+        if earlier and earlier["status"] in registry_mod.BLOCKING:
+            # RG-04: rejected or settled in an earlier run (any skill): set aside.
+            duplicates.append(dict(f, key=key, previous=seen))
+            continue
         pending.add(key)
         fid = "R%d-F%d" % (state["round"], len(state["candidates"]) + 1)
         cand = dict(f, id=fid, key=key, round=state["round"], theme=theme, status="PENDING",
                     vfail=0, comment_id=None, outcome=None, reason=None, commit=None, thread_done=False)
         state["candidates"][fid] = cand
-        to_validate.append({k: cand[k] for k in ("id", "file", "line", "side", "severity", "title", "description", "fix")})
+        item = {k: cand[k] for k in ("id", "file", "line", "side", "severity", "title", "description", "fix")}
+        if seen:
+            # RG-04: FIXED or NOT_FIXED earlier: history only (a regression comes back).
+            item["history"] = cand["history"] = seen
+        to_validate.append(item)
     rd["raw"] += len(findings)
     rd["duplicates"] += len(duplicates)
     log.update(verdict="FINDINGS" if findings else "NO_FINDING", produced=len(findings), rejected=len(duplicates))

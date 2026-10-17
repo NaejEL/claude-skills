@@ -2,7 +2,8 @@
 #
 # - factory-run Verifier: {"verdict", "tests_passed", "issues"} (FR-02).
 # - ship-pr reviewer: {"findings": [...]} (SP-03).
-# - ship-pr validator: {"verdict", "reason"} (SP-04).
+# - ship-pr validator: {"verdict", "reason"} (SP-04), parsed by the single
+#   validator parser of hcore/findings.py (FD-06).
 #
 # An output without a usable JSON block raises UnusableOutput: for the
 # orchestrator, it is a dead agent (FR-04, SP-03).
@@ -113,8 +114,7 @@ def parse_reviewer(text: Optional[str]) -> List[Dict[str, Any]]:
 
 
 def parse_validator(text: Optional[str]) -> Dict[str, str]:
-    obj = extract_terminal_json(text)
-    verdict = obj.get("verdict")
-    if verdict not in VALIDATOR_VERDICTS:
-        raise UnusableOutput("invalid validator verdict: %r" % (verdict,))
-    return {"verdict": verdict, "reason": _require_str(obj, "reason", "validator")}
+    """SP-04: ship-pr validator, through the single verdict parser (FD-06)."""
+    from . import findings   # findings imports this module
+    parsed = findings.parse_verdict(text, "ship-pr")
+    return {"verdict": parsed["verdict"], "reason": parsed["reason"]}

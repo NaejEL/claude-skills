@@ -17,6 +17,14 @@
 # - GT-07: two "gate" events are logged, the decision then the answer: id,
 #   kind, policy, decision, default, answer, source in user|default|headless.
 # - GT-08: single catalog of the 27 gates; an unknown id -> exit 2.
+# - Closed options: a user answer to a gate with closed options must be one of
+#   its options. A gate asking several questions in one call ("questions",
+#   separated by " ; " in the catalog) takes exactly one valid option per
+#   question, in order, joined by " / "; a gate asking the same question for
+#   each of up to `repeat` themes takes 1 to `repeat` options of that list.
+#   Any other answer (a free "Other" text, typically) is not an error: the
+#   CLI returns action "reask" and logs nothing, the skill asks again. The
+#   gates declared "free" (free input, options of a draft) keep a free answer.
 #
 # Options are quoted as written in the French SKILL.md files (shared format,
 # kept as is); rationales are one line each.
@@ -47,6 +55,10 @@ class GateError(ValueError):
     """Unknown gate, invalid policy or out-of-sequence answer (exit 2)."""
 
 
+class OffOptions(GateError):
+    """User answer outside the closed options of a gate: ask again (never a stop)."""
+
+
 class GateStop(RuntimeError):
     """Explicit stop decided by a gate (exit 1)."""
 
@@ -60,29 +72,37 @@ class Gate(NamedTuple):
     rationale: str
     headless: str
     dialogue: bool = False
+    free: bool = False
+    questions: Tuple[Tuple[str, ...], ...] = ()
+    repeat: int = 1
 
     @property
     def skill(self) -> str:
         return self.id.split(".", 1)[0]
 
+    @property
+    def multi(self) -> bool:
+        return len(self.questions) > 1 or self.repeat > 1
+
 
 def _g(gid: str, source: str, kind: str, options: str, default: Optional[str], rationale: str,
-       headless: str, dialogue: bool = False) -> Gate:
-    return Gate(gid, source, kind, tuple(o.strip() for o in options.split(" / ")), default,
-                rationale, headless, dialogue)
+       headless: str, dialogue: bool = False, free: bool = False, repeat: int = 1) -> Gate:
+    questions = tuple(tuple(o.strip() for o in q.split(" / ")) for q in options.split(" ; "))
+    flat = tuple(o for q in questions for o in q)
+    return Gate(gid, source, kind, flat, default, rationale, headless, dialogue, free, questions, repeat)
 
 
 CATALOG: Dict[str, Gate] = {g.id: g for g in (
     _g("software-factory.code-index", "software-factory:92", "b", "installer / refus", "refus",
        "the knowledge base adds a versioned folder: that is decided, never assumed", SKIP),
     _g("factory-run.questions", "software-factory:54", "b", "options du brouillon", None,
-       "nothing to invent in the user's place", STOP),
+       "nothing to invent in the user's place", STOP, free=True),
     _g("factory-run.approval", "software-factory:54", "c", "approbation / itérer", "approbation",
        "roadmap 4.2; effective in auto only", STOP),
     _g("factory-run.need", ".claude/skills/factory-run/SKILL.md:16", "c", "saisie libre", None,
-       "a need cannot be guessed", STOP),
+       "a need cannot be guessed", STOP, free=True),
     _g("ship-pr.target", "ship-pr:29", "c", "saisie", None,
-       "the target branch cannot be guessed", STOP),
+       "the target branch cannot be guessed", STOP, free=True),
     _g("ship-pr.dirty", "ship-pr:46", "a", "commiter maintenant / stash / abandonner", "abandonner",
        "the only option that writes nothing", DEFAULT),
     _g("ship-pr.conflict", "ship-pr:53", "b",
@@ -99,38 +119,39 @@ CATALOG: Dict[str, Gate] = {g.id: g for g in (
     _g("ai-lab.code-index", "ai-lab:225", "b", "installer / refus", "refus",
        "the knowledge base adds a versioned folder", SKIP),
     _g("lab-run.pi-questions", "ai-lab:180", "b", "Questions pour le PI", None,
-       "nothing to invent in the PI's place", STOP),
+       "nothing to invent in the PI's place", STOP, free=True),
     _g("lab-run.preregistration", "ai-lab:180", "a", "approbation / itérer", None,
        "no measurement without an approved protocol", STOP),
     _g("lab-run.consignation", "ai-lab:188", "c", "approbation", "approbation",
        "logged, marked 'to be reviewed' (ai-lab:188)", DEFAULT),
     _g("legacy-audit.framing", "legacy-audit:84", "b",
-       "2 / 3 / 4 / risque d'abord / quick wins / fondations / ordre proposé", "3 / risque d'abord",
+       "2 / 3 / 4 ; risque d'abord / quick wins / fondations / ordre proposé", "3 / risque d'abord",
        "close to 'make it reliable first' (roadmap 4.2)", STOP),
     _g("legacy-audit.assignment", "legacy-audit:85", "b",
        "Jalon 1 / Jalon 2 / Jalon dernier / Exclure de la roadmap", None,
-       "the computation belongs to Phase 4", STOP),
+       "the computation belongs to Phase 4", STOP, repeat=4),
     _g("legacy-audit.final", "legacy-audit:87", "c", "Générer roadmap + specs / Réajuster / Abandonner",
        "Générer roadmap + specs", "the deliverable the audit was run for", STOP),
     _g("ai-lab-audit.framing", "ai-lab-audit:92", "b",
-       "specs / lister / ignorer les mineures / fiabiliser / moins cher / feuille de route / ordre proposé",
-       "specs / fiabiliser", "specs when a factory is present, otherwise lister; make it reliable first", STOP),
+       "specs / lister / ignorer les mineures ; fiabiliser / moins cher / feuille de route / ordre proposé",
+       "specs / fiabiliser", "specs when a factory is present, otherwise lister; make it reliable first",
+       STOP),
     _g("ai-lab-audit.selection", "ai-lab-audit:93", "b", "Toutes / Seulement la mieux classée / Aucune",
-       "Toutes", "the cap applies afterwards", STOP),
+       "Toutes", "the cap applies afterwards", STOP, repeat=4),
     _g("ai-lab-audit.final", "ai-lab-audit:95", "c", "Écrire AUDIT-lab.md / Réajuster / Abandonner",
        "Écrire AUDIT-lab.md", "the deliverable the audit was run for", STOP),
     _g("vibecode-audit.drop-security", "vibecode-audit:20", "b", "confirmer le retrait / garder", "garder",
        "security is the priority axis", DEFAULT),
     _g("vibecode-audit.order", "vibecode-audit:115-116", "b",
-       "Gravité d'abord / Gains rapides / Tout ce qui bloque / Garder l'ordre / Les détailler / "
+       "Gravité d'abord / Gains rapides / Tout ce qui bloque / Garder l'ordre ; Les détailler / "
        "Les lister en une ligne / Les omettre", "Gravité d'abord / Les détailler",
        "marked default at :115; detailing loses nothing", DEFAULT),
     _g("vibecode-audit.final", "vibecode-audit:120", "c", "Écrire AUDIT-vibecode.md / Réajuster / Abandonner",
        "Écrire AUDIT-vibecode.md", "the deliverable the audit was run for", DEFAULT),
     _g("brainstorm.subject", "brainstorm:16", "c", "saisie libre", None,
-       "a subject cannot be guessed", STOP, dialogue=True),
+       "a subject cannot be guessed", STOP, dialogue=True, free=True),
     _g("brainstorm.round", "brainstorm:67", "b", "Creuser / Écarter / Amender / continuer / converger", None,
-       "the user steers every round", STOP, dialogue=True),
+       "the user steers every round", STOP, dialogue=True, free=True),
     _g("brainstorm.write", "brainstorm:103", "c", "Écrire la synthèse / Ne rien écrire", "Ne rien écrire",
        "nothing is written unasked", STOP, dialogue=True),
 )}
@@ -199,6 +220,26 @@ def stop_message(gate: Gate, why: str) -> str:
     return "gate %s: %s: explicit stop" % (gate.id, why)
 
 
+def check_option(gate: Gate, value: str) -> str:
+    """A user answer to a gate with closed options: one option per question,
+    in order, joined by " / " (OffOptions otherwise)."""
+    if gate.free:
+        return value
+    parts = [p.strip() for p in value.split(" / ")] if gate.multi else [value]
+    if gate.repeat > 1:
+        expected = [gate.questions[0]] * len(parts) if 1 <= len(parts) <= gate.repeat else []
+    else:
+        expected = list(gate.questions) if len(parts) == len(gate.questions) else []
+    if not expected or any(p not in options for p, options in zip(parts, expected)):
+        shape = " ; ".join(" / ".join(q) for q in gate.questions)
+        if gate.repeat > 1:
+            shape = "1 to %d of: %s" % (gate.repeat, shape)
+        elif len(gate.questions) > 1:
+            shape = "one per question, in order, joined by ' / ': " + shape
+        raise OffOptions("gate %s: answer %r is not one of the options (%s)" % (gate.id, value, shape))
+    return value
+
+
 def answer(gate_id: str, last_decision: Optional[Dict[str, Any]], source: str,
            text: Optional[str]) -> Dict[str, Any]:
     """'answer' journal event for the last decision of a gate (GT-06, GT-07).
@@ -223,6 +264,7 @@ def answer(gate_id: str, last_decision: Optional[Dict[str, Any]], source: str,
         value = (text or "").strip()
         if not value:
             raise GateError("gate %s: empty answer" % gate.id)
+        check_option(gate, value)
     event = dict(last_decision, phase="answer", answer=value, source=source)
     event.pop("warning", None)
     return event

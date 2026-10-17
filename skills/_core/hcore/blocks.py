@@ -1,5 +1,9 @@
-# Delimited blocks in a text file (D9: standalone module, not used by
-# software-factory in this increment).
+# Delimited blocks in a text file (D9: standalone module; used by the model
+# block of generated agents, X1).
+#
+# - BK-01: carries the code-index wiring block of agents and skills, between
+#   the literal markers <!-- rgkb:debut --> and <!-- rgkb:fin -->
+#   (code-index:123): RGKB, style md, reentrant (one block, replaced in place).
 #
 # Styles:
 #   md   : <!-- name:debut --> ... <!-- name:fin -->
@@ -14,6 +18,7 @@ import re
 from typing import Optional, Tuple
 
 STYLES = ("md", "hash")
+RGKB = "rgkb"
 
 
 class BlockError(ValueError):
@@ -74,3 +79,8 @@ def remove_block(text: str, name: str, style: str) -> str:
     if before.endswith("\n\n"):
         before = before[:-1]
     return before + after
+
+
+def upsert_rgkb(text: str, content: str) -> str:
+    """BK-01: inserts or replaces the <!-- rgkb:debut --> ... <!-- rgkb:fin --> block."""
+    return upsert_block(text, RGKB, content, "md")

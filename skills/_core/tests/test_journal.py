@@ -22,6 +22,7 @@ class NameTest(unittest.TestCase):
             journal.journal_name("unknown-skill", datetime.now())
 
     def test_jr01_the_ten_skill_names(self):
+        """JR-01: the ten skill names admitted in journal names."""
         names = ("software-factory", "factory-run", "ship-pr", "code-index", "ai-lab", "lab-run",
                  "ai-lab-audit", "legacy-audit", "vibecode-audit", "brainstorm")
         self.assertEqual(journal.SKILLS, names)
@@ -145,7 +146,7 @@ class RunFilesTest(helpers.TempDirCase):
         self.assertEqual(journal.validate_file(self.tmp / run), [])
 
     def test_journal_amend_completes_last_entry_of_the_slot(self):
-        """BACKLOG section 7: duration and tokens known only after the call
+        """JR-03 (BACKLOG section 7): duration and tokens known only after the call
         complete the last entry of that slot; a logged value is never overwritten."""
         from hcore import shippr
         run = runs.create(self.tmp, "ship-pr", shippr.new_state("main", 3, ["logic and edge cases", "b"]))

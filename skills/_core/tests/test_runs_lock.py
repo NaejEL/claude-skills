@@ -59,7 +59,7 @@ class ConcurrencyTest(helpers.TempDirCase):
         return results
 
     def test_parallel_reviewers_and_validators_lose_nothing(self):
-        """N parallel 'ship-pr reviewer' then 'ship-pr validator' processes on the
+        """LK-01, CA-17: N parallel 'ship-pr reviewer' then 'ship-pr validator' processes on the
         same run: no colliding id, no lost theme, no exception (several trials)."""
         for trial in range(3):
             run = runs.create(self.tmp, "ship-pr", shippr.new_state("main", 3, THEMES))
@@ -106,6 +106,7 @@ class LockTest(helpers.TempDirCase):
         return proc
 
     def test_lock_held_by_another_process_times_out(self):
+        """LK-01: beyond the timeout, an explicit stop (LockTimeout)."""
         run = runs.create(self.tmp, "ship-pr", {})
         self.hold(run, 30)
         with self.assertRaises(runs.LockTimeout):
@@ -113,7 +114,7 @@ class LockTest(helpers.TempDirCase):
                 pass
 
     def test_orphan_lock_released_when_its_holder_dies(self):
-        """A command killed while holding the lock never blocks the next one."""
+        """LK-01: a command killed while holding the lock never blocks the next one."""
         run = runs.create(self.tmp, "ship-pr", {})
         proc = self.hold(run, 60)
         proc.kill()
@@ -134,7 +135,8 @@ class LockTest(helpers.TempDirCase):
         self.assertIn("locked", err.getvalue())
 
     def test_replace_retried_on_permission_error(self):
-        """Windows: os.replace refused while the destination is open elsewhere."""
+        """LK-02: under Windows, os.replace refused while the destination is open
+        elsewhere is retried."""
         run = runs.create(self.tmp, "ship-pr", {"n": 0})
         real = os.replace
         failures = {"left": 3}

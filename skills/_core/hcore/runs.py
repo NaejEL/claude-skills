@@ -100,8 +100,17 @@ def _unlock(fd: int) -> None:
 def locked(run: Path, timeout: Optional[float] = None) -> Iterator[None]:
     """Exclusive inter-process lock of a run, held for the whole block
     (timeout: LOCK_TIMEOUT if None)."""
+    with locked_file(lock_path(run), timeout, run):
+        yield
+
+
+@contextmanager
+def locked_file(lock: Path, timeout: Optional[float] = None, what: Any = None) -> Iterator[None]:
+    """Exclusive inter-process lock held on the file `lock` (created if
+    missing), for any read -> modify -> write cycle of a shared file."""
+    run = what if what is not None else lock
     timeout = LOCK_TIMEOUT if timeout is None else timeout
-    fd = os.open(str(lock_path(run)), os.O_RDWR | os.O_CREAT, 0o644)
+    fd = os.open(str(lock), os.O_RDWR | os.O_CREAT, 0o644)
     try:
         deadline = time.monotonic() + timeout
         while True:
@@ -110,8 +119,8 @@ def locked(run: Path, timeout: Optional[float] = None) -> Iterator[None]:
                 break
             except OSError:
                 if time.monotonic() >= deadline:
-                    raise LockTimeout("run locked by another harness command for more than %gs: %s"
-                                      % (timeout, run))
+                    raise LockTimeout("%s locked by another harness command for more than %gs"
+                                      % (run, timeout))
                 time.sleep(LOCK_POLL)
         try:
             yield

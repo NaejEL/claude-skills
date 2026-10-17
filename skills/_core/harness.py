@@ -23,8 +23,8 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from hcore import CORE_VERSION  # noqa: E402
-from hcore import (blocks, counters, factory, fusion, gates, ghflow, interp, journal,  # noqa: E402
-                   models, registry, runs, shippr)
+from hcore import (blocks, counters, factory, findings, fusion, gates, ghflow, interp,  # noqa: E402
+                   journal, models, registry, runs, shippr, stack, tshirt, verdicts)
 from hcore import proc  # noqa: E402
 from hcore.proc import Runner  # noqa: E402
 
@@ -214,8 +214,9 @@ def cmd_models_write(args: argparse.Namespace) -> int:
 
 # --------------------------------------------------------------------- gates
 
-def _gate_run(args: argparse.Namespace, gate: gates.Gate) -> Path:
-    """Run of a gate: --run, or a new run of the gate's skill (JR-01)."""
+def _gate_run(args: argparse.Namespace, gate: gates.Gate) -> Optional[Path]:
+    """Existing run of a gate (--run), or None: 'decide' then opens a new run
+    of the gate's skill (JR-01), once the policy is known to be valid."""
     if args.run:
         run = _run_path(args.run)
         skill = runs.load_state(run).get("skill")
@@ -224,14 +225,18 @@ def _gate_run(args: argparse.Namespace, gate: gates.Gate) -> Path:
         return run
     if args.gcmd == "answer":
         raise Usage("gate answer expects --run (the run returned by 'gate decide')")
-    return runs.create(Path(args.root), gate.skill, {"gate_only": True})
+    return None
 
 
 def cmd_gate_decide(args: argparse.Namespace) -> int:
     gate = gates.get(args.id)
     run = _gate_run(args, gate)
-    root = Path(runs.load_state(run)["root"])
+    root = Path(runs.load_state(run)["root"]) if run is not None else Path(args.root)
+    # GT-01: an invalid .claude/harness.json is refused BEFORE any run is opened
+    # (no orphan run left behind by an exit 2).
     event = gates.decide(gate.id, gates.read_policy(root))
+    if run is None:
+        run = runs.create(root, gate.skill, {"gate_only": True})
     journal.append(run, event)
     if event["decision"] == gates.STOP:
         raise gates.GateStop(gates.stop_message(gate, "decision default without a default to apply"))
@@ -242,6 +247,7 @@ def cmd_gate_decide(args: argparse.Namespace) -> int:
 def cmd_gate_answer(args: argparse.Namespace) -> int:
     gate = gates.get(args.id)
     run = _gate_run(args, gate)
+    assert run is not None
     root = Path(runs.load_state(run)["root"])
     try:
         given = [x for x in (args.answer, args.answer_file) if x is not None]
@@ -251,12 +257,18 @@ def cmd_gate_answer(args: argparse.Namespace) -> int:
     finally:
         _remove_transit(root, args.answer_file)
     source = "headless" if args.headless else "default" if args.default else "user"
-    event = gates.answer(gate.id, gates.last_decision(journal.read(run), gate.id), source, text)
+    try:
+        event = gates.answer(gate.id, gates.last_decision(journal.read(run), gate.id), source, text)
+    except gates.OffOptions as exc:
+        # A free "Other" answer to a closed gate never kills the run: nothing is
+        # logged, the decision stays pending, the skill asks the question again.
+        emit({"id": gate.id, "action": "reask", "reason": str(exc), "options": list(gate.options)})
+        return 0
     journal.append(run, event)
     apply = gates.applied(gate.id, event)
     if apply == gates.STOP:
         raise gates.GateStop(gates.stop_message(gate, "no interaction possible (headless fallback: stop)"))
-    emit({"id": gate.id, "answer": event["answer"], "source": source, "apply": apply})
+    emit({"id": gate.id, "action": "apply", "answer": event["answer"], "source": source, "apply": apply})
     return 0
 
 
@@ -408,13 +420,17 @@ def cmd_sp_start(args: argparse.Namespace) -> int:
     assignment = {r: e["model"] for r, e in resolved["roles"].items()}
     state = shippr.new_state(args.target, rounds, themes, assignment)
     state.update(branch=info["branch"], owner_repo=info["owner_repo"])
+    # RG-04: the project registry is read once, when the run starts.
+    state["project"] = {k: {"status": e["status"], "source": e["source"]}
+                        for k, e in registry.ProjectRegistry(root).read().items()}
     if adopted is None:
         run = runs.create(root, "ship-pr", state)
     else:
         run = adopted
         runs.save_state(run, dict(state, skill="ship-pr", root=str(root), begun=previous.get("begun", {})))
     result = dict(info, run=runs.display(run), registry=runs.display(runs.registry_path(run)),
-                  rounds=rounds, themes=themes, round=1, exclude_added=excluded, models=resolved["roles"])
+                  rounds=rounds, themes=themes, round=1, exclude_added=excluded, models=resolved["roles"],
+                  project_findings=len(state["project"]))
     if resolved["warnings"]:
         result["model_warnings"] = resolved["warnings"]
     emit(result)
@@ -566,9 +582,16 @@ def cmd_sp_threads(args: argparse.Namespace) -> int:
 
 
 def cmd_sp_end_round(args: argparse.Namespace) -> int:
-    run, state, run_cmd, _ = _ship_ctx(args)
+    run, state, run_cmd, reg = _ship_ctx(args)
     head = run_cmd(["git", "rev-parse", "HEAD"])
     result = shippr.end_round(state, head.out.strip() if head.ok else None)
+    if result["exit"] is not None:
+        # RG-03: end of the review loop, the run registry is published to the
+        # project BEFORE the final state is saved: a failed publication (lock
+        # timeout, exit 1) leaves the round open, and 'end-round' run again
+        # publishes (idempotent) then exits.
+        result["project_registry"] = registry.ProjectRegistry(Path(state["root"])).publish(
+            reg.last.values(), "ship-pr", Path(run).name)
     runs.save_state(run, state)
     emit(result)
     return 0
@@ -578,6 +601,161 @@ def cmd_sp_merge(args: argparse.Namespace) -> int:
     run, state, run_cmd, _ = _ship_ctx(args)
     result = ghflow.merge(run_cmd, state, args.check)
     runs.save_state(run, state)
+    emit(result)
+    return 0
+
+
+# ------------------------------------------------------------------ findings
+
+def _findings_file(value: str) -> List[Any]:
+    try:
+        return findings.load_findings(read_file(value))
+    except ValueError as exc:
+        raise Usage("%s is not valid JSON: %s" % (value, exc))
+
+
+def _valid_findings(value: str) -> List[Dict[str, Any]]:
+    """FD-01 findings of a file; a non-conforming finding is a usage error."""
+    items = _findings_file(value)
+    for f in items:
+        errors, _ = findings.validate(f)
+        if errors:
+            raise Usage("%s: %s" % (value, "; ".join(errors)))
+    return items
+
+
+def _one_finding(value: str) -> Dict[str, Any]:
+    items = _valid_findings(value)
+    if len(items) != 1:
+        raise Usage("%s must hold exactly one finding" % value)
+    return items[0]
+
+
+def cmd_finding_validate(args: argparse.Namespace) -> int:
+    report = findings.validate_text(read_file(args.path))
+    emit(dict(report, path=args.path))
+    return 0 if report["valid"] else 1
+
+
+def cmd_finding_adapt(args: argparse.Namespace) -> int:
+    try:
+        data = json.loads(read_file(args.input))
+    except ValueError as exc:
+        raise Usage("%s is not valid JSON: %s" % (args.input, exc))
+    if isinstance(data, dict) and "id" not in data:
+        data = data.get("findings", data.get("issues", data))
+    items = data if isinstance(data, list) else [data]
+    ids = [x.strip() for x in (args.ids or "").split(",") if x.strip()]
+    if ids and len(ids) != len(items):
+        raise Usage("--ids gives %d ids for %d findings" % (len(ids), len(items)))
+    out = [findings.adapt(args.format, obj, ids[i] if ids else None, args.axis, args.source)
+           for i, obj in enumerate(items)]
+    emit({"format": args.format, "findings": out})
+    return 0
+
+
+def cmd_finding_verdict(args: argparse.Namespace) -> int:
+    try:
+        emit(dict(findings.parse_verdict(read_output(args.output), args.source), usable=True))
+    except verdicts.UnusableOutput as exc:
+        # FD-06: an unusable output is a dead agent, for the skill to relaunch.
+        emit({"usable": False, "reason": "unusable output: %s" % exc})
+    return 0
+
+
+def cmd_finding_apply(args: argparse.Namespace) -> int:
+    f = _one_finding(args.finding)
+    try:
+        parsed = findings.parse_verdict(read_output(args.verdict), args.source)
+    except verdicts.UnusableOutput as exc:
+        raise Usage("unusable verdict: %s" % exc)
+    emit({"findings": findings.apply_verdict(f, parsed)})
+    return 0
+
+
+def cmd_finding_spec(args: argparse.Namespace) -> int:
+    f = _one_finding(args.finding)
+    try:
+        sections = json.loads(read_file(args.sections))
+    except ValueError as exc:
+        raise Usage("--sections is not valid JSON: %s" % exc)
+    if not isinstance(sections, dict):
+        raise Usage("--sections expects a JSON object")
+    text = findings.to_spec(f, sections, args.prefix, args.number)
+    emit({args.dest: fusion.install_file(Path(args.root) / args.dest, text)})
+    return 0
+
+
+def cmd_finding_note(args: argparse.Namespace) -> int:
+    emit(findings.to_note(_one_finding(args.finding)))
+    return 0
+
+
+def cmd_finding_forbidden(args: argparse.Namespace) -> int:
+    found = {}
+    for path in args.paths:
+        hits = findings.check_forbidden(read_file(path))
+        if hits:
+            found[path] = hits
+    emit({"clean": not found, "hits": found})
+    if found:
+        raise ghflow.Stop("forbidden string ('Statut :' followed by APPROUVEE or PRE-ENREGISTRE) in: %s"
+                          % ", ".join(sorted(found)))
+    return 0
+
+
+# ------------------------------------------------------------------ registry
+
+def cmd_registry_publish(args: argparse.Namespace) -> int:
+    run = _run_path(args.run)
+    state = runs.load_state(run)
+    reg = registry.Registry(runs.registry_path(run))
+    emit(registry.ProjectRegistry(Path(state["root"])).publish(
+        reg.last.values(), args.source or state["skill"], Path(run).name, args.deliverable))
+    return 0
+
+
+def cmd_registry_check(args: argparse.Namespace) -> int:
+    project = registry.ProjectRegistry(Path(args.root))
+    entries = project.read()
+    dismissed, history, new = [], [], []
+    for f in _valid_findings(args.file):
+        look = project.lookup(registry.project_key(f), entries)
+        item = {"id": f["id"], "key": look["key"], "previous": look["previous"]}
+        if look["dismiss"]:
+            dismissed.append(item)
+        elif look["previous"]:
+            history.append(item)
+        else:
+            new.append(f["id"])
+    emit({"dismissed": dismissed, "history": history, "new": new})
+    return 0
+
+
+# -------------------------------------------------------------- stack, tshirt
+
+def cmd_stack_detect(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    if not root.is_dir():
+        raise ghflow.Stop("the path %s does not exist" % args.root)
+    emit(stack.survey(root))
+    return 0
+
+
+def cmd_stack_journal(args: argparse.Namespace) -> int:
+    emit(stack.journal_bounds(Path(args.file)))
+    return 0
+
+
+def cmd_tshirt(args: argparse.Namespace) -> int:
+    items = tshirt.ordered(_valid_findings(args.file), args.order)
+    result: Dict[str, Any] = {"order": [f["id"] for f in items], "quick_wins": tshirt.quick_wins(items)}
+    if args.order == "VIB":
+        result["raised_criticals"] = tshirt.raised_criticals(items)
+    if args.grouping:
+        result["specs"] = tshirt.plan_specs(items, args.grouping)
+    if args.load_by:
+        result["load"] = tshirt.load(items, args.load_by)
     emit(result)
     return 0
 
@@ -642,7 +820,67 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--answer-file", default=None, help="free answer, file written by Write (consumed)")
     q.add_argument("--headless", action="store_true", help="AskUserQuestion unavailable: headless fallback (GT-06)")
     q.add_argument("--default", action="store_true", help="applies the default (decision default)")
-    p = sub.add_parser("block", help="delimited blocks (D9, unused)")
+    p = sub.add_parser("finding", help="finding schema (FD-01 to FD-11)")
+    fdsub = p.add_subparsers(dest="fdcmd", required=True)
+    q = fdsub.add_parser("validate", help="validates a finding file (FD-03, FD-04); exit 1 if not conforming")
+    q.add_argument("path")
+    q.set_defaults(func=cmd_finding_validate)
+    q = fdsub.add_parser("adapt", help="agent output block -> FD-01 findings (FD-05)")
+    q.add_argument("--format", required=True, choices=findings.FORMATS)
+    q.add_argument("--input", required=True, help="JSON file: one finding, a list, or {findings|issues: [...]}")
+    q.add_argument("--ids", default=None, help="ids, comma-separated, when the format has none")
+    q.add_argument("--axis", default=None, help="axis (theme of a ship-pr reviewer)")
+    q.add_argument("--source", default=None, choices=journal.SKILLS)
+    q.set_defaults(func=cmd_finding_adapt)
+    q = fdsub.add_parser("verdict", help="parses a validator output (FD-06); usable false = dead agent")
+    q.add_argument("--source", required=True, choices=sorted(findings.VERDICT_FIELDS))
+    q.add_argument("--output", required=True, help="file holding the validator output, '-' = stdin")
+    q.set_defaults(func=cmd_finding_verdict)
+    q = fdsub.add_parser("apply", help="applies a validator verdict to a finding (FD-07)")
+    q.add_argument("--finding", required=True)
+    q.add_argument("--verdict", required=True, help="file holding the validator output")
+    q.add_argument("--source", required=True, choices=sorted(findings.VERDICT_FIELDS))
+    q.set_defaults(func=cmd_finding_apply)
+    q = fdsub.add_parser("spec", help="finding -> factory spec, never overwritten (FD-08, FD-11)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--finding", required=True)
+    q.add_argument("--sections", required=True, help="JSON file of the judgment sections, written by Write")
+    q.add_argument("--prefix", required=True, help="leg, lab, ...")
+    q.add_argument("--number", required=True, type=int)
+    q.add_argument("--dest", required=True, help="specs/SPEC-<prefix>-<nn>-<slug>.md")
+    q.set_defaults(func=cmd_finding_spec)
+    q = fdsub.add_parser("note", help="finding -> rgkb note (FD-09)")
+    q.add_argument("--finding", required=True)
+    q.set_defaults(func=cmd_finding_note)
+    q = fdsub.add_parser("forbidden", help="forbidden strings of rendered deliverables (FD-11); exit 1 if found")
+    q.add_argument("paths", nargs="+")
+    q.set_defaults(func=cmd_finding_forbidden)
+    p = sub.add_parser("registry", help="project registry .claude/findings.jsonl (RG-01 to RG-07)")
+    rsub = p.add_subparsers(dest="rgcmd", required=True)
+    q = rsub.add_parser("publish", help="publishes the run registry to the project (RG-03)")
+    q.add_argument("--run", required=True)
+    q.add_argument("--source", default=None, choices=journal.SKILLS, help="default: the skill of the run")
+    q.add_argument("--deliverable", action="store_true", help="the deliverable holding the CONFIRMED is written")
+    q.set_defaults(func=cmd_registry_publish)
+    q = rsub.add_parser("check", help="what a run does with new findings (RG-04)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--file", required=True, help="FD-01 findings file")
+    q.set_defaults(func=cmd_registry_check)
+    p = sub.add_parser("stack", help="stack detection and bounds (ST-01 to ST-05)")
+    stsub = p.add_subparsers(dest="stcmd", required=True)
+    q = stsub.add_parser("detect", help="markers, manifests, core stacks, artifact folders, file count")
+    q.add_argument("--root", default=".")
+    q.set_defaults(func=cmd_stack_detect)
+    q = stsub.add_parser("journal", help="sampling of a long journal (ST-05)")
+    q.add_argument("--file", required=True)
+    q.set_defaults(func=cmd_stack_journal)
+    p = sub.add_parser("tshirt", help="orderings, quick wins, spec mapping, load (TS-01 to TS-05)")
+    p.add_argument("--file", required=True, help="FD-01 findings file")
+    p.add_argument("--order", required=True, choices=tshirt.ORDERS)
+    p.add_argument("--grouping", default=None, choices=tshirt.GROUPINGS, help="finding -> spec mapping (TS-02)")
+    p.add_argument("--load-by", default=None, help="key of the load groups (milestone, ...)")
+    p.set_defaults(func=cmd_tshirt)
+    p = sub.add_parser("block", help="delimited blocks (D9, BK-01)")
     p.add_argument("action", choices=("get", "upsert", "remove"))
     p.add_argument("--file", required=True)
     p.add_argument("--name", required=True)

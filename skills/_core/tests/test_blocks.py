@@ -1,4 +1,4 @@
-# Module hcore.blocks: delimited blocks (D9, not used by software-factory).
+# Module hcore.blocks: delimited blocks (D9, BK-01).
 
 import unittest
 
@@ -27,6 +27,15 @@ class BlocksTest(unittest.TestCase):
     def test_remove_restores_text(self):
         text = "start\n"
         self.assertEqual(blocks.remove_block(blocks.upsert_block(text, "b", "x", "md"), "b", "md"), text)
+
+    def test_bk01_rgkb_wiring_block(self):
+        """BK-01: the <!-- rgkb:debut --> / <!-- rgkb:fin --> wiring block, reentrant."""
+        text = blocks.upsert_rgkb("# Agent\n\nPrompt.\n", "Use the index.")
+        self.assertIn("<!-- rgkb:debut -->\nUse the index.\n<!-- rgkb:fin -->\n", text)
+        again = blocks.upsert_rgkb(text, "Use the index first.")
+        self.assertEqual(again.count("<!-- rgkb:debut -->"), 1)
+        self.assertEqual(blocks.get_block(again, "rgkb", "md"), "Use the index first.")
+        self.assertTrue(again.startswith("# Agent\n\nPrompt.\n"))
 
     def test_malformed_refused(self):
         with self.assertRaises(BlockError):

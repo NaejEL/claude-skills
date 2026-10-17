@@ -25,6 +25,7 @@ class PolicyTest(helpers.TempDirCase):
         path.write_text(text, encoding="utf-8")
 
     def test_gt01_missing_file_or_key_means_gate(self):
+        """GT-01: missing file or key -> gate."""
         self.assertEqual(gates.read_policy(self.tmp), "gate")
         self.policy('{"other": 1}')
         self.assertEqual(gates.read_policy(self.tmp), "gate")
@@ -32,6 +33,7 @@ class PolicyTest(helpers.TempDirCase):
         self.assertEqual(gates.read_policy(self.tmp), "auto")
 
     def test_gt01_invalid_value_or_unreadable_json_is_exit_2(self):
+        """GT-01: invalid value or unreadable JSON -> exit 2."""
         for text in ('{"autonomy": "yolo"}', "{", "[1]"):
             self.policy(text)
             with self.assertRaises(GateError):
@@ -40,6 +42,7 @@ class PolicyTest(helpers.TempDirCase):
             self.assertEqual(res.returncode, 2, text)
 
     def test_gt02_decision_table(self):
+        """GT-02: gate -> ask for a, b, c; auto -> default for b and c, ask for a."""
         for kind in gates.KINDS:
             self.assertEqual(gates.decision(kind, "gate"), gates.ASK)
         self.assertEqual(gates.decision("a", "auto"), gates.ASK)
@@ -55,6 +58,7 @@ class PolicyTest(helpers.TempDirCase):
             self.assertNotIn("warning", event)
 
     def test_gt03_auto_applied_as_gate_with_warning(self):
+        """GT-03: Phase 1 guard, auto applied as gate with a warning."""
         event = gates.decide("ship-pr.conflict", "auto")
         self.assertEqual((event["decision"], event["policy"]), (gates.ASK, "gate"))
         self.assertIn("applied as 'gate'", event["warning"])
@@ -62,11 +66,13 @@ class PolicyTest(helpers.TempDirCase):
         self.assertEqual(gates.decide("ship-pr.conflict", "auto", auto_as_gate=False)["decision"], gates.DEFAULT)
 
     def test_gt04_dialogue_gate_always_asks(self):
+        """GT-04: a dialogue gate (brainstorm.*) always returns ask."""
         for gid in ("brainstorm.subject", "brainstorm.round", "brainstorm.write"):
             self.assertTrue(gates.get(gid).dialogue)
             self.assertEqual(gates.decide(gid, "auto", auto_as_gate=False)["decision"], gates.ASK, gid)
 
     def test_gt05_no_default_and_decision_default_is_stop(self):
+        """GT-05: no default and decision default -> stop."""
         event = gates.decide("factory-run.questions", "auto", auto_as_gate=False)
         self.assertEqual(event["decision"], gates.STOP)
         self.assertEqual(gates.decide("factory-run.approval", "auto", auto_as_gate=False)["decision"],
@@ -77,6 +83,7 @@ class PolicyTest(helpers.TempDirCase):
 
 class CatalogTest(unittest.TestCase):
     def test_gt08_catalog_has_the_27_gates(self):
+        """GT-08: single catalog of the 27 gates, every entry complete."""
         self.assertEqual(len(gates.CATALOG), 27)
         for gate in gates.CATALOG.values():
             self.assertIn(gate.kind, gates.KINDS, gate.id)
@@ -88,10 +95,12 @@ class CatalogTest(unittest.TestCase):
                 self.assertIsNotNone(gate.default, gate.id)
 
     def test_gt08_unknown_id_refused(self):
+        """GT-08: unknown id refused."""
         with self.assertRaises(GateError):
             gates.get("ship-pr.nope")
 
     def test_gt06_every_gate_returns_its_headless_fallback(self):
+        """GT-06: the decision returns the headless fallback of the gate."""
         expected = {"ship-pr.target": "stop", "ship-pr.dirty": "default", "ship-pr.conflict": "default",
                     "ship-pr.merge": "default", "software-factory.code-index": "skip",
                     "factory-run.questions": "stop", "factory-run.approval": "stop"}
@@ -193,6 +202,78 @@ class CliTest(helpers.TempDirCase):
         self.assertIn("decision was stop", res.stderr)
 
 
+class VerifierDefectsTest(helpers.TempDirCase):
+    """Minor defects found by the Verifier on L2 and L3."""
+
+    def h(self, *args):
+        return helpers.harness(list(args), self.tmp)
+
+    def test_gt01_invalid_policy_leaves_no_orphan_run(self):
+        """GT-01, defect 1: 'gate decide' without --run validates .claude/harness.json
+        BEFORE opening the run: an exit 2 leaves no run behind."""
+        (self.tmp / ".claude").mkdir()
+        for text in ('{"autonomy": "yolo"}', "{"):
+            (self.tmp / ".claude" / "harness.json").write_text(text, encoding="utf-8")
+            res = self.h("gate", "decide", "--id", "software-factory.code-index")
+            self.assertEqual(res.returncode, 2, text)
+            self.assertFalse((self.tmp / ".claude" / "runs").exists(), text)
+
+    def test_gt07_off_option_answer_asks_again_and_never_kills_the_run(self):
+        """GT-07, defect 2 (iteration 2): a user answer outside the closed options
+        (a free "Other" text) is not logged and returns action "reask" (exit 0):
+        the decision stays pending and the same gate is answered again; a free
+        gate keeps its free answer."""
+        run = runs.create(self.tmp, "ship-pr", shippr.new_state("main", 3, ["t"]))
+        check_ok(self, self.h("gate", "decide", "--run", str(run), "--id", "ship-pr.merge"))
+        for bad in ("Merge it now", "merger", "Merger / Laisser la PR ouverte"):
+            res = check_ok(self, self.h("gate", "answer", "--run", str(run), "--id", "ship-pr.merge",
+                                        "--answer", bad))
+            self.assertEqual(res["action"], "reask", bad)
+            self.assertIn("not one of the options", res["reason"])
+            self.assertEqual(res["options"], ["Merger", "Laisser la PR ouverte"])
+        self.assertEqual([x["phase"] for x in journal.read(run)], ["decision"])
+        a = check_ok(self, self.h("gate", "answer", "--run", str(run), "--id", "ship-pr.merge", "--answer", "Merger"))
+        self.assertEqual((a["action"], a["answer"]), ("apply", "Merger"))
+        self.assertEqual([x["phase"] for x in journal.read(run)], ["decision", "answer"])
+        free = gates.answer("factory-run.need", gates.decide("factory-run.need", "gate"), "user", "Any need at all")
+        self.assertEqual(free["answer"], "Any need at all")
+
+    def test_gt07_multi_question_gate_one_valid_option_per_question_in_order(self):
+        """GT-07, iteration 2: a gate asking several questions takes exactly one
+        valid option per question, in order; a per-theme gate takes 1 to 4 options
+        of its single list."""
+        order = gates.decide("vibecode-audit.order", "gate")
+        ok = gates.answer("vibecode-audit.order", order, "user", "Gains rapides / Les omettre")
+        self.assertEqual(ok["answer"], "Gains rapides / Les omettre")
+        for bad in ("Gains rapides / everything", "Les omettre / Gains rapides", "Gains rapides",
+                    "Gains rapides / Garder l'ordre", "Gains rapides / Les omettre / Les détailler"):
+            with self.assertRaises(gates.OffOptions, msg=bad):
+                gates.answer("vibecode-audit.order", order, "user", bad)
+        framing = gates.decide("legacy-audit.framing", "gate")
+        self.assertEqual(gates.answer("legacy-audit.framing", framing, "user", "2 / fondations")["answer"],
+                         "2 / fondations")
+        with self.assertRaises(gates.OffOptions):
+            gates.answer("legacy-audit.framing", framing, "user", "fondations / 2")
+        assign = gates.decide("legacy-audit.assignment", "gate")
+        self.assertEqual(gates.answer("legacy-audit.assignment", assign, "user",
+                                      "Jalon 1 / Jalon 1 / Exclure de la roadmap / Jalon 2")["source"], "user")
+        for bad in ("Jalon 1 / Jalon 1 / Jalon 1 / Jalon 1 / Jalon 2", "Jalon 3"):
+            with self.assertRaises(gates.OffOptions, msg=bad):
+                gates.answer("legacy-audit.assignment", assign, "user", bad)
+        self.assertEqual(gates.get("vibecode-audit.order").questions[1],
+                         ("Les détailler", "Les lister en une ligne", "Les omettre"))
+
+    def test_gt08_free_and_multi_gates_declared_and_defaults_are_options(self):
+        """GT-08: the free-answer gates are declared in the catalog; every declared
+        default is itself a valid answer of its gate."""
+        free = sorted(g.id for g in gates.CATALOG.values() if g.free)
+        self.assertEqual(free, ["brainstorm.round", "brainstorm.subject", "factory-run.need",
+                                "factory-run.questions", "lab-run.pi-questions", "ship-pr.target"])
+        for gate in gates.CATALOG.values():
+            if gate.default is not None:
+                self.assertEqual(gates.check_option(gate, gate.default), gate.default, gate.id)
+
+
 class SkillWiringTest(unittest.TestCase):
     @unittest.skipUnless((SKILLS_DIR / "ship-pr" / "SKILL.md").is_file(), "SKILL.md files absent")
     def test_gates_wired_in_ship_pr_and_software_factory(self):
@@ -200,6 +281,9 @@ class SkillWiringTest(unittest.TestCase):
         ship = (SKILLS_DIR / "ship-pr" / "SKILL.md").read_text(encoding="utf-8")
         sf = (SKILLS_DIR / "software-factory" / "SKILL.md").read_text(encoding="utf-8")
         for text in (ship, sf):
+            # Iteration 2: an off-option answer returns action reask, the skill asks again.
+            self.assertIn("`reask`", text)
+            self.assertIn("reposer", text)
             self.assertIn("gate decide", text)
             self.assertIn("gate answer", text)
             self.assertIn("--headless", text)

@@ -26,6 +26,7 @@ class RolesTest(helpers.TempDirCase):
         return path
 
     def test_md01_closed_role_set(self):
+        """MD-01: closed role set; an unknown role is an explicit error."""
         self.assertEqual(models.ROLES, (
             "factory.planner", "factory.builder", "factory.verifier", "shippr.reviewer", "shippr.validator",
             "audit.auditor", "audit.validator", "lab.director.cadrage", "lab.director.interpretation",
@@ -38,12 +39,14 @@ class RolesTest(helpers.TempDirCase):
         self.assertEqual(models.roles_of("shippr"), models.SHIPPR_ROLES)
 
     def test_md02_ca18_absent_file_means_inherit_and_no_param(self):
+        """MD-02, CA-18: missing file -> inherit everywhere, nothing written."""
         res = models.resolve_root(self.tmp, models.FACTORY_ROLES)
         self.assertEqual(res["roles"], {r: {"model": "inherit", "pass_param": False} for r in models.FACTORY_ROLES})
         self.assertFalse((self.tmp / ".claude").exists())
 
     def test_md03_x8_unknown_value_in_file_is_an_explicit_error(self):
-        """X8 replaces MD-03's 'inherit with a warning': the file is refused, exit 2."""
+        """MD-03 is replaced by X8 (decision of 2026-10-17): an unknown value in the
+        file is refused, exit 2, instead of 'inherit with a warning'."""
         self.write("models.json", {"factory.builder": "gpt-4"})
         with self.assertRaises(ModelsError):
             models.resolve_root(self.tmp, models.FACTORY_ROLES)
@@ -54,6 +57,7 @@ class RolesTest(helpers.TempDirCase):
         self.assertEqual(helpers.harness(["models", "resolve"], self.tmp).returncode, 2)
 
     def test_md04_override_for_this_cycle_never_rewrites_the_file(self):
+        """MD-04: --models for the cycle only; unknown role or value -> exit 2."""
         path = self.write("models.json", {"factory.builder": "sonnet", "lab.math": "fable"})
         before = path.read_bytes()
         res = models.resolve_root(self.tmp, models.FACTORY_ROLES, "factory.verifier=opus")
@@ -68,6 +72,7 @@ class RolesTest(helpers.TempDirCase):
         self.assertEqual(models.check_model("claude-opus-5-5"), "claude-opus-5-5")
 
     def test_md05_ca18_migration_once_and_never_destructive(self):
+        """MD-05, CA-18: lab-models.json migrated once, left byte for byte."""
         legacy = self.write("lab-models.json", {"math": "fable", "validator": "haiku"})
         before = legacy.read_bytes()
         first = check_ok(self, helpers.harness(["models", "resolve", "--roles", "lab"], self.tmp))
@@ -85,12 +90,14 @@ class RolesTest(helpers.TempDirCase):
         self.assertEqual(legacy.read_bytes(), before)
 
     def test_md05_invalid_legacy_file_writes_nothing(self):
+        """MD-05: an invalid lab-models.json migrates nothing."""
         self.write("lab-models.json", {"math": "gpt"})
         with self.assertRaises(ModelsError):
             models.migrate(self.tmp)
         self.assertFalse((self.tmp / ".claude" / "models.json").exists())
 
     def test_md06_ca18_lab_aliases(self):
+        """MD-06, CA-18: short lab aliases (math=fable) accepted with aliases='lab'."""
         self.assertEqual(models.parse_override("math=fable;validator=haiku;director.cadrage=opus",
                                                models.LAB_ROLES, aliases="lab"),
                          {"lab.math": "fable", "lab.validator": "haiku", "lab.director.cadrage": "opus"})
@@ -101,10 +108,12 @@ class RolesTest(helpers.TempDirCase):
         self.assertEqual(res["roles"]["lab.math"]["model"], "fable")
 
     def test_md07_pass_param_only_when_not_inherit(self):
+        """MD-07: inherit -> pass_param false, the Agent parameter is not passed."""
         self.assertEqual(models.entry("inherit"), {"model": "inherit", "pass_param": False})
         self.assertEqual(models.entry("haiku"), {"model": "haiku", "pass_param": True})
 
     def test_md08_presets_merge_without_overwriting(self):
+        """MD-08: presets as data; writing completes missing keys, keeps existing ones."""
         for name in ("lab-inherit", "lab-experts", "lab-interpretation", "lab-custom", "economy", "quality"):
             self.assertIn(name, models.PRESETS)
         self.assertEqual(models.PRESETS["lab-experts"]["lab.neuro"], "fable")
@@ -129,21 +138,23 @@ class RolesTest(helpers.TempDirCase):
         self.assertEqual(helpers.harness(["models", "write", "--preset", "nope"], self.tmp).returncode, 2)
 
     def test_x6_extract_option_keeps_the_need_verbatim(self):
+        """X6: --models taken out of $ARGUMENTS, the need kept verbatim."""
         rest, value = models.extract_option("Réécrire l'API \"v2\" --models \"factory.builder=opus;factory.verifier=haiku\"")
         self.assertEqual(rest, "Réécrire l'API \"v2\"")
         self.assertEqual(value, "factory.builder=opus;factory.verifier=haiku")
         self.assertEqual(models.extract_option("l'API --models=factory.builder=opus"),
                          ("l'API", "factory.builder=opus"))
         self.assertEqual(models.extract_option("  l'API sans option "), ("l'API sans option", None))
-        for bad in ("x --models", "--models a=b --models c=d"):
-            with self.assertRaises(ModelsError):
-                models.extract_option(bad)
+        with self.assertRaises(ModelsError):
+            models.extract_option("--models a=b --models c=d")
         rest, value = models.split_arguments('"my question" --models "math=fable;builder=sonnet"')
         self.assertEqual((rest, value), ("my question", "math=fable;builder=sonnet"))
 
 
 class ModelBlockTest(helpers.TempDirCase):
     def test_x1_block_written_in_frontmatter_and_regenerated(self):
+        """MD-09 is replaced by X1 (decision of 2026-10-17): model: is written in a
+        delimited, regenerable block of the frontmatter of generated agents."""
         text = models.with_model_block(AGENT, "haiku")
         self.assertIn("tools: Read, Glob, Grep, Bash\n# >>> harness.model >>>\nmodel: haiku\n"
                       "# <<< harness.model <<<\n---\n", text)
@@ -168,12 +179,18 @@ class ModelBlockTest(helpers.TempDirCase):
         # models.json changed: only the block is regenerated.
         self.assertEqual(fusion.install_agent(dest, AGENT, "haiku"), {"state": "fusionné", "model_block": "updated"})
         self.assertEqual(dest.read_text(encoding="utf-8"), models.with_model_block(AGENT, "haiku"))
-        # Customized outside the block: kept, its block still regenerated.
+        # Customized outside the block: its text kept, its block regenerated, hence
+        # a state of its own (the file was written).
         dest.write_text(dest.read_text(encoding="utf-8") + "My own rule.\n", encoding="utf-8")
         self.assertEqual(fusion.install_agent(dest, AGENT, "opus"),
-                         {"state": "personnalisé-conservé", "model_block": "updated"})
+                         {"state": "bloc-mis-à-jour", "model_block": "updated"})
         self.assertIn("My own rule.", dest.read_text(encoding="utf-8"))
         self.assertEqual(models.model_in_block(dest.read_text(encoding="utf-8")), "opus")
+        # Customized and block already up to date: nothing written, customized-kept.
+        written = dest.read_bytes()
+        self.assertEqual(fusion.install_agent(dest, AGENT, "opus"),
+                         {"state": "personnalisé-conservé", "model_block": "unchanged"})
+        self.assertEqual(dest.read_bytes(), written)
         # Generated before X1 (no block): left untouched.
         dest.write_text(AGENT, encoding="utf-8")
         self.assertEqual(fusion.install_agent(dest, AGENT, "opus"),
@@ -218,6 +235,37 @@ class WiringTest(helpers.TempDirCase):
         res = helpers.harness(["factory-run", "start", "--arguments-file", str(args)], self.tmp)
         self.assertEqual(res.returncode, 2)
         self.assertEqual(len(list((self.tmp / ".claude" / "runs").glob("*.jsonl"))), 1)
+
+
+class VerifierDefectsTest(helpers.TempDirCase):
+    """Minor defects found by the Verifier on L2 and L3."""
+
+    def test_x6_a_need_that_merely_mentions_models_stays_verbatim(self):
+        """X6, defect 3: only '--models role=model[;...]' at the head or the tail of
+        $ARGUMENTS is the option; any other mention stays in the need, word for word."""
+        for need in ("x --models", "Add a --models option to the CLI", "x --models notapair",
+                     "Document --models \"factory.builder=opus\" in the README please"):
+            self.assertEqual(models.extract_option(need), (need, None), need)
+        self.assertEqual(models.extract_option('--models "factory.builder=opus" fix the --models parser'),
+                         ("fix the --models parser", "factory.builder=opus"))
+        self.assertEqual(models.extract_option("fix --models parsing --models factory.verifier=haiku;"),
+                         ("fix --models parsing", "factory.verifier=haiku;"))
+        args = self.tmp / "args.txt"
+        args.write_text("Add a --models option to the CLI\n", encoding="utf-8")
+        start = check_ok(self, helpers.harness(["factory-run", "start", "--arguments-file", str(args)], self.tmp))
+        self.assertEqual((start["mode"], start["need"]), ("plan", "Add a --models option to the CLI"))
+
+    def test_md04_role_given_twice_is_an_explicit_error(self):
+        """MD-04, defect 4: a role given twice in --models is refused (exit 2), also
+        through an alias, instead of silently keeping the last value."""
+        with self.assertRaises(ModelsError):
+            models.parse_override("factory.builder=opus;factory.builder=haiku", models.FACTORY_ROLES)
+        with self.assertRaises(ModelsError):
+            models.parse_override("math=fable;lab.math=haiku", models.LAB_ROLES, aliases="lab")
+        res = helpers.harness(["models", "resolve", "--roles", "factory", "--models",
+                               "factory.builder=opus;factory.builder=haiku"], self.tmp)
+        self.assertEqual(res.returncode, 2)
+        self.assertIn("twice", res.stderr)
 
 
 if __name__ == "__main__":

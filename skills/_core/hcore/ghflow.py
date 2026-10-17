@@ -19,7 +19,9 @@
 #   after each step (no reply posted twice on a relaunch).
 # - SP-19: merge with a merge commit and branch deletion, refused if a theme
 #   is not covered or if the loop is not finished.
-# - D3: adds .claude/runs/ to .git/info/exclude, idempotent.
+# - D3: adds .claude/runs/ (and, RG-05, the project registry files) to
+#   .git/info/exclude, idempotent.
+# - FD-10: the comment body is the PR comment conversion of the finding schema.
 
 from __future__ import annotations
 
@@ -28,7 +30,7 @@ import re
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Sequence
 
-from . import registry as registry_mod, shippr
+from . import findings, registry as registry_mod, shippr
 from .proc import Result
 
 HTTP_422 = re.compile(r"\bHTTP 422\b")   # gh message: "... (HTTP 422)"
@@ -88,20 +90,13 @@ def worktree_and_repo(run: Run) -> Dict[str, Any]:
 
 
 def ensure_exclude(run: Run, root: Path) -> bool:
-    """D3: adds .claude/runs/ to .git/info/exclude if missing. Returns True if added."""
-    rel = _must(run(["git", "rev-parse", "--git-path", "info/exclude"]), "git rev-parse").out.strip()
-    path = Path(rel)
-    if not path.is_absolute():
-        path = Path(root) / path
-    text = path.read_text(encoding="utf-8") if path.exists() else ""
-    if any(line.strip() == EXCLUDE_LINE for line in text.splitlines()):
-        return False
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if text and not text.endswith("\n"):
-        text += "\n"
-    with open(path, "w", encoding="utf-8", newline="\n") as fh:
-        fh.write(text + EXCLUDE_LINE + "\n")
-    return True
+    """D3 and RG-05: adds .claude/runs/ and the project registry files to
+    .git/info/exclude if missing (under lock, atomically). Returns True if a
+    line was added."""
+    added = registry_mod.git_exclude(Path(root), (EXCLUDE_LINE,) + registry_mod.PROJECT_EXCLUDE, run)
+    if added is None:
+        raise Stop("git rev-parse --git-path info/exclude failed: not a git repository")
+    return bool(added)
 
 
 def sync_upstream(run: Run) -> Dict[str, Any]:
@@ -162,8 +157,8 @@ def collect_diff(run: Run, state: Dict[str, Any]) -> str:
 
 
 def comment_body(c: Dict[str, Any]) -> str:
-    return "**[%s] %s**\n\n%s\n\nSuggested fix: %s" % (
-        c["severity"], c["title"], c["description"], c["fix"])
+    """FD-10: body of the comment of a candidate, through the finding schema."""
+    return findings.to_pr_comment(findings.adapt("shippr-reviewer", c, fid=c.get("id") or "comment"))
 
 
 def post_comment(run: Run, state: Dict[str, Any], fid: str) -> Dict[str, Any]:

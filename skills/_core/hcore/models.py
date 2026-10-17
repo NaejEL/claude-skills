@@ -141,8 +141,10 @@ def parse_override(value: str, roles: Iterable[str] = ROLES, aliases: Optional[s
         if "=" not in pair:
             raise ModelsError("--models pair without '=': %r" % pair)
         role, model = (p.strip() for p in pair.split("=", 1))
-        role = table.get(role, role)
-        result[_check_role(role, roles)] = check_model(model)
+        role = _check_role(table.get(role, role), roles)
+        if role in result:
+            raise ModelsError("--models gives role %r twice" % role)
+        result[role] = check_model(model)
     if not result:
         raise ModelsError("--models is empty")
     return result
@@ -163,26 +165,43 @@ def split_arguments(arguments: str) -> Tuple[str, Optional[str]]:
     return " ".join(rest), value
 
 
-_MODELS_OPTION = re.compile(r"(?:(?<=\s)|^)--models(?:[ \t]*=[ \t]*|[ \t]+)(\"[^\"]*\"|'[^']*'|[^\s\"']+)")
+# X6: an option is "--models" followed by a value of the form role=model[;...]
+# (quoted or bare), at the head or at the tail of $ARGUMENTS. Anywhere else, or
+# with a value of another form, "--models" is part of the need, word for word.
+_SP = r"[ \t]*"
+_BARE_PAIR = r"[A-Za-z][A-Za-z0-9_.\-]*=[^\s;=\"']+"
+_QUOTED_PAIR = r"[A-Za-z][A-Za-z0-9_.\-]*" + _SP + "=" + _SP + r"[^\s;=\"']+"
+
+
+def _pairs(pair: str, sep: str) -> str:
+    return pair + "(?:" + sep + ";" + sep + pair + ")*" + sep + ";?"
+
+
+_VALUE = ("(?P<value>"
+          + '"' + _SP + _pairs(_QUOTED_PAIR, _SP) + _SP + '"'
+          + "|'" + _SP + _pairs(_QUOTED_PAIR, _SP) + _SP + "'"
+          + "|" + _pairs(_BARE_PAIR, "") + ")")
+_OPTION = r"--models(?:" + _SP + "=" + _SP + r"|[ \t]+)" + _VALUE
+_HEAD = re.compile(r"\A\s*" + _OPTION + r"(?=\s|\Z)")
+_TAIL = re.compile(r"(?:(?<=\s)|\A)" + _OPTION + r"\s*\Z")
 
 
 def extract_option(arguments: str) -> Tuple[str, Optional[str]]:
-    """X6: removes --models <value> from free text, leaving the rest verbatim
-    (a need may hold apostrophes or quotes that a shell split would refuse)."""
+    """X6: removes '--models <role=model;...>' from the head or the tail of free
+    text, leaving the rest verbatim (a need may hold apostrophes or quotes that
+    a shell split would refuse, or merely mention --models)."""
     text = arguments or ""
-    found = list(_MODELS_OPTION.finditer(text))
-    if not found:
-        if re.search(r"(?:\s|^)--models(?:\s|=|$)", text):
-            raise ModelsError("--models expects a value")
-        return text.strip(), None
-    if len(found) > 1:
+    head, tail = _HEAD.match(text), _TAIL.search(text)
+    if head and tail and tail.start() >= head.end():
         raise ModelsError("--models given twice")
-    match = found[0]
-    value = match.group(1)
+    match = head or tail
+    if match is None:
+        return text.strip(), None
+    value = match.group("value")
     if value[:1] in "\"'":
         value = value[1:-1]
     rest = (text[: match.start()] + text[match.end():]).strip()
-    return rest, value
+    return rest, value.strip()
 
 
 def migrate(root: Path) -> Dict[str, Any]:
@@ -261,6 +280,9 @@ def write_preset(root: Path, name: Optional[str], explicit: Optional[str] = None
 
 def _frontmatter(text: str) -> Optional[re.Match]:
     return _FRONTMATTER.match(text)
+
+
+frontmatter = _frontmatter
 
 
 def model_in_block(text: str) -> Optional[str]:

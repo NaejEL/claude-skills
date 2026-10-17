@@ -1,5 +1,6 @@
 # Module hcore.fusion: software-factory merges (SF-01 to SF-04, CA12),
-# git exclusion of the journal by the generated .gitignore (CA11), core copy (D1).
+# git exclusion of the journal by the generated .gitignore (CA11), core copy (D1),
+# generic engine (FU-01 to FU-06, CA-22).
 
 import json
 import os
@@ -390,6 +391,176 @@ class GitignoreExcludesRunsTest(helpers.TempDirCase):
         status = helpers.git(self.tmp, "status", "--porcelain", "--untracked-files=all")
         self.assertNotIn(".claude/runs", status)
         self.assertIn(".gitignore", status)
+
+
+RGKB_READ = ["mcp__rgkb__search", "mcp__rgkb__definition", "mcp__rgkb__symbols"]
+SETTINGS_JSONC = ('{\r\n  // project settings\r\n  "permissions": {\r\n    "allow": ["Bash(npm test)"], // kept\r\n'
+                  '  },\r\n  "enabledMcpjsonServers": [],\r\n}\r\n')
+
+
+class GenericEngineTest(helpers.TempDirCase):
+    def ops(self):
+        return [fusion.op_array_union(("permissions", "allow"), ["Read(./x)"] + ["Bash(py .claude/rgkb/rgkb.py *)"]),
+                fusion.op_array_union(("enabledMcpjsonServers",), ["rgkb"]),
+                fusion.op_add_key(("mcpServers",), "rgkb", {"command": "py", "args": ["-3", "rgkb.py"]})]
+
+    def test_fu01_array_union_add_key_tasks(self):
+        """FU-01: array union at a path, key added if absent (never overwritten),
+        tasks deduplicated by label and inputs by id."""
+        data, kept = fusion.merge_json({"a": {"list": [1]}, "k": {"x": 1}}, [
+            fusion.op_array_union(("a", "list"), [1, 2, 2, 3]),
+            fusion.op_add_key(("k",), "x", 2), fusion.op_add_key(("k",), "y", 3)])
+        self.assertEqual(data, {"a": {"list": [1, 2, 3]}, "k": {"x": 1, "y": 3}})
+        self.assertEqual(kept, ["k.x"])
+        tasks = [{"label": "Index: search", "type": "shell", "command": "a"}]
+        data, _ = fusion.merge_json({"tasks": [{"label": "Index: search", "command": "mine"}]}, [
+            fusion.op_tasks([{"id": "rgkbQuery", "type": "promptString"}], tasks)])
+        self.assertEqual(data["tasks"], [{"label": "Index: search", "command": "mine"}])
+        self.assertEqual([i["id"] for i in data["inputs"]], ["rgkbQuery"])
+        with self.assertRaises(fusion.FusionError):
+            fusion.merge_json({"a": 1}, [fusion.op_array_union(("a", "b"), [1])])
+        with self.assertRaises(fusion.FusionError):
+            fusion.merge_json({"a": {"b": 1}}, [fusion.op_array_union(("a", "b"), [1])])
+
+    def test_fu01_ca22_jsonc_kept_second_application_identical_and_kept_state(self):
+        """FU-01, CA-22: JSONC comments, BOM and CRLF kept; a second application is
+        byte for byte identical; an existing different 'rgkb' entry -> customized-kept."""
+        path = self.tmp / ".claude" / "settings.json"
+        path.parent.mkdir()
+        path.write_bytes((jsonc.BOM + SETTINGS_JSONC).encode("utf-8"))
+        plan = fusion.plan_json(path, self.ops())
+        self.assertEqual(plan.state, fusion.MERGED)
+        fusion.write_plans(self.tmp, {".claude/settings.json": plan})
+        text = path.read_bytes().decode("utf-8")
+        self.assertTrue(text.startswith(jsonc.BOM))
+        self.assertIn("// project settings", text)
+        self.assertIn("// kept", text)
+        self.assertNotIn("\n", text.replace("\r\n", ""))
+        data = jsonc.loads(text).value
+        self.assertEqual(data["enabledMcpjsonServers"], ["rgkb"])
+        self.assertEqual(data["permissions"]["allow"][0], "Bash(npm test)")
+        before = path.read_bytes()
+        self.assertEqual(fusion.plan_json(path, self.ops()), fusion.Plan(fusion.IDENTICAL, None, ()))
+        self.assertEqual(path.read_bytes(), before)
+        mcp = self.tmp / ".mcp.json"
+        mcp.write_text('{"mcpServers": {"rgkb": {"command": "python3", "args": ["mine.py"]}}}\n', encoding="utf-8")
+        kept = fusion.plan_json(mcp, [fusion.op_add_key(("mcpServers",), "rgkb", {"command": "py"})])
+        self.assertEqual((kept.state, kept.text, kept.kept), (fusion.KEPT, None, ("mcpServers.rgkb",)))
+
+    def test_fu01_all_or_nothing(self):
+        """FU-01: an unreadable file fails the plan before anything is written."""
+        (self.tmp / "good.json").write_text("{}", encoding="utf-8")
+        (self.tmp / "bad.json").write_text("{", encoding="utf-8")
+        with self.assertRaises(fusion.FusionError):
+            {rel: fusion.plan_json(self.tmp / rel, self.ops()) for rel in ("good.json", "bad.json")}
+        self.assertEqual((self.tmp / "good.json").read_text(encoding="utf-8"), "{}")
+
+    @unittest.skipUnless(helpers.HAS_FIXTURES, helpers.SKIP_FIXTURES)
+    def test_fu02_ca22_sf_on_fu01_output_unchanged_since_base1(self):
+        """FU-02, CA-22: SF-01 to SF-03 expressed on FU-01; tests/fixtures/merge-expected
+        unchanged since BASE1 (031df12) when git and that commit are available."""
+        self.assertEqual(fusion.merge_settings(None, ["node"]),
+                         {"permissions": {"deny": ["Read(./node_modules/**)", "Read(./dist/**)",
+                                                   "Read(./factory-logs/**)", "Read(./.git/objects/**)"]}})
+        self.assertEqual(list(fusion.merge_tasks(None)), ["version", "inputs", "tasks"])
+        repo = helpers.CORE.parent.parent
+        try:
+            probe = [subprocess.run(["git", "-C", str(repo)] + args, capture_output=True, text=True, timeout=60)
+                     for args in (["rev-parse", "--show-toplevel"], ["cat-file", "-e", "031df12^{commit}"])]
+        except OSError:
+            self.skipTest("git unavailable")
+        top = probe[0].stdout.strip()
+        if probe[0].returncode != 0 or os.path.normcase(os.path.realpath(top)) != \
+                os.path.normcase(os.path.realpath(str(repo))) or probe[1].returncode != 0:
+            self.skipTest("not the claude-skills git repository, or BASE1 031df12 absent")
+        res = subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", "031df12", "--",
+                              "tests/fixtures/merge-expected"], capture_output=True, text=True, timeout=60)
+        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
+
+    def test_fu03_generic_gitignore_lines(self):
+        """FU-03: any line list, CRLF kept, no duplicate."""
+        path = self.tmp / ".gitignore"
+        path.write_bytes(b"lab-logs/\r\n")
+        plan = fusion.plan_lines(path, ["lab-logs/", "experiments/results/", ".claude/runs/"])
+        self.assertEqual((plan.state, plan.text), (fusion.MERGED, "lab-logs/\r\nexperiments/results/\r\n.claude/runs/\r\n"))
+        self.assertEqual(fusion.plan_lines(self.tmp / "none", ["a/"]).state, fusion.CREATED)
+
+    def test_fu04_install_file_for_every_generator(self):
+        """FU-04: install_file creates, recognizes the identical, never overwrites."""
+        dest = self.tmp / ".claude" / "skills" / "lab-run" / "SKILL.md"
+        self.assertEqual(fusion.install_file(dest, "lab\n"), fusion.CREATED)
+        self.assertEqual(fusion.install_file(dest, "lab\r\n"), fusion.IDENTICAL)
+        self.assertEqual(fusion.install_file(dest, "other\n"), fusion.KEPT)
+        self.assertEqual(dest.read_text(encoding="utf-8"), "lab\n")
+
+    def test_fu05_tools_union_never_removes(self):
+        """FU-05: tools of a limiting frontmatter completed, none removed; inline,
+        bracket and block forms; no tools line = inherits all, unchanged."""
+        agent = "---\nname: factory-planner\ntools: Read, Glob, Grep\n---\n\nBody tools: none\n"
+        done = fusion.union_tools(agent, ["Grep"] + RGKB_READ)
+        self.assertIn("tools: Read, Glob, Grep, mcp__rgkb__search, mcp__rgkb__definition, mcp__rgkb__symbols\n", done)
+        self.assertTrue(done.endswith("Body tools: none\n"))
+        self.assertEqual(fusion.union_tools(done, RGKB_READ), done)
+        self.assertIn("tools: [Read, mcp__rgkb__search]",
+                      fusion.union_tools("---\ntools: [Read]\n---\n", RGKB_READ[:1]))
+        block = "---\r\nname: x\r\ntools:\r\n  - Read\r\n  - Grep\r\nmodel: haiku\r\n---\r\n"
+        self.assertEqual(fusion.union_tools(block, ["Grep", "mcp__rgkb__search"]),
+                         "---\r\nname: x\r\ntools:\r\n  - Read\r\n  - Grep\r\n  - mcp__rgkb__search\r\nmodel: haiku\r\n---\r\n")
+        builder = "---\nname: factory-builder\n---\nBody\n"
+        self.assertEqual(fusion.union_tools(builder, RGKB_READ), builder)
+        with self.assertRaises(fusion.FusionError):
+            fusion.union_tools("no frontmatter\n", RGKB_READ)
+
+    def test_fu06_allowed_tools_union_bash_and_powershell(self):
+        """FU-06: --allowedTools of ci/* scripts completed, none removed."""
+        sh = ('#!/usr/bin/env bash\nset -euo pipefail\ncmd=(claude -p x)\n'
+              'cmd+=(--allowedTools "Read,Glob,Bash(git *)")\n"${cmd[@]}"\n')
+        ps1 = "$claudeArgs += @('--allowedTools', 'Read,Glob,Bash(git *)')\n"
+        extra = ["Bash(git *)", "mcp__rgkb__search", "Bash(python .claude/rgkb/rgkb.py *)"]
+        done, warnings = fusion.union_allowed_tools(sh, extra)
+        self.assertEqual(warnings, [])
+        self.assertIn('--allowedTools "Read,Glob,Bash(git *),mcp__rgkb__search,Bash(python .claude/rgkb/rgkb.py *)"',
+                      done)
+        self.assertEqual(fusion.union_allowed_tools(done, extra), (done, []))
+        self.assertIn("'--allowedTools', 'Read,Glob,Bash(git *),mcp__rgkb__search,",
+                      fusion.union_allowed_tools(ps1, extra)[0])
+        self.assertEqual(fusion.union_allowed_tools("echo none\n", extra), ("echo none\n", []))
+        with self.assertRaises(fusion.FusionError):
+            fusion.union_allowed_tools(sh, ["Bash(x),Read"])
+        script = self.tmp / "factory.sh"
+        script.write_text(done, encoding="utf-8")
+        plan = fusion.plan_text(script, lambda t: fusion.union_allowed_tools(t, extra)[0])
+        self.assertEqual(plan.state, fusion.IDENTICAL)
+
+    def test_fu06_value_holding_the_other_quote_is_reported(self):
+        """FU-06, iteration 2: a value holding the other quote character, or an
+        --allowedTools without a quoted value, is left unchanged and reported."""
+        sh = 'cmd+=(--allowedTools "Read,Bash(echo \'x\')")\nother --allowedTools $TOOLS\n'
+        ps1 = "$a += @('--allowedTools', 'Read,Bash(echo \"x\")')\n"
+        for text in (sh, ps1):
+            new, warnings = fusion.union_allowed_tools(text, ["mcp__rgkb__search"])
+            self.assertEqual(new, text)
+            self.assertTrue(any("quote character" in w for w in warnings), warnings)
+        self.assertTrue(any("line 2" in w and "without a quoted value" in w
+                            for w in fusion.union_allowed_tools(sh, ["x"])[1]))
+
+    def test_fu05_empty_tools_quoted_value_and_trailing_comment(self):
+        """FU-05, iteration 2: an empty tools: (YAML null, inherits every tool) stays
+        empty; a quoted value is completed inside its quotes; a trailing YAML comment
+        is kept after the list."""
+        empty = "---\nname: x\ntools:\nmodel: haiku\n---\nBody\n"
+        self.assertEqual(fusion.union_tools(empty, RGKB_READ), empty)
+        self.assertEqual(fusion.union_tools("---\ntools:   \n---\n", RGKB_READ), "---\ntools:   \n---\n")
+        self.assertEqual(fusion.union_tools('---\ntools: "Read, Grep"\n---\n', ["Grep", "mcp__rgkb__search"]),
+                         '---\ntools: "Read, Grep, mcp__rgkb__search"\n---\n')
+        self.assertEqual(fusion.union_tools("---\ntools: ['Read']\n---\n", ["mcp__rgkb__search"]),
+                         "---\ntools: ['Read', 'mcp__rgkb__search']\n---\n")
+        self.assertEqual(fusion.union_tools("---\ntools: Read, Grep  # read only\n---\n", ["mcp__rgkb__search"]),
+                         "---\ntools: Read, Grep, mcp__rgkb__search  # read only\n---\n")
+        self.assertEqual(fusion.union_tools("---\ntools: # inherits\n---\n", ["x"]), "---\ntools: # inherits\n---\n")
+        block = "---\ntools:\n  - \"Read\"  # first\n---\n"
+        self.assertEqual(fusion.union_tools(block, ["Read", "Grep"]),
+                         "---\ntools:\n  - \"Read\"  # first\n  - \"Grep\"\n---\n")
 
 
 if __name__ == "__main__":
