@@ -234,10 +234,6 @@ python .claude/rgkb/rgkb.py hooks remove
 
 Le câblage (sauf `--no-wire`) ajoute aux agents existants un bloc délimité `<!-- rgkb:debut -->` / `<!-- rgkb:fin -->`, réentrant, sans jamais réécrire leur prompt : fiche de fichier avant de lire un fichier entier, lecture des notes avant de formuler un avis, réindexation après modification pour le Builder, et à la consignation finale d'un cycle une proposition de note (1 à 3 par cycle, jamais ce que l'index retrouve seul). `/software-factory` et `/ai-lab` proposent son installation en fin de parcours (Phase 6b), toujours avec accord explicite.
 
-## Noyau `skills/_core/`
-
-`skills/_core/` n'est pas un skill (il n'a pas de `SKILL.md`) : c'est le noyau déterministe partagé, en Python de bibliothèque standard (≥ 3.9), exposé par une CLI unique `harness.py` et testé par `py -3 -B -m unittest discover -s skills/_core/tests` (ou `python3`). Il porte ce qui ne relève pas du jugement — parsing des blocs JSON de verdict, compteurs d'itérations et de rondes, registre des findings, relance d'un agent mort, fusions de fichiers, séquences `gh`/`git` de `ship-pr` — et écrit le journal de cycle `.claude/runs/<skill>-<horodatage>.jsonl`, exclu de git. Le script d'installation le lie comme les skills, en `~/.claude/skills/_core`, où `ship-pr` l'appelle par `${CLAUDE_SKILL_DIR}/../_core` ; `software-factory` le copie dans chaque projet équipé sous `.claude/harness/`, que le `/factory-run` généré et la CI appellent.
-
 ## Ajouter un skill
 
 Créer `skills/<nom>/SKILL.md` (frontmatter `name` + `description` minimum), relancer le script d'installation, commiter.
