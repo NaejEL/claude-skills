@@ -190,7 +190,11 @@ def post_comment(run: Run, state: Dict[str, Any], fid: str) -> Dict[str, Any]:
 def commit_round(run: Run, state: Dict[str, Any], reg: registry_mod.Registry, summary: str,
                  fixed: List[str], not_fixed: Dict[str, str]) -> Dict[str, Any]:
     """SP-17 et SP-09."""
-    for fid in fixed + list(not_fixed):
+    ids = fixed + list(not_fixed)
+    doubles = sorted({fid for fid in ids if ids.count(fid) > 1})
+    if doubles:
+        raise Stop("finding(s) consigne(s) deux fois : %s" % ", ".join(doubles))
+    for fid in ids:
         c = state["candidates"].get(fid)
         if c is None or c["round"] != state["round"] or c["status"] != "CONFIRMED" or c["outcome"]:
             raise Stop("%s n'est pas un finding CONFIRMED en attente de la ronde courante" % fid)

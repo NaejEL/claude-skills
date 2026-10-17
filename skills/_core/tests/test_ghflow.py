@@ -230,6 +230,16 @@ class RoundFlowTest(helpers.TempDirCase):
             self.assertNotIn(forbidden, flat)
         self.assertEqual(self.reg.current(self.st["candidates"][self.fid]["key"]), "FIXED")
 
+    def test_sp17_duplicate_id_refused_before_any_git_call(self):
+        """SP-17, SP-09 : un id consigne deux fois est refuse avant commit et push."""
+        for fixed, not_fixed in (([self.fid, self.fid], {}), ([self.fid], {self.fid: "faux positif"})):
+            run = helpers.FakeRunner().on(("git", "rev-parse", "HEAD"), out="c0ffee\n")
+            with self.assertRaises(Stop) as ctx:
+                ghflow.commit_round(run, self.st, self.reg, "fix", fixed, not_fixed)
+            self.assertIn(self.fid, str(ctx.exception))
+            self.assertEqual(run.calls, [])
+            self.assertIsNone(self.st["candidates"][self.fid]["outcome"])
+
     def test_sp18_threads_replied_and_resolved(self):
         """SP-18."""
         self.st["candidates"][self.fid]["comment_id"] = 99
