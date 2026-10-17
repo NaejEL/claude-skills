@@ -1,4 +1,4 @@
-# Module hcore.counters : bornes des compteurs (SP-01, SP-02, FR-03, D8).
+# Module hcore.counters: counter bounds (SP-01, SP-02, FR-03, D8).
 
 import unittest
 
@@ -21,7 +21,7 @@ class RoundsTest(unittest.TestCase):
 
     def test_sp01_invalid_is_explicit_error(self):
         """SP-01."""
-        for bad in ("0", "-1", "deux", "1.5", ""):
+        for bad in ("0", "-1", "two", "1.5", ""):
             with self.assertRaises(BoundsError):
                 counters.parse_rounds(bad)
 
@@ -33,7 +33,7 @@ class ThemesTest(unittest.TestCase):
 
     def test_sp02_split_on_semicolon(self):
         """SP-02."""
-        self.assertEqual(counters.parse_themes("logique; régressions"), ["logique", "régressions"])
+        self.assertEqual(counters.parse_themes("logic; regressions"), ["logic", "regressions"])
 
     def test_sp02_four_max(self):
         """SP-02."""

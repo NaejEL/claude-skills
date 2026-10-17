@@ -174,3 +174,23 @@ Le cycle s'est arrêté en **échec explicite** après 3 itérations Build/Verif
 - Les fichiers de transit de `sf install` restent dans `.claude/runs/` si le skill s'arrête avant la Phase 5.
 - `parse_themes` rejette les thèmes en double, une règle hors D8.
 - `copy-core` bloqué rend exit 0 avec `copied:false`, signalé trop faiblement.
+
+### Revue ship-pr de la PR #2 (2026-10-17)
+
+Premier passage réel de `ship-pr` rebranché sur le noyau. Sortie par épuisement en ronde 2. Journal : `.claude/runs/ship-pr-20261017-131818.jsonl`.
+
+- **Corrigé dans `cfea95e`** : `commit_round` acceptait un id en double. Le commit était poussé, puis l'état n'était pas sauvegardé.
+- **Friction constatée** : SKILL.md SP-07 demande d'« écarter au jugement » un doublon sémantique. Le noyau n'a aucune sous-commande pour le faire, donc il faut un validateur même pour un doublon évident. Le finding a été rejeté sur la forme, mais la friction est réelle. À trancher : une sous-commande `drop`, ou retirer la consigne.
+- **Journal** : une durée est restée `null` quand la notification de fin d'un agent arrive après l'enregistrement de son résultat.
+- **Message de commit `fix(review)`** : il est écrit par le noyau, sans la ligne d'attribution `Co-Authored-By`.
+
+### Code en anglais (décision de l'utilisateur, 2026-10-17)
+
+Le code est en anglais, y compris les commentaires, les identifiants et les textes publiés : commentaires de PR, messages de commit, messages d'arrêt. La prose Markdown reste en français. Le noyau a été traduit en conséquence et le critère CA7 a été adapté. Restent en français, parce que ce sont des formats partagés et que les renommer changerait le comportement :
+
+- les états de fichier `créé` / `fusionné` / `identique` / `personnalisé-conservé`, communs avec ai-lab, code-index et le README ;
+- les marqueurs `<!-- x:debut -->` / `<!-- x:fin -->` ;
+- la ligne `Statut : APPROUVEE` des specs ;
+- le libellé de tâche `Factory: nouvelle spec (session)`, qui sert de clé de dédoublonnage dans les projets déjà équipés.
+
+À faire dans un incrément ultérieur, avec une migration : ajouter la règle « code en anglais » aux templates d'agents générés par `software-factory` (builder, et planner pour les specs), sur suggestion de l'utilisateur.

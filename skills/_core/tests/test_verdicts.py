@@ -1,4 +1,4 @@
-# Module hcore.verdicts : blocs JSON terminaux (FR-02, FR-04, SP-03, SP-04).
+# Module hcore.verdicts: terminal JSON blocks (FR-02, FR-04, SP-03, SP-04).
 
 import json
 import unittest
@@ -10,21 +10,21 @@ from hcore.verdicts import UnusableOutput
 
 class TerminalJsonTest(unittest.TestCase):
     def test_bare_block_at_end(self):
-        self.assertEqual(verdicts.extract_terminal_json('texte {"a": 1}\n'), {"a": 1})
+        self.assertEqual(verdicts.extract_terminal_json('text {"a": 1}\n'), {"a": 1})
 
     def test_fenced_block_at_end(self):
         self.assertEqual(verdicts.extract_terminal_json('ok\n```json\n{"a": {"b": 2}}\n```'), {"a": {"b": 2}})
 
     def test_braces_in_prose_before_block(self):
-        text = 'utiliser {x} puis {"verdict": "REJECTED", "reason": "r"}'
+        text = 'use {x} then {"verdict": "REJECTED", "reason": "r"}'
         self.assertEqual(verdicts.extract_terminal_json(text)["verdict"], "REJECTED")
 
     def test_text_after_block_is_unusable(self):
         with self.assertRaises(UnusableOutput):
-            verdicts.extract_terminal_json('{"a": 1}\nvoila')
+            verdicts.extract_terminal_json('{"a": 1}\nthere')
 
     def test_absent_or_empty_is_unusable(self):
-        for text in (None, "", "   ", "pas de json"):
+        for text in (None, "", "   ", "no json"):
             with self.assertRaises(UnusableOutput):
                 verdicts.extract_terminal_json(text)
 
@@ -77,7 +77,7 @@ class ValidatorBlockTest(unittest.TestCase):
 
     def test_sp04_invalid_is_unusable(self):
         """SP-04."""
-        for bad in ('{"verdict": "MAYBE", "reason": "r"}', '{"verdict": "CONFIRMED"}', "rien"):
+        for bad in ('{"verdict": "MAYBE", "reason": "r"}', '{"verdict": "CONFIRMED"}', "nothing"):
             with self.assertRaises(UnusableOutput):
                 verdicts.parse_validator(bad)
 

@@ -4,12 +4,12 @@
     {
       "id": "target",
       "type": "promptString",
-      "description": "Cible"
+      "description": "Target"
     },
     {
       "id": "factorySpec",
       "type": "promptString",
-      "description": "Chemin de la spec approuvée (specs/SPEC-*.md)"
+      "description": "Path of the approved spec (specs/SPEC-*.md)"
     }
   ],
   "tasks": [
@@ -40,7 +40,7 @@
     {
       "label": "Factory: nouvelle spec (session)",
       "type": "shell",
-      "command": "echo 'Ouvrir Claude Code et taper : /factory-run \"<votre besoin>\"'",
+      "command": "echo 'Open Claude Code and type: /factory-run \"<your need>\"'",
       "problemMatcher": []
     }
   ]

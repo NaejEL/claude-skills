@@ -35,7 +35,7 @@ Parser `$ARGUMENTS` :
 - **« Zéro finding » est une réponse normale et acceptable.** Cette phrase figure telle quelle dans le prompt de chaque relecteur et de chaque validateur — jamais de finding inventé pour remplir un quota.
 - **Frugalité** : relecteurs = agents lecture seule recevant uniquement les hunks du diff et un contexte minimal (jamais une mission « explore le repo ») ; validateurs = mini-agents à prompt court et effort faible ; 3 rondes maximum ; sortie anticipée dès qu'une ronde ne produit aucun finding confirmé ; à partir de la ronde 2, seuls les commits de correctif et les zones déjà signalées sont revus — jamais de re-revue des fichiers inchangés.
 - **Un thème muet n'est pas un thème relu — et bloque le merge** (SP-05). Un relecteur mort (erreur d'API, connexion coupée) ou dont la sortie est inexploitable (SP-03) rend le même silence qu'un vrai « zéro finding », et la sortie anticipée le transformerait en feu vert. `reviewer` rend `relaunch` : relancer **une fois** ; au second échec il rend `uncovered` : le thème est **non couvert**, à signaler dans le commentaire de synthèse de la PR et au rapport. Le noyau ne compte jamais ce silence comme une ronde sans finding et **refuse le merge** : la gate humaine n'est même pas proposée, le skill s'arrête en expliquant quel angle n'a pas été relu et invite à relancer. Ce skill agit sur le dépôt distant : contrairement à un audit, il ne peut pas se contenter de déclarer son amputation. Même règle pour les validateurs (SP-06) : un validateur mort deux fois laisse son finding **non validé** (`unvalidated`) — ni posté en commentaire inline, ni corrigé d'office, il figure au rapport comme restant à trancher.
-- **Un commit par ronde** (SP-17), message `fix(review): corrections round N — <résumé>`. Jamais d'amend, jamais de force-push.
+- **Un commit par ronde** (SP-17), message `fix(review): round N fixes — <résumé>`. Jamais d'amend, jamais de force-push.
 - **Jamais de merge sans validation explicite de l'utilisateur** (AskUserQuestion en Phase 4).
 - **Registre cumulatif des findings** (SP-07) : `.claude/runs/ship-pr-<horodatage>.registry.jsonl`, tenu par le noyau pour tous les findings, **y compris les REJETÉS**. `reviewer` dédoublonne chaque nouveau finding contre lui (même fichier, titre normalisé) avant validation : un finding rejeté ne ressuscite pas d'une ronde à l'autre. Écarter aussi, au jugement, un doublon du même sujet sous un autre titre.
 
@@ -64,9 +64,9 @@ Répéter 3.1 → 3.6 jusqu'à ce que `end-round` rende une sortie (SP-08) : **`
 
 Lancer **en un seul message** les sous-agents relecteurs (type Explore, lecture seule), un par thème rendu par `start`. Thèmes par défaut :
 
-- (a) **logique et cas limites** : erreurs de logique, conditions inversées, off-by-one, cas vides/null, erreurs non gérées ;
-- (b) **régressions et contrats des sites d'appel** : signatures modifiées, comportements attendus par les appelants existants, compatibilité des données ;
-- (c) **cohérence interne du diff** : code mort introduit, incohérences entre les morceaux du changement (une moitié modifiée, l'autre oubliée).
+- (a) **logic and edge cases** : erreurs de logique, conditions inversées, off-by-one, cas vides/null, erreurs non gérées ;
+- (b) **regressions and call-site contracts** : signatures modifiées, comportements attendus par les appelants existants, compatibilité des données ;
+- (c) **internal consistency of the diff** : code mort introduit, incohérences entre les morceaux du changement (une moitié modifiée, l'autre oubliée).
 
 Chaque prompt de relecteur contient : les hunks du diff du périmètre 3.1 (rien de plus), les règles de périmètre (pas de refacto, pas de sécurité spéculative, pas de nitpick), la phrase « **zéro finding est une réponse acceptable et fréquente** », l'interdiction de poster quoi que ce soit sur la PR, et le format de sortie exigé — un unique bloc JSON final (SP-03) :
 
@@ -90,7 +90,7 @@ Appliquer soi-même chaque correctif confirmé (édition directe, pas de sous-ag
 
 ### 3.6 Réponse et résolution des threads
 
-`K threads --run <run>` (SP-18) répond « Corrigé dans <hash>. » puis résout le thread de chaque finding corrigé ; il répond avec la raison et laisse **ouvert** celui de chaque finding non corrigé. Puis `K end-round --run <run>` (SP-08, SP-10) : compteurs de la ronde, puis sortie de boucle ou ronde suivante (reboucler en 3.1).
+`K threads --run <run>` (SP-18) répond « Fixed in <hash>. » puis résout le thread de chaque finding corrigé ; il répond avec la raison et laisse **ouvert** celui de chaque finding non corrigé. Puis `K end-round --run <run>` (SP-08, SP-10) : compteurs de la ronde, puis sortie de boucle ou ronde suivante (reboucler en 3.1).
 
 ## Phase 4 — Merge (gate humaine)
 

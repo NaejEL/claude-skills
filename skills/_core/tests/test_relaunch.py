@@ -1,4 +1,4 @@
-# Module hcore.relaunch : une relance puis echec explicite (FR-04, SP-05, SP-06).
+# Module hcore.relaunch: one relaunch then explicit failure (FR-04, SP-05, SP-06).
 
 import unittest
 

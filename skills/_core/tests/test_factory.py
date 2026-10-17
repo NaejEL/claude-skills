@@ -1,5 +1,5 @@
-# Module hcore.factory : machine d'etat de factory-run (FR-01 a FR-04),
-# sequences de la definition (b) de la spec.
+# Module hcore.factory: factory-run state machine (FR-01 to FR-04),
+# sequences of definition (b) of the spec.
 
 import unittest
 
@@ -8,7 +8,7 @@ from hcore import factory
 
 B, V = factory.BUILDER, factory.VERIFIER
 CR = helpers.verifier_block("CHANGES_REQUESTED", False,
-                            [{"file": "a.py", "severity": "major", "description": "cas vide"}])
+                            [{"file": "a.py", "severity": "major", "description": "empty case"}])
 OK = helpers.verifier_block("APPROVED", True)
 
 
@@ -16,7 +16,7 @@ class EntryTest(helpers.TempDirCase):
     def spec(self, name, status_line):
         path = self.tmp / "specs" / name
         path.parent.mkdir(exist_ok=True)
-        path.write_text("# SPEC\n\n%s\n\nCorps.\n" % status_line, encoding="utf-8")
+        path.write_text("# SPEC\n\n%s\n\nBody.\n" % status_line, encoding="utf-8")
         return "specs/" + name
 
     def test_fr01_approved_spec_goes_to_build(self):
@@ -30,13 +30,13 @@ class EntryTest(helpers.TempDirCase):
         proposed = self.spec("SPEC-b.md", "Statut : PROPOSEE")
         outside = self.tmp / "SPEC-c.md"
         outside.write_text("Statut : APPROUVEE\n", encoding="utf-8")
-        for args in (proposed, "ajouter l'export CSV", "specs/absente.md", "SPEC-c.md", ""):
+        for args in (proposed, "add the CSV export", "specs/missing.md", "SPEC-c.md", ""):
             self.assertEqual(factory.entry(args, self.tmp)["mode"], "plan", args)
 
     def test_fr01_free_text_with_shell_characters_goes_to_plan(self):
-        """FR-01 : un besoin en texte libre (guillemets, $, backtick, ':' ou
-        saut de ligne) n'est jamais un chemin et ne fait pas echouer l'entree."""
-        need = 'Ajouter "export" : `rm -rf /` puis $HOME et C:\\x\n<deuxieme ligne>|*?'
+        """FR-01: a free-text need (quotes, $, backtick, ':' or line break) is
+        never a path and does not make the entry fail."""
+        need = 'Add "export" : `rm -rf /` then $HOME and C:\\x\n<second line>|*?'
         self.assertEqual(factory.entry(need, self.tmp), {"mode": "plan", "spec": None})
 
 
@@ -66,7 +66,7 @@ class LoopTest(unittest.TestCase):
         state, out = self.run_seq(steps)
         decision = out[-1][0]
         self.assertEqual(decision["action"], "fail")
-        self.assertEqual(decision["issues"][0]["description"], "cas vide")
+        self.assertEqual(decision["issues"][0]["description"], "empty case")
         self.assertEqual(state["status"], "failed")
         self.assertEqual([o[1]["iteration"] for o in out], [1, 1, 2, 2, 3, 3])
         with self.assertRaises(factory.RunOver):
@@ -82,15 +82,15 @@ class LoopTest(unittest.TestCase):
 
     def test_fr04_unusable_output_counts_as_dead(self):
         """FR-04."""
-        state, out = self.run_seq([(B, None, False), (V, "j'ai tout verifie, c'est bon", False)])
+        state, out = self.run_seq([(B, None, False), (V, "I checked everything, it's fine", False)])
         self.assertEqual(out[-1][0]["action"], "relaunch")
         self.assertEqual(out[-1][1]["verdict"], "DEAD")
 
     def test_fr04_dead_twice_is_explicit_failure(self):
         """FR-04."""
-        state, out = self.run_seq([(B, None, False), (V, None, True), (V, "pas de bloc", False)])
+        state, out = self.run_seq([(B, None, False), (V, None, True), (V, "no block", False)])
         self.assertEqual(out[-1][0]["action"], "fail")
-        self.assertIn("mort deux fois", out[-1][0]["reason"])
+        self.assertIn("died twice", out[-1][0]["reason"])
         state, out = self.run_seq([(B, None, True), (B, None, True)])
         self.assertEqual(out[-1][0]["action"], "fail")
 

@@ -1,23 +1,23 @@
-# Sequences gh/git deterministes de ship-pr (D11).
+# Deterministic gh/git sequences of ship-pr (D11).
 #
-# - SP-11 : preflight, dans l'ordre, arret sur le premier echec avec le message
-#   prevu ; etat de l'arbre de travail et owner/repo.
-# - SP-12 : upstream absent ou commits non pousses -> git push -u origin HEAD.
-# - SP-13 : recherche d'une PR ouverte branche -> cible, sinon creation.
-# - SP-14 : etat de la PR (headRefOid, mergeable, mergeStateStatus).
-# - SP-15 : collecte du diff de la ronde (ronde 1 : gh pr diff ; ensuite :
-#   git diff <HEAD d'avant le correctif de la ronde precedente>..HEAD, donc le
-#   commit de correctif, + fichiers deja signales).
-# - SP-16 : commentaire inline avec le headRefOid relu au moment du post ;
-#   sur HTTP 422 seulement, repli niveau fichier puis, en dernier recours,
-#   commentaire de PR. Toute autre erreur arrete le skill.
-# - SP-17 : un commit par ronde "fix(review): corrections round N — <resume>",
-#   puis push simple (jamais d'amend, jamais de force-push).
-# - SP-18 : reponse et resolution des threads des findings corriges ; threads
-#   des findings non corriges : reponse avec la raison, laisses ouverts.
-# - SP-19 : merge par commit de merge et suppression de la branche, refuse si un
-#   theme n'est pas couvert ou si la boucle n'est pas terminee.
-# - D3 : ajout de .claude/runs/ a .git/info/exclude, idempotent.
+# - SP-11: preflight, in order, stop on the first failure with the expected
+#   message; working tree state and owner/repo.
+# - SP-12: missing upstream or unpushed commits -> git push -u origin HEAD.
+# - SP-13: looks up an open PR branch -> target, otherwise creates it.
+# - SP-14: PR state (headRefOid, mergeable, mergeStateStatus).
+# - SP-15: collects the round diff (round 1: gh pr diff; afterwards:
+#   git diff <HEAD before the previous round's fix>..HEAD, hence the fix
+#   commit, + files already flagged).
+# - SP-16: inline comment with the headRefOid re-read at posting time;
+#   on HTTP 422 only, file-level fallback then, as a last resort, a PR
+#   comment. Any other error stops the skill.
+# - SP-17: one commit per round "fix(review): round N fixes — <summary>",
+#   then a plain push (never an amend, never a force-push).
+# - SP-18: reply to and resolve the threads of fixed findings; threads of
+#   findings not fixed: reply with the reason, left open.
+# - SP-19: merge with a merge commit and branch deletion, refused if a theme
+#   is not covered or if the loop is not finished.
+# - D3: adds .claude/runs/ to .git/info/exclude, idempotent.
 
 from __future__ import annotations
 
@@ -29,15 +29,15 @@ from typing import Any, Callable, Dict, List, Optional
 from . import registry as registry_mod, shippr
 from .proc import Result
 
-HTTP_422 = re.compile(r"\bHTTP 422\b")   # message de gh : "... (HTTP 422)"
+HTTP_422 = re.compile(r"\bHTTP 422\b")   # gh message: "... (HTTP 422)"
 
 Run = Callable[..., Result]
 EXCLUDE_LINE = ".claude/runs/"
 
-MSG_GH_AUTH = "gh non authentifié — lancer `gh auth login`"
-MSG_NO_GITHUB = "pas de remote GitHub"
-MSG_ON_TARGET = "vous êtes déjà sur {target}, placez-vous sur la branche à merger"
-MSG_NO_TARGET = "la branche cible {target} n'existe pas sur origin"
+MSG_GH_AUTH = "gh not authenticated — run `gh auth login`"
+MSG_NO_GITHUB = "no GitHub remote"
+MSG_ON_TARGET = "you are already on {target}, switch to the branch to merge"
+MSG_NO_TARGET = "the target branch {target} does not exist on origin"
 
 THREADS_QUERY = (
     "query($owner:String!,$repo:String!,$number:Int!){"
@@ -51,17 +51,17 @@ RESOLVE_MUTATION = (
 
 
 class Stop(RuntimeError):
-    """Arret explicite : le message est destine a l'utilisateur."""
+    """Explicit stop: the message is meant for the user."""
 
 
 def _must(res: Result, what: str) -> Result:
     if not res.ok:
-        raise Stop("%s a echoue : %s" % (what, (res.err or res.out).strip()))
+        raise Stop("%s failed: %s" % (what, (res.err or res.out).strip()))
     return res
 
 
 def preflight_checks(run: Run, target: str) -> Dict[str, Any]:
-    """SP-11, etapes 1 a 4 du preflight."""
+    """SP-11, preflight steps 1 to 4."""
     if not run(["gh", "auth", "status"]).ok:
         raise Stop(MSG_GH_AUTH)
     remote = run(["git", "remote", "get-url", "origin"])
@@ -77,7 +77,7 @@ def preflight_checks(run: Run, target: str) -> Dict[str, Any]:
 
 
 def worktree_and_repo(run: Run) -> Dict[str, Any]:
-    """SP-11, etapes 5 (constat seulement, la gate reste au prompt) et 7."""
+    """SP-11, steps 5 (observation only, the gate stays with the prompt) and 7."""
     status = _must(run(["git", "status", "--porcelain"]), "git status").out
     repo = _must(run(["gh", "repo", "view", "--json", "owner,name", "-q",
                       '.owner.login + "/" + .name']), "gh repo view").out.strip()
@@ -86,7 +86,7 @@ def worktree_and_repo(run: Run) -> Dict[str, Any]:
 
 
 def ensure_exclude(run: Run, root: Path) -> bool:
-    """D3 : ajoute .claude/runs/ a .git/info/exclude s'il n'y est pas. Rend True si ajoute."""
+    """D3: adds .claude/runs/ to .git/info/exclude if missing. Returns True if added."""
     rel = _must(run(["git", "rev-parse", "--git-path", "info/exclude"]), "git rev-parse").out.strip()
     path = Path(rel)
     if not path.is_absolute():
@@ -125,7 +125,7 @@ def pr_state(run: Run, number: int) -> Dict[str, Any]:
 
 def find_or_create_pr(run: Run, state: Dict[str, Any], title: Optional[str] = None,
                       body: Optional[str] = None) -> Dict[str, Any]:
-    """SP-13 : reprend la PR ouverte, sinon la cree si titre et corps sont fournis."""
+    """SP-13: reuses the open PR, otherwise creates it if title and body are provided."""
     target, branch = state["target"], state["branch"]
     res = _must(run(["gh", "pr", "list", "--head", branch, "--base", target, "--state", "open",
                      "--json", "number,url,title"]), "gh pr list")
@@ -155,12 +155,12 @@ def collect_diff(run: Run, state: Dict[str, Any]) -> str:
     flagged = sorted({c["file"] for c in state["candidates"].values() if c["status"] == "CONFIRMED"})
     if flagged:
         out += _must(run(["git", "diff", "origin/%s...HEAD" % state["target"], "--"] + flagged),
-                     "git diff fichiers signales").out
+                     "git diff flagged files").out
     return out
 
 
 def comment_body(c: Dict[str, Any]) -> str:
-    return "**[%s] %s**\n\n%s\n\nCorrection suggérée : %s" % (
+    return "**[%s] %s**\n\n%s\n\nSuggested fix: %s" % (
         c["severity"], c["title"], c["description"], c["fix"])
 
 
@@ -168,7 +168,7 @@ def post_comment(run: Run, state: Dict[str, Any], fid: str) -> Dict[str, Any]:
     """SP-16."""
     c = state["candidates"].get(fid)
     if c is None or c["status"] != "CONFIRMED":
-        raise Stop("seul un finding CONFIRMED est poste : %s" % fid)
+        raise Stop("only a CONFIRMED finding is posted: %s" % fid)
     sha = pr_state(run, state["pr"])["headRefOid"]
     base = ["gh", "api", "repos/%s/pulls/%d/comments" % (state["owner_repo"], state["pr"]),
             "-f", "body=" + comment_body(c), "-f", "commit_id=" + sha, "-f", "path=" + c["file"]]
@@ -176,33 +176,33 @@ def post_comment(run: Run, state: Dict[str, Any], fid: str) -> Dict[str, Any]:
     mode = "inline"
     if not res.ok:
         if not HTTP_422.search(res.err + res.out):
-            raise Stop("commentaire inline refuse (hors HTTP 422) : %s" % (res.err or res.out).strip())
+            raise Stop("inline comment refused (not HTTP 422): %s" % (res.err or res.out).strip())
         res = run(base + ["-f", "subject_type=file"])
         mode = "file"
     if res.ok:
         c["comment_id"] = json.loads(res.out)["id"]
         return {"finding": fid, "mode": mode, "comment_id": c["comment_id"], "commit_id": sha}
-    body = "%s\n\n(%s, ligne %d)" % (comment_body(c), c["file"], c["line"])
+    body = "%s\n\n(%s, line %d)" % (comment_body(c), c["file"], c["line"])
     _must(run(["gh", "pr", "comment", str(state["pr"]), "--body", body]), "gh pr comment")
     return {"finding": fid, "mode": "pr", "comment_id": None, "commit_id": sha}
 
 
 def commit_round(run: Run, state: Dict[str, Any], reg: registry_mod.Registry, summary: str,
                  fixed: List[str], not_fixed: Dict[str, str]) -> Dict[str, Any]:
-    """SP-17 et SP-09."""
+    """SP-17 and SP-09."""
     ids = fixed + list(not_fixed)
-    doubles = sorted({fid for fid in ids if ids.count(fid) > 1})
-    if doubles:
-        raise Stop("finding(s) consigne(s) deux fois : %s" % ", ".join(doubles))
+    duplicates = sorted({fid for fid in ids if ids.count(fid) > 1})
+    if duplicates:
+        raise Stop("finding(s) recorded twice: %s" % ", ".join(duplicates))
     for fid in ids:
         c = state["candidates"].get(fid)
         if c is None or c["round"] != state["round"] or c["status"] != "CONFIRMED" or c["outcome"]:
-            raise Stop("%s n'est pas un finding CONFIRMED en attente de la ronde courante" % fid)
+            raise Stop("%s is not a pending CONFIRMED finding of the current round" % fid)
     commit = None
     if fixed:
         pre = _must(run(["git", "rev-parse", "HEAD"]), "git rev-parse").out.strip()
         shippr.mark_pre_fix(state, pre)
-        message = "fix(review): corrections round %d — %s" % (state["round"], summary.strip())
+        message = "fix(review): round %d fixes — %s" % (state["round"], summary.strip())
         _must(run(["git", "add", "-A"]), "git add -A")
         _must(run(["git", "commit", "-m", message]), "git commit")
         _must(run(["git", "push"]), "git push")
@@ -231,22 +231,22 @@ def handle_threads(run: Run, state: Dict[str, Any]) -> Dict[str, Any]:
             continue
         replies = "repos/%s/pulls/%d/comments/%d/replies" % (state["owner_repo"], state["pr"], c["comment_id"])
         if c["outcome"] == "FIXED":
-            _must(run(["gh", "api", replies, "-f", "body=Corrigé dans %s." % c["commit"]]), "reponse au thread")
+            _must(run(["gh", "api", replies, "-f", "body=Fixed in %s." % c["commit"]]), "thread reply")
             thread = thread_of.get(c["comment_id"])
             if thread is None:
-                raise Stop("thread introuvable pour le commentaire %s" % c["comment_id"])
+                raise Stop("thread not found for comment %s" % c["comment_id"])
             _must(run(["gh", "api", "graphql", "-f", "query=" + RESOLVE_MUTATION, "-f", "t=" + thread]),
-                  "resolution du thread")
+                  "thread resolution")
             resolved.append(c["id"])
         else:
-            _must(run(["gh", "api", replies, "-f", "body=" + c["reason"]]), "reponse au thread")
+            _must(run(["gh", "api", replies, "-f", "body=" + c["reason"]]), "thread reply")
             left_open.append(c["id"])
         c["thread_done"] = True
     return {"resolved": resolved, "left_open": left_open}
 
 
 def merge(run: Run, state: Dict[str, Any], check_only: bool) -> Dict[str, Any]:
-    """SP-19 et SP-05."""
+    """SP-19 and SP-05."""
     refusal = shippr.merge_refusal(state)
     if refusal:
         raise Stop(refusal)

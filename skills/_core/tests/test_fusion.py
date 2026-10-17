@@ -1,5 +1,5 @@
-# Module hcore.fusion : fusions de software-factory (SF-01 a SF-04, CA12),
-# exclusion git du journal par le .gitignore genere (CA11), copie du noyau (D1).
+# Module hcore.fusion: software-factory merges (SF-01 to SF-04, CA12),
+# git exclusion of the journal by the generated .gitignore (CA11), core copy (D1).
 
 import json
 import os
@@ -111,10 +111,10 @@ class FixtureMergeTest(helpers.TempDirCase):
     def test_sf01_invalid_json_not_overwritten(self):
         """SF-01."""
         (self.tmp / ".claude").mkdir()
-        (self.tmp / ".claude" / "settings.json").write_text("{ cassé", encoding="utf-8")
+        (self.tmp / ".claude" / "settings.json").write_text("{ broken", encoding="utf-8")
         with self.assertRaises(fusion.FusionError):
             fusion.apply(self.tmp, [])
-        self.assertEqual((self.tmp / ".claude" / "settings.json").read_text(encoding="utf-8"), "{ cassé")
+        self.assertEqual((self.tmp / ".claude" / "settings.json").read_text(encoding="utf-8"), "{ broken")
 
 
 VSCODE_DEFAULT_TASKS = (
@@ -124,9 +124,9 @@ VSCODE_DEFAULT_TASKS = (
     "\t\"version\": \"2.0.0\",\n"
     "\t\"tasks\": [\n"
     "\t\t{\n"
-    "\t\t\t\"label\": \"echo\", /* tache d'exemple */\n"
+    "\t\t\t\"label\": \"echo\", /* sample task */\n"
     "\t\t\t\"type\": \"shell\",\n"
-    "\t\t\t\"command\": \"echo // pas un commentaire\",\n"
+    "\t\t\t\"command\": \"echo // not a comment\",\n"
     "\t\t},\n"
     "\t]\n"
     "}\n"
@@ -134,7 +134,7 @@ VSCODE_DEFAULT_TASKS = (
 
 
 class TolerantReadTest(helpers.TempDirCase):
-    """SF-01 / SF-02 : JSONC de VS Code et BOM des outils Windows, tout ou rien."""
+    """SF-01 / SF-02: VS Code JSONC and BOM from Windows tools, all or nothing."""
 
     def put(self, rel, text, newline="\n"):
         path = self.tmp / rel
@@ -149,7 +149,7 @@ class TolerantReadTest(helpers.TempDirCase):
         states = fusion.apply(self.tmp, [])
         self.assertEqual(states[".vscode/tasks.json"], fusion.MERGED)
         text = path.read_text(encoding="utf-8")
-        for kept in ("// See https://go.microsoft.com", "/* tache d'exemple */", "echo // pas un commentaire"):
+        for kept in ("// See https://go.microsoft.com", "/* sample task */", "echo // not a comment"):
             self.assertIn(kept, text)
         data = jsonc.loads(text).value
         self.assertEqual([t["label"] for t in data["tasks"]],
@@ -176,10 +176,10 @@ class TolerantReadTest(helpers.TempDirCase):
     def test_sf01_jsonc_settings_with_trailing_commas(self):
         """SF-01."""
         path = self.put(".claude/settings.json",
-                        '{\n  // reglages\n  "permissions": {\n    "deny": ["Read(./x/**)",],\n  },\n}\n')
+                        '{\n  // settings\n  "permissions": {\n    "deny": ["Read(./x/**)",],\n  },\n}\n')
         fusion.apply(self.tmp, [])
         text = path.read_text(encoding="utf-8")
-        self.assertIn("// reglages", text)
+        self.assertIn("// settings", text)
         deny = jsonc.loads(text).value["permissions"]["deny"]
         self.assertEqual(deny, ["Read(./x/**)", "Read(./factory-logs/**)", "Read(./.git/objects/**)"])
 
@@ -192,9 +192,9 @@ class TolerantReadTest(helpers.TempDirCase):
         self.assertEqual(path.read_bytes(), b"node_modules/\r\ndist/\r\nfactory-logs/\r\n.claude/runs/\r\n")
 
     def test_sf04_all_or_nothing_when_one_file_is_invalid(self):
-        """SF-04 : tasks.json illisible -> ni settings.json ni .gitignore touches."""
+        """SF-04: unreadable tasks.json -> neither settings.json nor .gitignore touched."""
         settings = self.put(".claude/settings.json", '{"model": "sonnet"}\n')
-        self.put(".vscode/tasks.json", "{ cassé")
+        self.put(".vscode/tasks.json", "{ broken")
         with self.assertRaises(fusion.FusionError):
             fusion.apply(self.tmp, ["node"])
         self.assertEqual(settings.read_text(encoding="utf-8"), '{"model": "sonnet"}\n')
@@ -202,7 +202,7 @@ class TolerantReadTest(helpers.TempDirCase):
         self.assertEqual(sorted(p.name for p in self.tmp.rglob("*") if p.is_file()), ["settings.json", "tasks.json"])
 
     def test_jsonc_parser_errors_and_strings(self):
-        for bad in ("{ cassé", '{"a": 1 /* ouvert', '{"a" 1}', "[1,, 2]", '{"a": 1} x'):
+        for bad in ("{ broken", '{"a": 1 /* ouvert', '{"a" 1}', "[1,, 2]", '{"a": 1} x'):
             with self.assertRaises(ValueError, msg=bad):
                 jsonc.loads(bad)
         doc = jsonc.loads('{"u": "a/*b*/c//d", "e": "\\"x\\""}')
@@ -210,8 +210,8 @@ class TolerantReadTest(helpers.TempDirCase):
         self.assertFalse(doc.loose)
 
     def test_sf04_non_utf8_file_named_and_all_or_nothing(self):
-        """SF-04 : un fichier existant non UTF-8 (UTF-16 d'un outil PowerShell) est
-        refuse par un message qui le nomme avec l'encodage attendu ; rien n'est ecrit."""
+        """SF-04: an existing non-UTF-8 file (UTF-16 from a PowerShell tool) is
+        refused by a message naming it with the expected encoding; nothing is written."""
         tasks = self.tmp / ".vscode" / "tasks.json"
         tasks.parent.mkdir(parents=True)
         tasks.write_bytes('{"version": "2.0.0"}\n'.encode("utf-16"))
@@ -241,8 +241,8 @@ class TolerantReadTest(helpers.TempDirCase):
         self.assertIn("a.md", str(ctx.exception))
 
     def test_sf01_end_of_line_comment_stays_with_its_element(self):
-        """SF-01 : un commentaire // apres le dernier element reste attache a cet
-        element ; resultat JSONC valide et seconde application identique."""
+        """SF-01: a // comment after the last item stays attached to that item;
+        valid JSONC result and identical second application."""
         cases = [
             ('{\n  "permissions": {\n    "deny": [\n      "Read(./x)", // keep\n    ]\n  }\n}\n',
              '      "Read(./x)", // keep\n      "Read(./factory-logs/**)",\n'),
@@ -262,10 +262,10 @@ class TolerantReadTest(helpers.TempDirCase):
             before = path.read_bytes()
             self.assertEqual(fusion.apply(self.tmp, [])[".claude/settings.json"], fusion.IDENTICAL)
             self.assertEqual(path.read_bytes(), before)
-        path = self.put(".claude/settings.json", '{\n  "model": "sonnet" // choix\n}\n')
+        path = self.put(".claude/settings.json", '{\n  "model": "sonnet" // choice\n}\n')
         fusion.apply(self.tmp, [])
         text = path.read_text(encoding="utf-8")
-        self.assertIn('  "model": "sonnet", // choix\n  "permissions": {', text)
+        self.assertIn('  "model": "sonnet", // choice\n  "permissions": {', text)
         self.assertEqual(jsonc.loads(text).value["model"], "sonnet")
 
 
@@ -275,9 +275,9 @@ class InstallFileTest(helpers.TempDirCase):
         dest = self.tmp / ".claude" / "agents" / "factory-builder.md"
         self.assertEqual(fusion.install_file(dest, "prompt\n"), fusion.CREATED)
         self.assertEqual(fusion.install_file(dest, "prompt\n"), fusion.IDENTICAL)
-        dest.write_text("prompt personnalisé\n", encoding="utf-8")
+        dest.write_text("customized prompt\n", encoding="utf-8")
         self.assertEqual(fusion.install_file(dest, "prompt\n"), fusion.KEPT)
-        self.assertEqual(dest.read_text(encoding="utf-8"), "prompt personnalisé\n")
+        self.assertEqual(dest.read_text(encoding="utf-8"), "customized prompt\n")
 
     def test_d1_copy_core_with_version_and_no_bytecode(self):
         result = fusion.copy_core(helpers.CORE, self.tmp)
@@ -297,12 +297,12 @@ class InstallFileTest(helpers.TempDirCase):
         self.assertEqual(json.loads(copied.stdout)["core_version"], CORE_VERSION)
 
     def test_d1_copied_core_run_without_B_leaves_no_bytecode(self):
-        """D1 : la copie versionnee du noyau, appelee sans -B ni PYTHONDONTWRITEBYTECODE
-        (gabarit factory-run), ne cree aucun __pycache__ dans le depot."""
+        """D1: the versioned copy of the core, called without -B or PYTHONDONTWRITEBYTECODE
+        (factory-run template), creates no __pycache__ in the repository."""
         helpers.init_repo(self.tmp)
         fusion.copy_core(helpers.CORE, self.tmp)
         helpers.git(self.tmp, "add", "-A")
-        helpers.git(self.tmp, "commit", "-q", "-m", "noyau")
+        helpers.git(self.tmp, "commit", "-q", "-m", "core")
         env = {k: v for k, v in os.environ.items() if k != "PYTHONDONTWRITEBYTECODE"}
         res = subprocess.run([sys.executable, str(self.tmp / ".claude" / "harness" / "harness.py"), "version"],
                              cwd=str(self.tmp), capture_output=True, text=True, env=env, timeout=60)
@@ -311,13 +311,13 @@ class InstallFileTest(helpers.TempDirCase):
         self.assertEqual(list(self.tmp.rglob("__pycache__")), [])
 
     def test_d1_copy_core_never_mixes_two_versions(self):
-        """SF-04 / D1 : un noyau existant different n'est ni ecrase ni complete."""
+        """SF-04 / D1: a different existing core is neither overwritten nor completed."""
         fusion.copy_core(helpers.CORE, self.tmp)
         harness_dir = self.tmp / ".claude" / "harness"
         init = harness_dir / "hcore" / "__init__.py"
         old = init.read_text(encoding="utf-8").replace(CORE_VERSION, "0.9.0")
         init.write_text(old, encoding="utf-8")
-        (harness_dir / "hcore" / "shippr.py").unlink()   # fichier apparu dans la nouvelle version
+        (harness_dir / "hcore" / "shippr.py").unlink()   # file that appeared in the new version
         result = fusion.copy_core(helpers.CORE, self.tmp)
         self.assertFalse(result["copied"])
         self.assertEqual(result["blocked_by"], [".claude/harness/hcore/__init__.py"])
@@ -329,7 +329,7 @@ class InstallFileTest(helpers.TempDirCase):
 
 class CliTest(helpers.TempDirCase):
     def test_sf04_cli_apply_install_copy_core(self):
-        """SF-01 SF-04 : la CLI appelee par software-factory."""
+        """SF-01 SF-04: the CLI called by software-factory."""
         res = helpers.harness(["sf", "apply", "--root", ".", "--stacks", "node,python"], self.tmp)
         self.assertEqual(res.returncode, 0, res.stderr)
         self.assertEqual(json.loads(res.stdout)[".claude/settings.json"], fusion.CREATED)
@@ -338,7 +338,7 @@ class CliTest(helpers.TempDirCase):
         args = ["sf", "install", "--root", ".", "--dest", "ci/factory.sh", "--source", "-"]
         self.assertEqual(json.loads(helpers.harness(args, self.tmp, stdin="#!/usr/bin/env bash\n").stdout)["ci/factory.sh"],
                          fusion.CREATED)
-        self.assertEqual(json.loads(helpers.harness(args, self.tmp, stdin="autre\n").stdout)["ci/factory.sh"],
+        self.assertEqual(json.loads(helpers.harness(args, self.tmp, stdin="other\n").stdout)["ci/factory.sh"],
                          fusion.KEPT)
         res = helpers.harness(["sf", "copy-core", "--root", "."], self.tmp)
         self.assertEqual(json.loads(res.stdout)["core_version"], CORE_VERSION)

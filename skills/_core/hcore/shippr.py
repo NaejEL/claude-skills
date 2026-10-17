@@ -1,20 +1,20 @@
-# Boucle de revue de ship-pr : rondes, relecteurs, validateurs, registre.
+# ship-pr review loop: rounds, reviewers, validators, registry.
 #
-# - SP-01 / SP-02 : bornes --rounds et --themes (voir counters).
-# - SP-03 : bloc du relecteur ; sortie inexploitable = agent mort.
-# - SP-04 : bloc du validateur.
-# - SP-05 : theme mort -> une relance -> theme non couvert -> merge refuse ;
-#   pas de sortie anticipee sur son silence.
-# - SP-06 : validateur mort (deux fois) -> finding UNVALIDATED, ni poste ni corrige.
-# - SP-07 : dedoublonnage contre le registre et les candidats en cours,
-#   REJECTED compris, avant tout validateur.
-# - SP-08 : sortie de boucle par epuisement (zero CONFIRMED, tous les themes
-#   couverts) ou par plafond de rondes. Une ronde sans CONFIRMED dont un theme
-#   n'est pas couvert ne sort pas : ronde suivante (ou plafond). La reference
-#   du diff de la ronde suivante (SP-15) est HEAD avant le commit de correctif
-#   de la ronde, pour que ce commit soit relu.
-# - SP-09 : finding confirme non corrige consigne NOT_FIXED avec sa raison.
-# - SP-10 : compteurs bruts / confirmes / rejetes / dedoublonnes par ronde.
+# - SP-01 / SP-02: --rounds and --themes bounds (see counters).
+# - SP-03: reviewer block; unusable output = dead agent.
+# - SP-04: validator block.
+# - SP-05: dead theme -> one relaunch -> uncovered theme -> merge refused;
+#   no early exit on its silence.
+# - SP-06: validator dead (twice) -> finding UNVALIDATED, neither posted nor fixed.
+# - SP-07: deduplication against the registry and the pending candidates,
+#   REJECTED included, before any validator.
+# - SP-08: loop exit by exhaustion (zero CONFIRMED, all themes covered) or by
+#   the round cap. A round without CONFIRMED in which a theme is not covered
+#   does not exit: next round (or cap). The diff reference of the next round
+#   (SP-15) is HEAD before the round's fix commit, so that this commit is
+#   reviewed.
+# - SP-09: a confirmed finding not fixed is recorded NOT_FIXED with its reason.
+# - SP-10: raw / confirmed / rejected / deduplicated counters per round.
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ VALIDATOR = "validator"
 
 
 class LoopError(RuntimeError):
-    """Transition refusee : appel hors sequence ou etat incoherent."""
+    """Refused transition: out-of-sequence call or inconsistent state."""
 
 
 def new_state(target: str, rounds: int, themes: List[str]) -> Dict[str, Any]:
@@ -53,7 +53,7 @@ def _new_round() -> Dict[str, Any]:
 
 def _round(state: Dict[str, Any]) -> Dict[str, Any]:
     if state["exit"] is not None:
-        raise LoopError("boucle de revue deja sortie : %s" % state["exit"])
+        raise LoopError("review loop already exited: %s" % state["exit"])
     return state["rounds_data"][str(state["round"])]
 
 
@@ -61,17 +61,17 @@ def record_reviewer(state: Dict[str, Any], reg: registry_mod.Registry, theme: st
                     output: Optional[str], dead: bool) -> Tuple[Dict[str, Any], Dict[str, Any]]:
     rd = _round(state)
     if theme not in state["themes"]:
-        raise LoopError("theme inconnu : %r" % (theme,))
+        raise LoopError("unknown theme: %r" % (theme,))
     if rd["themes"].get(theme) in ("ok", "uncovered"):
-        raise LoopError("le theme %r a deja rendu son resultat pour cette ronde" % theme)
+        raise LoopError("theme %r already returned its result for this round" % theme)
     log = {"iteration": state["round"], "verdict": "DEAD", "produced": 0, "rejected": 0}
     findings: List[Dict[str, Any]] = []
-    reason = "agent mort"
+    reason = "dead agent"
     if not dead:
         try:
             findings = verdicts.parse_reviewer(output)
         except verdicts.UnusableOutput as exc:
-            dead, reason = True, "sortie inexploitable : %s" % exc
+            dead, reason = True, "unusable output: %s" % exc
     if dead:
         failures = rd["failures"].get(theme, 0)
         rd["failures"][theme] = failures + 1
@@ -80,7 +80,7 @@ def record_reviewer(state: Dict[str, Any], reg: registry_mod.Registry, theme: st
         rd["themes"][theme] = "uncovered"
         state["uncovered"].append({"round": state["round"], "theme": theme})
         return {"action": "uncovered", "theme": theme,
-                "reason": "theme non couvert apres une relance (%s) : merge refuse" % reason}, log
+                "reason": "theme not covered after one relaunch (%s): merge refused" % reason}, log
     rd["themes"][theme] = "ok"
     pending = {c["key"] for c in state["candidates"].values()}
     to_validate, duplicates = [], []
@@ -107,17 +107,17 @@ def record_validator(state: Dict[str, Any], reg: registry_mod.Registry, fid: str
     rd = _round(state)
     cand = state["candidates"].get(fid)
     if cand is None or cand["round"] != state["round"]:
-        raise LoopError("finding inconnu pour cette ronde : %r" % (fid,))
+        raise LoopError("unknown finding for this round: %r" % (fid,))
     if cand["status"] != "PENDING":
-        raise LoopError("finding %s deja tranche : %s" % (fid, cand["status"]))
+        raise LoopError("finding %s already decided: %s" % (fid, cand["status"]))
     log = {"iteration": state["round"], "verdict": "DEAD", "validated": 0, "rejected": 0}
     parsed = None
-    reason = "agent mort"
+    reason = "dead agent"
     if not dead:
         try:
             parsed = verdicts.parse_validator(output)
         except verdicts.UnusableOutput as exc:
-            dead, reason = True, "sortie inexploitable : %s" % exc
+            dead, reason = True, "unusable output: %s" % exc
     if dead:
         failures = cand["vfail"]
         cand["vfail"] = failures + 1
@@ -127,7 +127,7 @@ def record_validator(state: Dict[str, Any], reg: registry_mod.Registry, fid: str
         rd["unvalidated"] += 1
         reg.add(cand, "UNVALIDATED", round=state["round"], id=fid)
         return {"action": "unvalidated", "finding": fid,
-                "reason": "validateur mort deux fois : finding non valide, ni poste ni corrige"}, log
+                "reason": "validator died twice: finding not validated, neither posted nor fixed"}, log
     assert parsed is not None
     cand["status"] = parsed["verdict"]
     cand["reason"] = parsed["reason"]
@@ -148,14 +148,14 @@ def confirmed_of_round(state: Dict[str, Any]) -> List[Dict[str, Any]]:
 
 def set_outcome(state: Dict[str, Any], reg: registry_mod.Registry, fid: str, fixed: bool,
                 reason: Optional[str] = None, commit: Optional[str] = None) -> None:
-    """SP-09 : consigne FIXED (avec le commit) ou NOT_FIXED (avec la raison)."""
+    """SP-09: records FIXED (with the commit) or NOT_FIXED (with the reason)."""
     cand = state["candidates"].get(fid)
     if cand is None or cand["round"] != state["round"] or cand["status"] != "CONFIRMED":
-        raise LoopError("%s n'est pas un finding CONFIRMED de la ronde courante" % fid)
+        raise LoopError("%s is not a CONFIRMED finding of the current round" % fid)
     if cand["outcome"] is not None:
-        raise LoopError("%s est deja consigne : %s" % (fid, cand["outcome"]))
+        raise LoopError("%s is already recorded: %s" % (fid, cand["outcome"]))
     if not fixed and not (reason or "").strip():
-        raise LoopError("un finding non corrige exige sa raison : %s" % fid)
+        raise LoopError("a finding not fixed requires its reason: %s" % fid)
     cand["outcome"] = "FIXED" if fixed else "NOT_FIXED"
     cand["commit"] = commit
     cand["reason"] = reason if not fixed else cand["reason"]
@@ -164,26 +164,26 @@ def set_outcome(state: Dict[str, Any], reg: registry_mod.Registry, fid: str, fix
 
 
 def mark_pre_fix(state: Dict[str, Any], sha: str) -> None:
-    """SP-15 : HEAD juste avant le premier commit de correctif de la ronde."""
+    """SP-15: HEAD just before the round's first fix commit."""
     _round(state).setdefault("pre_fix_sha", sha)
 
 
 def end_round(state: Dict[str, Any], head_sha: Optional[str]) -> Dict[str, Any]:
-    """SP-08 : decide de la sortie de boucle a la fin de la ronde courante.
+    """SP-08: decides the loop exit at the end of the current round.
 
-    head_sha (HEAD courant) ne sert de reference que si la ronde n'a commite
-    aucun correctif : sinon la reference est le HEAD d'avant ce correctif."""
+    head_sha (current HEAD) is used as the reference only if the round
+    committed no fix: otherwise the reference is the HEAD before that fix."""
     rd = _round(state)
     missing = [t for t in state["themes"] if rd["themes"].get(t) not in ("ok", "uncovered")]
     if missing:
-        raise LoopError("theme(s) sans bloc exploitable ni relance epuisee : " + ", ".join(missing))
+        raise LoopError("theme(s) with neither a usable block nor an exhausted relaunch: " + ", ".join(missing))
     pending = [c["id"] for c in state["candidates"].values()
                if c["round"] == state["round"] and c["status"] == "PENDING"]
     if pending:
-        raise LoopError("finding(s) sans validation : " + ", ".join(pending))
+        raise LoopError("finding(s) without validation: " + ", ".join(pending))
     open_ = [c["id"] for c in confirmed_of_round(state) if c["outcome"] is None]
     if open_:
-        raise LoopError("finding(s) CONFIRMED sans correctif ni raison consignee : " + ", ".join(open_))
+        raise LoopError("CONFIRMED finding(s) with neither a fix nor a recorded reason: " + ", ".join(open_))
     uncovered_now = [u["theme"] for u in state["uncovered"] if u["round"] == state["round"]]
     counts = round_counts(rd, state["round"])
     if rd["confirmed"] == 0 and not uncovered_now:
@@ -201,7 +201,7 @@ def end_round(state: Dict[str, Any], head_sha: Optional[str]) -> Dict[str, Any]:
 
 
 def round_counts(rd: Dict[str, Any], number: int) -> Dict[str, int]:
-    """SP-10 : compteurs d'une ronde."""
+    """SP-10: counters of a round."""
     return {"round": number, "raw": rd["raw"], "confirmed": rd["confirmed"],
             "rejected": rd["rejected"], "duplicates": rd["duplicates"],
             "unvalidated": rd["unvalidated"]}
@@ -223,11 +223,11 @@ def summary(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def merge_refusal(state: Dict[str, Any]) -> Optional[str]:
-    """SP-05 : raison de refus du merge, ou None si la gate peut etre proposee."""
+    """SP-05: reason for refusing the merge, or None if the gate can be offered."""
     if state["exit"] is None:
-        return "merge refuse : la boucle de revue n'est pas terminee"
+        return "merge refused: the review loop is not finished"
     if state["uncovered"]:
-        angles = ", ".join("%s (ronde %d)" % (u["theme"], u["round"]) for u in state["uncovered"])
-        return ("merge refuse : theme(s) non couvert(s), angle non relu : %s. "
-                "Relancer /ship-pr pour obtenir une revue complete." % angles)
+        angles = ", ".join("%s (round %d)" % (u["theme"], u["round"]) for u in state["uncovered"])
+        return ("merge refused: theme(s) not covered, angle not reviewed: %s. "
+                "Run /ship-pr again to get a complete review." % angles)
     return None

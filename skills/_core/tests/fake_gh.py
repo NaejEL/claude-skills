@@ -1,7 +1,7 @@
-# gh simule pour les rejeux de ship-pr (pas un module de test).
+# Simulated gh for the ship-pr replays (not a test module).
 #
-# Etat persiste dans le fichier JSON designe par HCORE_FAKE_GH_STATE. Les
-# commandes git reelles s'executent dans le dossier courant (depot jetable).
+# State persisted in the JSON file named by HCORE_FAKE_GH_STATE. The real git
+# commands run in the current directory (throwaway repository).
 
 import json
 import os
@@ -77,7 +77,7 @@ def main(argv):
                                   "commit_id": f.get("commit_id")})
         out = json.dumps({"id": new_id})
     else:
-        sys.stderr.write("fake gh : commande non simulee %r\n" % (argv,))
+        sys.stderr.write("fake gh: command not simulated %r\n" % (argv,))
         code = 2
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(state, fh)

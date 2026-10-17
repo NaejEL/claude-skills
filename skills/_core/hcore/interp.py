@@ -1,11 +1,11 @@
-# Detection de l'interpreteur Python (D5).
+# Python interpreter detection (D5).
 #
-# Une seule regle, celle que les SKILL.md appliquent en Bash : candidats
-# essayes dans l'ordre python -> python3 -> py -3, chacun resolu par le PATH
-# (comme `command -v` : ni le dossier courant, ni le dossier de l'interpreteur
-# qui execute ce module), lance avec un delai d'expiration (le stub du
-# Microsoft Store ne repond pas) et une verification de version (plancher
-# 3.9). Le premier candidat valide gagne.
+# A single rule, the one the SKILL.md files apply in Bash: candidates tried
+# in the order python -> python3 -> py -3, each resolved through the PATH
+# (like `command -v`: neither the current directory nor the directory of the
+# interpreter running this module), launched with a timeout (the Microsoft
+# Store stub does not answer) and a version check (floor 3.9). The first
+# valid candidate wins.
 
 from __future__ import annotations
 
@@ -21,11 +21,11 @@ PROBE = "import sys; print('%d.%d.%d' % sys.version_info[:3])"
 
 
 def resolve(name: str, path: Optional[str] = None) -> Optional[str]:
-    """Chemin de l'executable `name` trouve dans le PATH, ou None.
+    """Path of the executable `name` found in the PATH, or None.
 
-    Equivalent de `command -v` : seul le PATH est parcouru, dans l'ordre (sous
-    Windows, avec les extensions de PATHEXT). Un nom contenant un separateur
-    de dossier est pris tel quel."""
+    Equivalent of `command -v`: only the PATH is searched, in order (on
+    Windows, with the PATHEXT extensions). A name containing a directory
+    separator is taken as is."""
     if os.path.dirname(name):
         return name if os.path.isfile(name) and os.access(name, os.X_OK) else None
     dirs = (os.environ.get("PATH", "") if path is None else path).split(os.pathsep)
@@ -44,7 +44,7 @@ def resolve(name: str, path: Optional[str] = None) -> Optional[str]:
 
 
 def probe(cmd: Sequence[str], timeout: float = TIMEOUT) -> Optional[tuple]:
-    """Version du candidat, ou None s'il est absent, muet ou en erreur."""
+    """Version of the candidate, or None if it is absent, silent or failing."""
     if not cmd:
         return None
     exe = resolve(cmd[0])
@@ -68,7 +68,7 @@ def probe(cmd: Sequence[str], timeout: float = TIMEOUT) -> Optional[tuple]:
 
 def detect(candidates: Optional[Sequence[Sequence[str]]] = None, timeout: float = TIMEOUT,
            floor: tuple = FLOOR) -> Optional[Dict[str, object]]:
-    """Premier candidat qui repond avant le delai avec une version >= floor."""
+    """First candidate that answers before the timeout with a version >= floor."""
     tried = []
     for cmd in (candidates if candidates is not None else CANDIDATES):
         version = probe(cmd, timeout)

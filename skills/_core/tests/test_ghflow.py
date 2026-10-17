@@ -1,5 +1,5 @@
-# Module hcore.ghflow : sequences gh/git de ship-pr avec gh et git simules
-# (SP-11 a SP-19), messages d'arret (CA7), exclusion git du journal (D3, CA11).
+# Module hcore.ghflow: ship-pr gh/git sequences with simulated gh and git
+# (SP-11 to SP-19), stop messages (CA7), git exclusion of the journal (D3, CA11).
 
 import contextlib
 import io
@@ -27,7 +27,7 @@ class PreflightTest(unittest.TestCase):
         run = green_preflight().on(("gh", "auth", "status"), code=1)
         with self.assertRaises(Stop) as ctx:
             ghflow.preflight_checks(run, "main")
-        self.assertIn("gh non authentifié", str(ctx.exception))
+        self.assertIn("gh not authenticated", str(ctx.exception))
         self.assertFalse(run.called("git"))
 
     def test_sp11_no_github_remote(self):
@@ -35,21 +35,21 @@ class PreflightTest(unittest.TestCase):
         run = green_preflight().on(("git", "remote", "get-url", "origin"), out="https://gitlab.com/x/y.git\n")
         with self.assertRaises(Stop) as ctx:
             ghflow.preflight_checks(run, "main")
-        self.assertIn("pas de remote GitHub", str(ctx.exception))
+        self.assertIn("no GitHub remote", str(ctx.exception))
 
     def test_sp11_already_on_target(self):
         """SP-11."""
         run = green_preflight().on(("git", "rev-parse", "--abbrev-ref", "HEAD"), out="main\n")
         with self.assertRaises(Stop) as ctx:
             ghflow.preflight_checks(run, "main")
-        self.assertIn("vous êtes déjà sur main", str(ctx.exception))
+        self.assertIn("you are already on main", str(ctx.exception))
 
     def test_sp11_target_missing_on_origin(self):
         """SP-11."""
         run = green_preflight().on(("git", "rev-parse", "--verify", "origin/main"), code=128)
         with self.assertRaises(Stop) as ctx:
             ghflow.preflight_checks(run, "main")
-        self.assertIn("la branche cible main n'existe pas sur origin", str(ctx.exception))
+        self.assertIn("the target branch main does not exist on origin", str(ctx.exception))
 
     def test_sp11_green_and_dirty_reported(self):
         """SP-11."""
@@ -107,10 +107,10 @@ class PullRequestTest(unittest.TestCase):
         self.assertIsNone(material["number"])
         self.assertEqual(material["log"], "abc fix\n")
         pr_view_state(run.on(("gh", "pr", "view", "--json", "number,url"), out='{"number": 7, "url": "u"}'))
-        result = ghflow.find_or_create_pr(run, st, "Titre", "Corps")
+        result = ghflow.find_or_create_pr(run, st, "Title", "Body")
         self.assertTrue(result["created"])
         self.assertEqual(run.called("gh", "pr", "create")[0],
-                         ["gh", "pr", "create", "--base", "main", "--title", "Titre", "--body", "Corps"])
+                         ["gh", "pr", "create", "--base", "main", "--title", "Title", "--body", "Body"])
 
     def test_sp14_conflict_detected(self):
         """SP-14."""
@@ -139,8 +139,8 @@ class RoundFlowTest(helpers.TempDirCase):
         self.assertIn(["git", "diff", "origin/main...HEAD", "--", "src/x.py"], run.calls)
 
     def test_sp15_reference_is_head_before_fix_commit_real_git(self):
-        """SP-15 : rejeu reel sur un depot jetable ; la ronde 2 relit le commit de
-        correctif de la ronde 1 (reference = HEAD d'avant ce commit)."""
+        """SP-15: real replay on a throwaway repository; round 2 reviews the fix
+        commit of round 1 (reference = HEAD before that commit)."""
         repo, bare = self.tmp / "repo", self.tmp / "origin.git"
         helpers.git(self.tmp, "init", "-q", "--bare", "-b", "main", str(bare))
         helpers.init_repo(repo)
@@ -154,14 +154,14 @@ class RoundFlowTest(helpers.TempDirCase):
         reviewed = helpers.git(repo, "rev-parse", "HEAD").strip()
         (repo / "src").mkdir()
         (repo / "src" / "x.py").write_text("x = 1\n", encoding="utf-8")
-        (repo / "jamais_signale.py").write_text("y = 2\n", encoding="utf-8")
+        (repo / "never_flagged.py").write_text("y = 2\n", encoding="utf-8")
         run = Runner(cwd=str(repo))
-        ghflow.commit_round(run, self.st, self.reg, "borne", [self.fid], {})
+        ghflow.commit_round(run, self.st, self.reg, "bound", [self.fid], {})
         result = shippr.end_round(self.st, helpers.git(repo, "rev-parse", "HEAD").strip())
         self.assertEqual(result["next_round"], 2)
         self.assertEqual(self.st["prev_round_sha"], reviewed)
         diff = ghflow.collect_diff(run, self.st)
-        self.assertIn("jamais_signale.py", diff)
+        self.assertIn("never_flagged.py", diff)
         self.assertIn("y = 2", diff)
 
     def test_sp16_inline_comment_uses_fresh_head(self):
@@ -193,7 +193,7 @@ class RoundFlowTest(helpers.TempDirCase):
         self.assertTrue(run.called("gh", "pr", "comment"))
 
     def test_sp16_non_422_error_stops_without_fallback(self):
-        """SP-16 : le repli n'existe que sur HTTP 422 ; toute autre erreur arrete."""
+        """SP-16: the fallback exists only on HTTP 422; any other error stops."""
         run = pr_view_state(helpers.FakeRunner()).on(("gh", "api"), code=1, err="HTTP 502: Bad Gateway")
         with self.assertRaises(Stop) as ctx:
             ghflow.post_comment(run, self.st, self.fid)
@@ -203,8 +203,8 @@ class RoundFlowTest(helpers.TempDirCase):
         self.assertIsNone(self.st["candidates"][self.fid]["comment_id"])
 
     def test_sp16_bare_422_elsewhere_in_error_does_not_trigger_fallback(self):
-        """SP-16 : seul « HTTP 422 » declenche le repli, pas un 422 dans un identifiant
-        ou un corps de reponse ; le vrai message de gh (« (HTTP 422) ») le declenche."""
+        """SP-16: only "HTTP 422" triggers the fallback, not a 422 in an identifier
+        or a response body; the real gh message ("(HTTP 422)") triggers it."""
         err = "HTTP 500: Internal Server Error (request 4220:1422AB, line 422)"
         run = pr_view_state(helpers.FakeRunner()).on(("gh", "api"), code=1, err=err)
         with self.assertRaises(Stop):
@@ -221,18 +221,18 @@ class RoundFlowTest(helpers.TempDirCase):
     def test_sp17_one_commit_per_round_never_amend_or_force(self):
         """SP-17."""
         run = helpers.FakeRunner().on(("git", "rev-parse", "HEAD"), out="c0ffee\n")
-        result = ghflow.commit_round(run, self.st, self.reg, "borne corrigee", [self.fid], {})
+        result = ghflow.commit_round(run, self.st, self.reg, "bound fixed", [self.fid], {})
         self.assertEqual(result["commit"], "c0ffee")
         self.assertEqual(run.called("git", "commit"),
-                         [["git", "commit", "-m", "fix(review): corrections round 1 — borne corrigee"]])
+                         [["git", "commit", "-m", "fix(review): round 1 fixes — bound fixed"]])
         flat = [a for call in run.calls for a in call]
         for forbidden in ("--amend", "--force", "-f", "--force-with-lease"):
             self.assertNotIn(forbidden, flat)
         self.assertEqual(self.reg.current(self.st["candidates"][self.fid]["key"]), "FIXED")
 
     def test_sp17_duplicate_id_refused_before_any_git_call(self):
-        """SP-17, SP-09 : un id consigne deux fois est refuse avant commit et push."""
-        for fixed, not_fixed in (([self.fid, self.fid], {}), ([self.fid], {self.fid: "faux positif"})):
+        """SP-17, SP-09: an id recorded twice is refused before commit and push."""
+        for fixed, not_fixed in (([self.fid, self.fid], {}), ([self.fid], {self.fid: "false positive"})):
             run = helpers.FakeRunner().on(("git", "rev-parse", "HEAD"), out="c0ffee\n")
             with self.assertRaises(Stop) as ctx:
                 ghflow.commit_round(run, self.st, self.reg, "fix", fixed, not_fixed)
@@ -251,14 +251,14 @@ class RoundFlowTest(helpers.TempDirCase):
                                       out=json.dumps(graph))
         result = ghflow.handle_threads(run, self.st)
         self.assertEqual(result, {"resolved": [self.fid], "left_open": []})
-        self.assertIn(["gh", "api", "repos/acme/toy/pulls/7/comments/99/replies", "-f", "body=Corrigé dans c0ffee."], run.calls)
+        self.assertIn(["gh", "api", "repos/acme/toy/pulls/7/comments/99/replies", "-f", "body=Fixed in c0ffee."], run.calls)
         self.assertIn("t=T1", run.calls[-1])
         self.assertEqual(ghflow.handle_threads(run, self.st), {"resolved": [], "left_open": []})
 
     def test_sp18_not_fixed_thread_left_open(self):
         """SP-18."""
         self.st["candidates"][self.fid]["comment_id"] = 99
-        ghflow.commit_round(helpers.FakeRunner(), self.st, self.reg, "", [], {self.fid: "hors perimetre"})
+        ghflow.commit_round(helpers.FakeRunner(), self.st, self.reg, "", [], {self.fid: "out of scope"})
         graph = {"data": {"repository": {"pullRequest": {"reviewThreads": {"nodes": []}}}}}
         run = helpers.FakeRunner().on(("gh", "api", "graphql"), out=json.dumps(graph))
         result = ghflow.handle_threads(run, self.st)
@@ -272,7 +272,7 @@ class RoundFlowTest(helpers.TempDirCase):
         run = helpers.FakeRunner()
         with self.assertRaises(Stop) as ctx:
             ghflow.merge(run, self.st, check_only=True)
-        self.assertIn("non couvert", str(ctx.exception))
+        self.assertIn("not covered", str(ctx.exception))
         with self.assertRaises(Stop):
             ghflow.merge(run, self.st, check_only=False)
         self.assertFalse(run.called("gh", "pr", "merge"))
@@ -307,22 +307,22 @@ class ExcludeTest(helpers.TempDirCase):
 
 
 class TestModeGuardTest(helpers.TempDirCase):
-    """HCORE_GH / HCORE_GIT : honores seulement avec HCORE_TEST_MODE=1, et signales."""
+    """HCORE_GH / HCORE_GIT: honoured only with HCORE_TEST_MODE=1, and reported."""
 
-    FAKE = json.dumps([sys.executable, "-c", "print('FAUX-GIT')"])
+    FAKE = json.dumps([sys.executable, "-c", "print('FAKE-GIT')"])
 
     def test_override_ignored_without_test_mode(self):
         env = {k: v for k, v in os.environ.items() if k != "HCORE_TEST_MODE"}
         env["HCORE_GIT"] = self.FAKE
         with mock.patch.dict(os.environ, env, clear=True), contextlib.redirect_stderr(io.StringIO()) as err:
             res = Runner()(["git", "--version"])
-        self.assertNotIn("FAUX-GIT", res.out)
+        self.assertNotIn("FAKE-GIT", res.out)
         self.assertIn("git version", res.out)
-        self.assertIn("HCORE_GIT ignore", err.getvalue())
+        self.assertIn("HCORE_GIT ignored", err.getvalue())
 
     def test_override_honoured_and_signalled_in_test_mode(self):
         with mock.patch.dict(os.environ, {"HCORE_GIT": self.FAKE, "HCORE_TEST_MODE": "1"}):
-            self.assertEqual(Runner()(["git", "--version"]).out.strip(), "FAUX-GIT")
+            self.assertEqual(Runner()(["git", "--version"]).out.strip(), "FAKE-GIT")
         res = helpers.harness(["version"], self.tmp, env={"HCORE_GIT": self.FAKE, "HCORE_TEST_MODE": "1"})
         self.assertEqual(json.loads(res.stdout)["hcore_test_mode"]["overrides"]["git"][0], sys.executable)
         res = helpers.harness(["version"], self.tmp, env={"HCORE_GIT": self.FAKE, "HCORE_TEST_MODE": "0"})

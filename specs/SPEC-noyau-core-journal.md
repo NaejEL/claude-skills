@@ -167,7 +167,7 @@ Seuls `software-factory` (et le `factory-run` qu'il génère) et `ship-pr` sont 
   - `grep -F "Ne jamais approuver par épuisement" skills/software-factory/SKILL.md` ;
   - `grep -F "Jamais d'amend, jamais de force-push" skills/ship-pr/SKILL.md` ;
   - `grep -F "Jamais de merge sans validation explicite" skills/ship-pr/SKILL.md`.
-- [ ] **CA7 — Messages d'arrêt conservés.** Chaque message d'arrêt de `ship-pr/SKILL.md:33-36` à `BASE` (« gh non authentifié », « pas de remote GitHub », « vous êtes déjà sur », « n'existe pas sur origin ») est trouvé par `grep -rF` dans `skills/ship-pr/` ou `skills/_core/`.
+- [ ] **CA7 — Messages d'arrêt conservés.** Chaque message d'arrêt de `ship-pr/SKILL.md:33-36` à `BASE`, traduit en anglais le 2026-10-17 (« gh not authenticated », « no GitHub remote », « you are already on », « does not exist on origin »), est trouvé par `grep -rF` dans `skills/ship-pr/` ou `skills/_core/`.
 - [ ] **CA8 — Frontmatter valide.**
   - La première ligne des deux `SKILL.md` est `---`.
   - La deuxième est `name: ship-pr`, respectivement `name: software-factory`.

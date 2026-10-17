@@ -1,4 +1,4 @@
-# Module hcore.journal : schema du journal et nom de fichier (CA9, CA10).
+# Module hcore.journal: journal schema and file name (CA9, CA10).
 
 import json
 import unittest
@@ -39,8 +39,8 @@ class ValidateTest(helpers.TempDirCase):
         self.assertTrue(any("verdict" in e for e in errors))
 
     def test_ca9_non_json_line_rejected(self):
-        errors = journal.validate_file(self.write([json.dumps(GOOD), "pas du json"]))
-        self.assertTrue(any("JSON invalide" in e for e in errors))
+        errors = journal.validate_file(self.write([json.dumps(GOOD), "not json"]))
+        self.assertTrue(any("invalid JSON" in e for e in errors))
 
     def test_ca9_field_types(self):
         cases = [dict(GOOD, findings={"produced": -1, "validated": 0, "rejected": 0}),
@@ -76,8 +76,8 @@ class RunFilesTest(helpers.TempDirCase):
         self.assertTrue(runs.registry_path(run).name.endswith(".registry.jsonl"))
 
     def test_sanitize_replaces_every_invalid_field_and_reports_it(self):
-        """Aucun champ invalide ne bloque : valeur de repli conforme, chaque repli signale."""
-        bad = {"agent": "", "model": " ", "duration_ms": -1, "iteration": "deux", "verdict": None,
+        """No invalid field blocks: conforming fallback value, every fallback reported."""
+        bad = {"agent": "", "model": " ", "duration_ms": -1, "iteration": "two", "verdict": None,
                "findings": {"produced": -2, "validated": "x", "rejected": True}, "tokens": 1.5, "theme": "t"}
         fixed, warnings = journal.sanitize(bad)
         self.assertEqual(journal.validate_record(fixed), [])
@@ -91,17 +91,17 @@ class RunFilesTest(helpers.TempDirCase):
                          {"produced": 0, "validated": 0, "rejected": 0})
 
     def test_cli_invalid_caller_fields_never_stop_the_skill(self):
-        """Chaque champ fourni par l'appelant (--model, --duration-ms, --tokens) :
-        une valeur invalide est journalisee en repli et signalee, exit 0."""
+        """Every field supplied by the caller (--model, --duration-ms, --tokens):
+        an invalid value is logged as a fallback and reported, exit 0."""
         start = json.loads(helpers.harness(["factory-run", "start"], self.tmp).stdout)
         run = start["run"]
         cases = [("--model", ""), ("--model", " "), ("--duration-ms", "abc"), ("--duration-ms", "-3"),
-                 ("--tokens", "beaucoup"), ("--tokens", "-1"), ("--tokens", "1.5")]
+                 ("--tokens", "lots"), ("--tokens", "-1"), ("--tokens", "1.5")]
         for option, value in cases:
             args = ["factory-run", "record", "--run", run, "--agent", "factory-planner",
                     "--model", "inherit", "--duration-ms", "10", option, value]
             res = helpers.harness(args, self.tmp)
-            self.assertEqual(res.returncode, 0, "%s %r : %s" % (option, value, res.stderr))
+            self.assertEqual(res.returncode, 0, "%s %r: %s" % (option, value, res.stderr))
             warnings = " ".join(json.loads(res.stdout)["journal_warnings"])
             self.assertIn(option.lstrip("-"), warnings, (option, value))
         lines = journal.read(self.tmp / run)

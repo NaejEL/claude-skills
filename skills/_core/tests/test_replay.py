@@ -1,10 +1,11 @@
-# Rejeux scriptes (D4) : la sequence d'appels au noyau prescrite par chaque
-# SKILL.md, jouee par la CLI dans un dossier temporaire.
+# Scripted replays (D4): the sequence of core calls prescribed by each
+# SKILL.md, played through the CLI in a temporary directory.
 #
-# - CA15 : factory-run (FR-01 a FR-04) : Builder, Verifier CHANGES_REQUESTED,
-#   Builder, Verifier mort, Verifier APPROVED.
-# - CA16 : ship-pr (SP-01 a SP-19) avec un gh simule et un depot git jetable :
-#   themes, validateur, sortie par epuisement, REJECTED resoumis en ronde 2.
+# - CA15: factory-run (FR-01 to FR-04): Builder, Verifier CHANGES_REQUESTED,
+#   Builder, dead Verifier, Verifier APPROVED.
+# - CA16: ship-pr (SP-01 to SP-19) with a simulated gh and a throwaway git
+#   repository: themes, validator, exit by exhaustion, REJECTED resubmitted
+#   in round 2.
 
 import json
 import os
@@ -17,9 +18,9 @@ import unittest
 from pathlib import Path
 
 import helpers
-from hcore import journal
+from hcore import fusion, journal
 
-APPROVED_SPEC = "# SPEC\n\nStatut : APPROUVEE\n\nCorps.\n"
+APPROVED_SPEC = "# SPEC\n\nStatut : APPROUVEE\n\nBody.\n"
 
 
 def check_ok(test, res):
@@ -29,7 +30,7 @@ def check_ok(test, res):
 
 class FactoryRunReplayTest(helpers.TempDirCase):
     def test_ca15_factory_run_sequence(self):
-        """FR-01 FR-02 FR-03 FR-04 : rejeu complet et journal conforme."""
+        """FR-01 FR-02 FR-03 FR-04: full replay and conforming journal."""
         project = self.tmp / "toy"
         if helpers.HAS_FIXTURES:
             shutil.copytree(str(helpers.FIXTURES / "toy-project"), str(project))
@@ -40,7 +41,7 @@ class FactoryRunReplayTest(helpers.TempDirCase):
             spec = "specs/SPEC-x.md"
         h = lambda *a, **kw: helpers.harness(list(a), project, **kw)  # noqa: E731
 
-        # $ARGUMENTS est ecrit dans un fichier par l'outil Write, jamais passe au shell.
+        # $ARGUMENTS is written to a file by the Write tool, never passed to the shell.
         args_file = project / ".claude" / "runs" / "factory-run-arguments.txt"
         args_file.parent.mkdir(parents=True)
         args_file.write_text(spec + "\n", encoding="utf-8")
@@ -51,7 +52,7 @@ class FactoryRunReplayTest(helpers.TempDirCase):
 
         d = check_ok(self, h(*common, "--agent", "factory-builder", "--duration-ms", "1500", "--tokens", "900"))
         self.assertEqual(d["action"], "verify")
-        # La sortie du Verifier est ecrite par l'outil Write sous .claude/runs/, jamais via le shell.
+        # The Verifier output is written by the Write tool under .claude/runs/, never through the shell.
         cr = helpers.verifier_block("CHANGES_REQUESTED", False,
                                     [{"file": "src/sum.js", "severity": "major", "description": helpers.TRAP}])
         out = helpers.write_output(project, "verifier-1.md", cr)
@@ -87,9 +88,9 @@ class FactoryRunReplayTest(helpers.TempDirCase):
         self.assertNotEqual(res.returncode, 0)
 
     def test_fr01_free_text_need_never_goes_through_shell(self):
-        """FR-01 : un besoin contenant guillemets, $ et backtick est lu depuis
-        un fichier ; il mene a la phase Plan sans erreur."""
-        need = 'Exporter "tout" en CSV : `date` et $(whoami) ; puis ${HOME}\nligne 2'
+        """FR-01: a need containing quotes, $ and backtick is read from a file;
+        it leads to the Plan phase without error."""
+        need = 'Export "everything" as CSV: `date` and $(whoami); then ${HOME}\nline 2'
         args_file = self.tmp / "arguments.txt"
         args_file.write_text(need, encoding="utf-8")
         start = check_ok(self, helpers.harness(["factory-run", "start", "--arguments-file", str(args_file)],
@@ -127,15 +128,15 @@ class ShipPrReplayTest(helpers.TempDirCase):
         return json.loads((self.tmp / "gh-state.json").read_text(encoding="utf-8"))
 
     def test_ca16_ship_pr_sequence(self):
-        """SP-01 a SP-19 : rejeu complet, journal, registre, merge."""
+        """SP-01 to SP-19: full replay, journal, registry, merge."""
         bad = self.h("ship-pr", "start", "--target", "main", "--rounds", "0")
         self.assertEqual(bad.returncode, 2)
         self.assertIn("--rounds", bad.stderr)
         on_target = helpers.harness(["ship-pr", "start", "--target", "feature"], self.work, env=self.env)
         self.assertEqual(on_target.returncode, 1)
-        self.assertIn("vous êtes déjà sur feature", on_target.stderr)
+        self.assertIn("you are already on feature", on_target.stderr)
 
-        start = check_ok(self, self.h("ship-pr", "start", "--target", "main", "--themes", "logique;regressions;coherence"))
+        start = check_ok(self, self.h("ship-pr", "start", "--target", "main", "--themes", "logic;regressions;consistency"))
         run, themes = start["run"], start["themes"]
         self.assertEqual((start["rounds"], start["dirty"], start["owner_repo"]), (3, False, "acme/toy"))
         self.assertTrue(start["exclude_added"])
@@ -143,9 +144,9 @@ class ShipPrReplayTest(helpers.TempDirCase):
         material = check_ok(self, self.h("ship-pr", "pr", "--run", run))
         self.assertIsNone(material["number"])
         self.assertIn("sum", material["log"])
-        # Corps de PR et sorties d'agents : ecrits par l'outil Write sous .claude/runs/.
+        # PR body and agent outputs: written by the Write tool under .claude/runs/.
         body = helpers.write_output(self.work, "pr-body.md", helpers.TRAP)
-        pr = check_ok(self, self.h("ship-pr", "pr", "--run", run, "--title", "Somme", "--body-file", body))
+        pr = check_ok(self, self.h("ship-pr", "pr", "--run", run, "--title", "Sum", "--body-file", body))
         self.assertEqual((pr["number"], pr["created"], pr["conflicting"]), (7, True, False))
         self.assertEqual(self.gh_state()["prs"][-1]["body"], helpers.TRAP)
         self.assertIn("reduce", check_ok(self, self.h("ship-pr", "diff", "--run", run)))
@@ -160,24 +161,24 @@ class ShipPrReplayTest(helpers.TempDirCase):
             return check_ok(self, self.h("ship-pr", "validator", "--run", run, "--finding", fid, "--model", "haiku",
                                          "--duration-ms", "300", "--output", out))
 
-        real = helpers.finding(file="src/sum.js", line=2, title="reduce sans valeur initiale")
+        real = helpers.finding(file="src/sum.js", line=2, title="reduce without initial value")
         real["description"] = helpers.TRAP
-        fake = helpers.finding(file="src/sum.js", line=1, title="Nom de parametre trop court", severity="minor")
-        # Ronde 1
-        r1 = review("logique", [real])["to_validate"][0]
+        fake = helpers.finding(file="src/sum.js", line=1, title="Parameter name too short", severity="minor")
+        # Round 1
+        r1 = review("logic", [real])["to_validate"][0]
         self.assertEqual(r1["description"], helpers.TRAP)
         f1 = r1["id"]
         dead = check_ok(self, self.h("ship-pr", "reviewer", "--run", run, "--theme", "regressions",
                                      "--model", "haiku", "--duration-ms", "10", "--dead"))
         self.assertEqual(dead["action"], "relaunch")
         f2 = review("regressions", [fake])["to_validate"][0]["id"]
-        self.assertEqual(review("coherence", [])["action"], "none")
+        self.assertEqual(review("consistency", [])["action"], "none")
         self.assertEqual(validate(f1, "CONFIRMED")["action"], "post")
-        # Defaut de journalisation (ni duree ni 'begin', tokens invalides, modele vide) :
-        # signale, journalise une valeur de repli, jamais bloquant ; le verdict est pris en compte.
+        # Logging defect (neither duration nor 'begin', invalid tokens, empty model):
+        # reported, a fallback value is logged, never blocking; the verdict is taken into account.
         out = helpers.write_output(self.work, "validator.md", helpers.validator_block("REJECTED"))
         dropped = check_ok(self, self.h("ship-pr", "validator", "--run", run, "--finding", f2, "--model", " ",
-                                        "--tokens", "beaucoup", "--output", out))
+                                        "--tokens", "lots", "--output", out))
         self.assertEqual(dropped["action"], "drop")
         self.assertEqual(len(dropped["journal_warnings"]), 3)
         self.assertIn("overrides", dropped["hcore_test_mode"])
@@ -185,28 +186,28 @@ class ShipPrReplayTest(helpers.TempDirCase):
         self.assertEqual(posted["mode"], "inline")
         (self.work / "src" / "sum.js").write_text(
             "function sum(v) {\n    return v.reduce((a, b) => a + b, 0);\n}\n", encoding="utf-8")
-        # Le correctif touche aussi un fichier jamais signale : la ronde 2 doit le relire.
+        # The fix also touches a file never flagged: round 2 must review it.
         (self.work / "src" / "sum.test.js").write_text("assert(sum([]) === 0);\n", encoding="utf-8")
-        commit = check_ok(self, self.h("ship-pr", "commit", "--run", run, "--summary", "valeur initiale",
+        commit = check_ok(self, self.h("ship-pr", "commit", "--run", run, "--summary", "initial value",
                                        "--fixed", f1))
         self.assertEqual(helpers.git(self.work, "log", "-1", "--format=%s").strip(),
-                         "fix(review): corrections round 1 — valeur initiale")
+                         "fix(review): round 1 fixes — initial value")
         threads = check_ok(self, self.h("ship-pr", "threads", "--run", run))
         self.assertEqual(threads["resolved"], [f1])
-        self.assertIn("Corrigé dans %s." % commit["commit"], self.gh_state()["replies"][0]["body"])
+        self.assertIn("Fixed in %s." % commit["commit"], self.gh_state()["replies"][0]["body"])
         end1 = check_ok(self, self.h("ship-pr", "end-round", "--run", run))
         self.assertEqual(end1["next_round"], 2)
         self.assertEqual((end1["counts"]["raw"], end1["counts"]["confirmed"], end1["counts"]["rejected"]), (2, 1, 1))
-        # Ronde 2 (SP-15) : le commit de correctif est relu, fichiers non signales compris.
+        # Round 2 (SP-15): the fix commit is reviewed, unflagged files included.
         diff2 = check_ok(self, self.h("ship-pr", "diff", "--run", run))
         self.assertIn("src/sum.test.js", diff2)
         self.assertIn("a + b, 0);", diff2)
-        # Le finding REJECTED est resoumis
-        again = review("logique", [fake])
+        # The REJECTED finding is resubmitted
+        again = review("logic", [fake])
         self.assertEqual(again["to_validate"], [])
         self.assertEqual(again["duplicates"][0]["previous"], "REJECTED")
         review("regressions", [])
-        review("coherence", [])
+        review("consistency", [])
         end2 = check_ok(self, self.h("ship-pr", "end-round", "--run", run))
         self.assertEqual(end2["exit"], "exhaustion")
         summary = check_ok(self, self.h("ship-pr", "merge", "--run", run, "--check"))
@@ -241,10 +242,10 @@ STDIN_OPTION = re.compile(r"--(?:output|source|body-file|content)\s+-(?![\w-])")
 
 
 class UntrustedContentTest(helpers.TempDirCase):
-    @unittest.skipUnless(all(p.is_file() for p in SKILL_FILES), "SKILL.md absents (copie du noyau dans un projet)")
+    @unittest.skipUnless(all(p.is_file() for p in SKILL_FILES), "SKILL.md files absent (core copied into a project)")
     def test_skills_never_pipe_untrusted_content_through_stdin(self):
-        """SF-04 FR-01 SP-13 : aucun contenu non fiable (agent, skill, script CI, sortie
-        d'agent, corps de PR) n'est passe au noyau par stdin depuis une commande shell."""
+        """SF-04 FR-01 SP-13: no untrusted content (agent, skill, CI script, agent
+        output, PR body) is passed to the core through stdin from a shell command."""
         for path in SKILL_FILES:
             text = path.read_text(encoding="utf-8")
             self.assertEqual(STDIN_OPTION.findall(text), [], path)
@@ -252,26 +253,26 @@ class UntrustedContentTest(helpers.TempDirCase):
             self.assertIn(".claude/runs/", text, path)
 
     def test_sf04_generated_file_transits_by_file_unchanged(self):
-        """SF-04 : un agent ou script contenant $ARGUMENTS, $1, $(date), backticks et
-        apostrophes est installe octet pour octet depuis le fichier ecrit par Write."""
+        """SF-04: an agent or script containing $ARGUMENTS, $1, $(date), backticks and
+        apostrophes is installed byte for byte from the file written by Write."""
         src = helpers.write_output(self.tmp, "factory-builder.md", helpers.TRAP)
         res = helpers.harness(["sf", "install", "--dest", ".claude/agents/factory-builder.md", "--source", src],
                               self.tmp)
-        self.assertEqual(json.loads(res.stdout)[".claude/agents/factory-builder.md"], "créé", res.stderr)
+        self.assertEqual(json.loads(res.stdout)[".claude/agents/factory-builder.md"], fusion.CREATED, res.stderr)
         self.assertEqual((self.tmp / ".claude" / "agents" / "factory-builder.md").read_bytes(),
                          helpers.TRAP.encode("utf-8"))
 
 
 class TempCleanupTest(unittest.TestCase):
     def test_read_only_git_objects_are_removed(self):
-        """Les depots jetables (objets git en lecture seule) ne survivent pas au test."""
+        """Throwaway repositories (read-only git objects) do not survive the test."""
         tmp = Path(tempfile.mkdtemp(prefix="hcore-"))
         try:
             helpers.init_repo(tmp / "repo")
             (tmp / "repo" / "f.txt").write_text("x\n", encoding="utf-8")
             helpers.git(tmp / "repo", "add", "-A")
             helpers.git(tmp / "repo", "commit", "-q", "-m", "x")
-            locked = tmp / "verrou.txt"
+            locked = tmp / "locked.txt"
             locked.write_text("ro", encoding="utf-8")
             os.chmod(str(locked), stat.S_IREAD)
             helpers.remove_tree(tmp)

@@ -1,8 +1,9 @@
-# Decision de relance d'un agent mort (FR-04, SP-05, SP-06).
+# Relaunch decision for a dead agent (FR-04, SP-05, SP-06).
 #
-# Un agent mort (erreur d'API, connexion coupee) ou dont la sortie est
-# inexploitable est relance une fois. Au second echec : echec explicite. La
-# relance ne consomme ni iteration ni ronde : le compteur n'est pas touche ici.
+# An agent that died (API error, dropped connection) or whose output is
+# unusable is relaunched once. On the second failure: explicit failure. The
+# relaunch consumes neither an iteration nor a round: the counter is not
+# touched here.
 
 from __future__ import annotations
 
@@ -12,7 +13,7 @@ MAX_RELAUNCHES = 1
 
 
 def on_dead(previous_failures: int) -> str:
-    """Decision apres un echec, sachant le nombre d'echecs deja subis sur ce poste."""
+    """Decision after a failure, given the number of failures already suffered on this slot."""
     if previous_failures < 0:
-        raise ValueError("nombre d'echecs negatif")
+        raise ValueError("negative failure count")
     return RELAUNCH if previous_failures < MAX_RELAUNCHES else FAIL

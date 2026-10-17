@@ -1,10 +1,10 @@
-# Execution des commandes externes (gh, git) derriere une interface injectable,
-# pour que les tests puissent simuler gh et git.
+# Execution of external commands (gh, git) behind an injectable interface,
+# so that the tests can simulate gh and git.
 #
-# Point d'injection de test : HCORE_GH / HCORE_GIT (tableau JSON remplacant
-# l'executable) ne sont honores que si HCORE_TEST_MODE=1 est aussi pose. Hors
-# de ce mode, ils sont ignores (avertissement sur stderr) ; dans ce mode, la
-# CLI le signale dans chaque sortie JSON (cle "hcore_test_mode").
+# Test injection point: HCORE_GH / HCORE_GIT (JSON array replacing the
+# executable) are honoured only if HCORE_TEST_MODE=1 is also set. Outside
+# that mode they are ignored (warning on stderr); in that mode, the CLI
+# reports it in every JSON output ("hcore_test_mode" key).
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ def test_mode() -> bool:
 
 
 def overrides(warn: bool = True) -> Dict[str, List[str]]:
-    """Remplacements actifs de gh/git (vide hors du mode test)."""
+    """Active gh/git replacements (empty outside test mode)."""
     active: Dict[str, List[str]] = {}
     for name in TOOLS:
         raw = os.environ.get("HCORE_" + name.upper())
@@ -43,7 +43,7 @@ def overrides(warn: bool = True) -> Dict[str, List[str]]:
             continue
         if not test_mode():
             if warn:
-                sys.stderr.write("AVERTISSEMENT : HCORE_%s ignore (%s=1 absent)\n" % (name.upper(), TEST_MODE_VAR))
+                sys.stderr.write("WARNING: HCORE_%s ignored (%s=1 not set)\n" % (name.upper(), TEST_MODE_VAR))
             continue
         try:
             value = json.loads(raw)
@@ -55,7 +55,7 @@ def overrides(warn: bool = True) -> Dict[str, List[str]]:
 
 
 class Runner:
-    """Lance une commande dans un dossier donne et rend un Result."""
+    """Runs a command in a given directory and returns a Result."""
 
     def __init__(self, cwd: Optional[str] = None, timeout: Optional[float] = None):
         self.cwd = cwd
@@ -79,5 +79,5 @@ class Runner:
         except FileNotFoundError as exc:
             return Result(127, "", str(exc))
         except subprocess.TimeoutExpired:
-            return Result(124, "", "delai depasse : " + " ".join(args))
+            return Result(124, "", "timed out: " + " ".join(args))
         return Result(proc.returncode, proc.stdout or "", proc.stderr or "")

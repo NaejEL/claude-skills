@@ -1,10 +1,10 @@
-# Compteurs d'iterations et de rondes, et leurs bornes.
+# Iteration and round counters, and their bounds.
 #
-# - FR-03 : factory-run, 3 iterations Build/Verify au plus.
-# - SP-01 : ship-pr --rounds N, borne dure min(N, 3), defaut 3 ; N <= 0 ou non
-#   entier -> erreur explicite (D8).
-# - SP-02 : ship-pr --themes "a;b;c", separateur ';', 4 au plus, 3 par defaut ;
-#   liste vide ou plus de 4 entrees -> erreur explicite (D8).
+# - FR-03: factory-run, at most 3 Build/Verify iterations.
+# - SP-01: ship-pr --rounds N, hard cap min(N, 3), default 3; N <= 0 or not an
+#   integer -> explicit error (D8).
+# - SP-02: ship-pr --themes "a;b;c", separator ';', at most 4, 3 by default;
+#   empty list or more than 4 entries -> explicit error (D8).
 
 from __future__ import annotations
 
@@ -15,14 +15,14 @@ MAX_ROUNDS = 3
 DEFAULT_ROUNDS = 3
 MAX_THEMES = 4
 DEFAULT_THEMES = [
-    "logique et cas limites",
-    "régressions et contrats des sites d'appel",
-    "cohérence interne du diff",
+    "logic and edge cases",
+    "regressions and call-site contracts",
+    "internal consistency of the diff",
 ]
 
 
 class BoundsError(ValueError):
-    """Borne invalide passee en argument (D8)."""
+    """Invalid bound passed as an argument (D8)."""
 
 
 def parse_rounds(value: Optional[str]) -> int:
@@ -32,9 +32,9 @@ def parse_rounds(value: Optional[str]) -> int:
     try:
         n = int(text)
     except ValueError:
-        raise BoundsError("--rounds attend un entier strictement positif, recu : %r" % (value,))
+        raise BoundsError("--rounds expects a strictly positive integer, got: %r" % (value,))
     if n <= 0:
-        raise BoundsError("--rounds attend un entier strictement positif, recu : %d" % n)
+        raise BoundsError("--rounds expects a strictly positive integer, got: %d" % n)
     return min(n, MAX_ROUNDS)
 
 
@@ -43,14 +43,14 @@ def parse_themes(value: Optional[str]) -> List[str]:
         return list(DEFAULT_THEMES)
     themes = [t.strip() for t in str(value).split(";") if t.strip()]
     if not themes:
-        raise BoundsError("--themes est vide : au moins un theme est requis")
+        raise BoundsError("--themes is empty: at least one theme is required")
     if len(themes) > MAX_THEMES:
-        raise BoundsError("--themes accepte %d themes au plus, recu : %d" % (MAX_THEMES, len(themes)))
+        raise BoundsError("--themes accepts at most %d themes, got: %d" % (MAX_THEMES, len(themes)))
     if len(set(themes)) != len(themes):
-        raise BoundsError("--themes contient un theme en double")
+        raise BoundsError("--themes contains a duplicate theme")
     return themes
 
 
 def cap_reached(current: int, cap: int) -> bool:
-    """Vrai quand le compteur courant a atteint le plafond."""
+    """True when the current counter has reached the cap."""
     return current >= cap

@@ -1,4 +1,4 @@
-# Module hcore.models : lecture de models.json et de --models (D6, non branche).
+# Module hcore.models: reading of models.json and --models (D6, not wired).
 
 import json
 import unittest
@@ -25,7 +25,7 @@ class ModelsTest(helpers.TempDirCase):
         with self.assertRaises(ModelsError):
             models.parse_override("builder=gpt", ROLES)
         with self.assertRaises(ModelsError):
-            models.parse_override("chef=opus", ROLES)
+            models.parse_override("boss=opus", ROLES)
         with self.assertRaises(ModelsError):
             models.parse_override("builder", ROLES)
         path = self.tmp / "models.json"
@@ -37,8 +37,8 @@ class ModelsTest(helpers.TempDirCase):
         self.assertEqual(models.check_model("claude-opus-5-5"), "claude-opus-5-5")
 
     def test_split_arguments(self):
-        rest, value = models.split_arguments('"ma question" --models "math=fable;builder=sonnet"')
-        self.assertEqual(rest, "ma question")
+        rest, value = models.split_arguments('"my question" --models "math=fable;builder=sonnet"')
+        self.assertEqual(rest, "my question")
         self.assertEqual(value, "math=fable;builder=sonnet")
         self.assertEqual(models.split_arguments("x"), ("x", None))
 

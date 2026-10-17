@@ -1,10 +1,10 @@
-# hcore - noyau deterministe des skills claude-skills.
+# hcore - deterministic core of the claude-skills skills.
 #
-# Bibliotheque standard Python uniquement, compatible 3.9. Ce paquet porte les
-# regles deterministes sorties des SKILL.md (parsing des blocs JSON, compteurs,
-# registre, journal de cycle, relance d'un agent mort, fusions de fichiers,
-# sequences gh/git de ship-pr). Les prompts ne gardent que le jugement.
+# Python standard library only, 3.9 compatible. This package holds the
+# deterministic rules taken out of the SKILL.md files (parsing of JSON blocks,
+# counters, registry, cycle journal, relaunch of a dead agent, file merges,
+# ship-pr gh/git sequences). The prompts keep only the judgment.
 #
-# Point d'entree unique : harness.py (CLI), a cote de ce paquet.
+# Single entry point: harness.py (CLI), next to this package.
 
 CORE_VERSION = "1.0.0"

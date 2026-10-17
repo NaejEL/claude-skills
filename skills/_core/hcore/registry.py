@@ -1,12 +1,12 @@
-# Registre cumulatif des findings de ship-pr (SP-07, SP-09, D2).
+# Cumulative registry of ship-pr findings (SP-07, SP-09, D2).
 #
-# Fichier .claude/runs/ship-pr-<horodatage>.registry.jsonl, une ligne JSON par
-# evenement de finding, cles file/line/title/verdict. Le dernier evenement d'une
-# cle donne son statut courant. Dedoublonnage deterministe sur file + titre
-# normalise, tous statuts compris (un finding REJECTED ne ressuscite pas).
-# La dedup semantique (meme sujet, autre titre) reste au jugement du prompt.
-# L'ajout est idempotent : un evenement identique au dernier evenement de sa
-# cle n'est pas reecrit (une relance apres interruption ne doublonne pas).
+# File .claude/runs/ship-pr-<timestamp>.registry.jsonl, one JSON line per
+# finding event, keys file/line/title/verdict. The last event of a key gives
+# its current status. Deterministic deduplication on file + normalized title,
+# all statuses included (a REJECTED finding does not come back to life).
+# Semantic dedup (same subject, other title) is left to the prompt's judgment.
+# Adding is idempotent: an event identical to the last event of its key is
+# not rewritten (a relaunch after an interruption does not duplicate).
 
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ class Registry:
 
     def add(self, finding: Dict[str, Any], verdict: str, **extra: Any) -> Dict[str, Any]:
         if verdict not in STATUSES:
-            raise ValueError("statut de registre inconnu : %r" % (verdict,))
+            raise ValueError("unknown registry status: %r" % (verdict,))
         key = finding_key(finding["file"], finding["title"])
         entry: Dict[str, Any] = {
             "key": key,

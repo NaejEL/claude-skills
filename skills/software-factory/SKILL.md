@@ -83,7 +83,7 @@ Un seul appel fusionne les fichiers des phases 5 et 6 et rend l'état de chacun 
 
 ## Phase 6 — Tâches VS Code `.vscode/tasks.json`
 
-Fusion SF-02 : version `2.0.0`, input `factorySpec` (« Chemin de la spec approuvée (specs/SPEC-*.md) ») et trois tâches : **« Factory: CI run »** (`./ci/factory.sh ${input:factorySpec}`, variante `windows` en `pwsh -File ci/factory.ps1`), **« Factory: CI run (YOLO) »** (`--yolo` / `-Yolo`), **« Factory: nouvelle spec (session) »** (rappel `Ouvrir Claude Code et taper : /factory-run "<votre besoin>"`) ; tâches et inputs existants préservés, rien de dupliqué.
+Fusion SF-02 : version `2.0.0`, input `factorySpec` (« Path of the approved spec (specs/SPEC-*.md) ») et trois tâches : **« Factory: CI run »** (`./ci/factory.sh ${input:factorySpec}`, variante `windows` en `pwsh -File ci/factory.ps1`), **« Factory: CI run (YOLO) »** (`--yolo` / `-Yolo`), **« Factory: nouvelle spec (session) »** (rappel `Open Claude Code and type: /factory-run "<your need>"`) ; tâches et inputs existants préservés, rien de dupliqué.
 
 ## Phase 6b — Base de connaissance du dépôt (optionnelle)
 

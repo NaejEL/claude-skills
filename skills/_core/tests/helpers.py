@@ -1,4 +1,4 @@
-# Outils partages des tests du noyau (pas un module de test).
+# Shared tools of the core tests (not a test module).
 
 from __future__ import annotations
 
@@ -21,20 +21,20 @@ from hcore.proc import Result  # noqa: E402
 
 HARNESS = CORE / "harness.py"
 TESTS = Path(__file__).resolve().parent
-# Fixtures du depot (absentes quand le noyau est copie dans un projet).
+# Repository fixtures (absent when the core is copied into a project).
 FIXTURES = CORE.parent.parent / "tests" / "fixtures"
 HAS_FIXTURES = (FIXTURES / "merge-input").is_dir()
-SKIP_FIXTURES = "fixtures du depot claude-skills absentes (copie du noyau dans un projet)"
+SKIP_FIXTURES = "claude-skills repository fixtures absent (core copied into a project)"
 
 
 def _make_writable_and_retry(func, path, exc_info) -> None:
-    """onerror de rmtree : sous Windows, git cree ses objets en lecture seule."""
+    """rmtree onerror: on Windows, git creates its objects read-only."""
     os.chmod(path, stat.S_IWRITE | stat.S_IREAD)
     func(path)
 
 
 def remove_tree(path: Path) -> None:
-    """Supprime un dossier temporaire de test ; un echec n'est jamais silencieux."""
+    """Removes a temporary test directory; a failure is never silent."""
     if os.path.exists(str(path)):
         shutil.rmtree(str(path), onerror=_make_writable_and_retry)
 
@@ -61,7 +61,7 @@ def git(cwd: Path, *args: str) -> str:
     proc = subprocess.run(["git"] + list(args), cwd=str(cwd), capture_output=True, text=True,
                           encoding="utf-8", timeout=60)
     if proc.returncode != 0:
-        raise AssertionError("git %s : %s" % (" ".join(args), proc.stderr))
+        raise AssertionError("git %s: %s" % (" ".join(args), proc.stderr))
     return proc.stdout
 
 
@@ -75,7 +75,7 @@ def init_repo(path: Path) -> None:
 
 
 class FakeRunner:
-    """Runner simule : table (prefixe de commande -> Result), appels consignes."""
+    """Simulated runner: table (command prefix -> Result), calls recorded."""
 
     def __init__(self, table: Optional[List[Tuple[Tuple[str, ...], Result]]] = None):
         self.table = list(table or [])
@@ -96,15 +96,16 @@ class FakeRunner:
         return [c for c in self.calls if tuple(c[: len(prefix)]) == prefix]
 
 
-# Contenu piege : ce qu'un shell mal employe (heredoc sans guillemets, echo '...')
-# executerait, viderait ou tronquerait. Il doit transiter a l'identique par fichier.
-TRAP = ("Piège : `date` puis $(whoami), $HOME, ${PATH}, $ARGUMENTS et $1 ; "
-        "l'apostrophe d'O'Brien, des \"guillemets\", un antislash \\ et !! fin\nligne 2\n")
+# Trap content: what a misused shell (unquoted heredoc, echo '...') would
+# execute, empty or truncate. It must travel unchanged through a file. The
+# non-ASCII "ï" checks that UTF-8 survives the trip.
+TRAP = ("Naïve trap: `date` then $(whoami), $HOME, ${PATH}, $ARGUMENTS and $1; "
+        "O'Brien's apostrophe, \"double quotes\", a backslash \\ and !! end\nline 2\n")
 
 
 def write_output(root: Path, name: str, text: str) -> str:
-    """Ce que fait l'outil Write prescrit par les SKILL.md : le contenu, tel quel,
-    dans un fichier sous .claude/runs/ ; rend le chemin a passer au noyau."""
+    """What the Write tool prescribed by the SKILL.md files does: the content, as
+    is, in a file under .claude/runs/; returns the path to pass to the core."""
     path = Path(root) / ".claude" / "runs" / name
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="") as fh:
@@ -113,18 +114,18 @@ def write_output(root: Path, name: str, text: str) -> str:
 
 
 def verifier_block(verdict: str, tests_passed: bool, issues=None) -> str:
-    return "Rapport.\n\n```json\n%s\n```\n" % json.dumps(
+    return "Report.\n\n```json\n%s\n```\n" % json.dumps(
         {"verdict": verdict, "tests_passed": tests_passed, "issues": issues or []})
 
 
 def reviewer_block(findings) -> str:
-    return "Analyse.\n%s" % json.dumps({"findings": findings})
+    return "Analysis.\n%s" % json.dumps({"findings": findings})
 
 
-def validator_block(verdict: str, reason: str = "raison") -> str:
+def validator_block(verdict: str, reason: str = "reason") -> str:
     return json.dumps({"verdict": verdict, "reason": reason})
 
 
 def finding(file: str = "src/a.py", line: int = 3, title: str = "Bug", severity: str = "major") -> dict:
     return {"file": file, "line": line, "side": "RIGHT", "severity": severity, "title": title,
-            "description": "scenario", "fix": "corriger"}
+            "description": "scenario", "fix": "fix it"}

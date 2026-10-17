@@ -1,8 +1,8 @@
-# Fichiers d'un run sous .claude/runs/ du depot cible :
-#   <skill>-<horodatage>.jsonl           journal de cycle
-#   <skill>-<horodatage>.state.json      etat des compteurs entre deux appels
-#   ship-pr-<horodatage>.registry.jsonl  registre des findings (ship-pr)
-# Tout le dossier est exclu de git (D3).
+# Files of a run under .claude/runs/ of the target repository:
+#   <skill>-<timestamp>.jsonl            cycle journal
+#   <skill>-<timestamp>.state.json       counter state between two calls
+#   ship-pr-<timestamp>.registry.jsonl   findings registry (ship-pr)
+# The whole directory is excluded from git (D3).
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ def create(root: Path, skill: str, state: Dict[str, Any], now: Optional[datetime
 def _base(run: Path) -> str:
     name = Path(run).name
     if not name.endswith(".jsonl"):
-        raise ValueError("chemin de run inattendu : %s" % run)
+        raise ValueError("unexpected run path: %s" % run)
     return str(Path(run).parent / name[: -len(".jsonl")])
 
 
@@ -53,7 +53,7 @@ def registry_path(run: Path) -> Path:
 def load_state(run: Path) -> Dict[str, Any]:
     path = state_path(run)
     if not path.exists():
-        raise FileNotFoundError("run inconnu (etat absent) : %s" % run)
+        raise FileNotFoundError("unknown run (state missing): %s" % run)
     return json.loads(path.read_text(encoding="utf-8"))
 
 
@@ -65,24 +65,24 @@ def save_state(run: Path, state: Dict[str, Any]) -> None:
 
 
 def mark_begin(state: Dict[str, Any], slot: str, clock=time.time) -> None:
-    """Horodatage pris par le noyau avant un appel, si le bloc d'usage manque."""
+    """Timestamp taken by the core before a call, if the usage block is missing."""
     state.setdefault("begun", {})[slot] = clock()
 
 
 def duration_ms(state: Dict[str, Any], slot: str, given: Optional[int], clock=time.time) -> int:
     if given is not None:
         if given < 0:
-            raise ValueError("--duration-ms doit etre >= 0")
+            raise ValueError("--duration-ms must be >= 0")
         state.get("begun", {}).pop(slot, None)
         return int(given)
     begun = state.get("begun", {}).pop(slot, None)
     if begun is None:
-        raise ValueError("duree inconnue pour %s : passer --duration-ms ou appeler 'begin' avant l'agent" % slot)
+        raise ValueError("unknown duration for %s: pass --duration-ms or call 'begin' before the agent" % slot)
     return max(0, int(round((clock() - begun) * 1000)))
 
 
 def display(path: Path) -> str:
-    """Chemin relatif au dossier courant si possible, en separateurs '/'."""
+    """Path relative to the current directory if possible, with '/' separators."""
     try:
         return Path(os.path.relpath(str(path))).as_posix()
     except ValueError:

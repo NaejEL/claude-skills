@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
-# harness - CLI unique du noyau deterministe des skills claude-skills.
+# harness - single CLI of the deterministic core of the claude-skills skills.
 #
-# Usage : <PY> harness.py <sous-commande> ...   (voir --help de chaque groupe)
-# Sortie : un objet JSON sur stdout ; message d'arret sur stderr.
-# Codes : 0 succes ou decision rendue, 1 arret explicite, 2 usage ou borne invalide.
+# Usage: <PY> harness.py <subcommand> ...   (see --help of each group)
+# Output: one JSON object on stdout; stop message on stderr.
+# Codes: 0 success or decision returned, 1 explicit stop, 2 usage error or invalid bound.
 #
-# Bibliotheque standard uniquement, Python >= 3.9.
+# Standard library only, Python >= 3.9.
 
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-# D1 : aucun bytecode, meme appele sans -B (copie versionnee sous .claude/harness/).
+# D1: no bytecode, even when called without -B (versioned copy under .claude/harness/).
 sys.dont_write_bytecode = True
 
 HERE = Path(__file__).resolve().parent
@@ -30,7 +30,7 @@ from hcore.proc import Runner  # noqa: E402
 
 
 class Usage(Exception):
-    """Erreur d'usage ou de borne : exit 2."""
+    """Usage or bound error: exit 2."""
 
 
 def emit(obj: Any) -> None:
@@ -49,7 +49,7 @@ def read_output(value: Optional[str]) -> Optional[str]:
 
 
 def _count_arg(name: str, value: Optional[str], warnings: List[str]) -> Optional[int]:
-    """Entier >= 0, ou None (absent ou invalide : signale, jamais bloquant)."""
+    """Integer >= 0, or None (absent or invalid: reported, never blocking)."""
     if value is None or value.strip().lower() in ("", "null", "none"):
         return None
     try:
@@ -57,7 +57,7 @@ def _count_arg(name: str, value: Optional[str], warnings: List[str]) -> Optional
     except ValueError:
         n = -1
     if n < 0:
-        warnings.append("%s invalide (%r) : journalise null" % (name, value))
+        warnings.append("%s invalid (%r): logged as null" % (name, value))
         return None
     return n
 
@@ -65,21 +65,21 @@ def _count_arg(name: str, value: Optional[str], warnings: List[str]) -> Optional
 def _run_path(value: str) -> Path:
     path = Path(value)
     if not runs.state_path(path).exists():
-        raise Usage("run inconnu : %s" % value)
+        raise Usage("unknown run: %s" % value)
     return path
 
 
 def _measure(state: Dict[str, Any], args: argparse.Namespace, slot: str) -> Dict[str, Any]:
-    """Mesures du journal, prises AVANT toute ecriture. Un defaut de mesure
-    (duree absente sans 'begin', valeur invalide) ne bloque jamais le skill :
-    la valeur est journalisee a null et signalee dans 'journal_warnings'."""
+    """Journal measurements, taken BEFORE any write. A measurement defect
+    (duration missing without 'begin', invalid value) never blocks the skill:
+    the value is logged as null and reported in 'journal_warnings'."""
     warnings: List[str] = []
     tokens = _count_arg("--tokens", args.tokens, warnings)
     given = _count_arg("--duration-ms", args.duration_ms, warnings)
     try:
         duration: Optional[int] = runs.duration_ms(state, slot, given)
     except ValueError as exc:
-        warnings.append("%s : journalise null" % exc)
+        warnings.append("%s: logged as null" % exc)
         duration = None
     return {"duration_ms": duration, "tokens": tokens, "warnings": warnings}
 
@@ -98,7 +98,7 @@ def _log(run: Path, args: argparse.Namespace, agent: str, measure: Dict[str, Any
         decision["journal_warnings"] = warnings
 
 
-# ---------------------------------------------------------------- generiques
+# ------------------------------------------------------------------- generic
 
 def cmd_version(args: argparse.Namespace) -> int:
     emit({"core_version": CORE_VERSION})
@@ -234,7 +234,7 @@ def cmd_sp_sync(args: argparse.Namespace) -> int:
 def cmd_sp_pr(args: argparse.Namespace) -> int:
     run, state, run_cmd, _ = _ship_ctx(args)
     if (args.title is None) != (args.body_file is None):
-        raise Usage("--title et --body-file vont ensemble")
+        raise Usage("--title and --body-file go together")
     body = read_output(args.body_file) if args.body_file else None
     result = ghflow.find_or_create_pr(run_cmd, state, args.title, body)
     runs.save_state(run, state)
@@ -288,10 +288,10 @@ def cmd_sp_commit(args: argparse.Namespace) -> int:
     for item in args.not_fixed or []:
         fid, sep, reason = item.partition(":")
         if not sep or not reason.strip():
-            raise Usage("--not-fixed attend ID:raison, recu : %r" % item)
+            raise Usage("--not-fixed expects ID:reason, got: %r" % item)
         not_fixed[fid.strip()] = reason.strip()
     if args.fixed and not (args.summary or "").strip():
-        raise Usage("--summary est requis quand un correctif est commite")
+        raise Usage("--summary is required when a fix is committed")
     result = ghflow.commit_round(run_cmd, state, reg, args.summary or "", args.fixed or [], not_fixed)
     runs.save_state(run, state)
     emit(result)
@@ -323,75 +323,75 @@ def cmd_sp_merge(args: argparse.Namespace) -> int:
     return 0
 
 
-# ------------------------------------------------------------------- parseur
+# -------------------------------------------------------------------- parser
 
 def _agent_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--run", required=True, help="journal du run (.claude/runs/<skill>-<horodatage>.jsonl)")
-    p.add_argument("--model", required=True, help="modele de l'agent (inherit si non passe)")
-    p.add_argument("--duration-ms", default=None, help="duree du bloc d'usage ; sinon 'begin' (absente = null)")
-    p.add_argument("--tokens", default=None, help="tokens du bloc d'usage, absent = null")
-    p.add_argument("--dead", action="store_true", help="l'agent est mort (erreur d'API, coupure)")
-    p.add_argument("--output", default=None, help="fichier de la sortie de l'agent, '-' = stdin")
+    p.add_argument("--run", required=True, help="run journal (.claude/runs/<skill>-<timestamp>.jsonl)")
+    p.add_argument("--model", required=True, help="agent model (inherit if not passed)")
+    p.add_argument("--duration-ms", default=None, help="duration from the usage block; otherwise 'begin' (absent = null)")
+    p.add_argument("--tokens", default=None, help="tokens from the usage block, absent = null")
+    p.add_argument("--dead", action="store_true", help="the agent died (API error, disconnection)")
+    p.add_argument("--output", default=None, help="file holding the agent output, '-' = stdin")
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="harness.py", description="Noyau deterministe claude-skills")
+    parser = argparse.ArgumentParser(prog="harness.py", description="claude-skills deterministic core")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("version").set_defaults(func=cmd_version)
-    p = sub.add_parser("interp", help="detection de l'interpreteur (D5)")
+    p = sub.add_parser("interp", help="interpreter detection (D5)")
     p.add_argument("--timeout", type=float, default=interp.TIMEOUT)
     p.set_defaults(func=cmd_interp)
-    p = sub.add_parser("journal", help="journal de cycle")
+    p = sub.add_parser("journal", help="cycle journal")
     jsub = p.add_subparsers(dest="jcmd", required=True)
-    q = jsub.add_parser("validate", help="valide le schema d'un journal")
+    q = jsub.add_parser("validate", help="validates the schema of a journal")
     q.add_argument("path")
     q.set_defaults(func=cmd_journal_validate)
-    p = sub.add_parser("begin", help="horodatage avant un appel d'agent")
+    p = sub.add_parser("begin", help="timestamp before an agent call")
     p.add_argument("--run", required=True)
-    p.add_argument("--slot", required=True, help="agent, reviewer:<theme> ou validator:<id>")
+    p.add_argument("--slot", required=True, help="agent, reviewer:<theme> or validator:<id>")
     p.set_defaults(func=cmd_begin)
-    p = sub.add_parser("models", help="lecture de models.json et --models (D6, non branche)")
+    p = sub.add_parser("models", help="reads models.json and --models (D6, not wired)")
     p.add_argument("--file", default=".claude/models.json")
     p.add_argument("--models", default=None)
     p.add_argument("--roles", default=None)
     p.set_defaults(func=cmd_models)
-    p = sub.add_parser("block", help="blocs delimites (D9, non utilise)")
+    p = sub.add_parser("block", help="delimited blocks (D9, unused)")
     p.add_argument("action", choices=("get", "upsert", "remove"))
     p.add_argument("--file", required=True)
     p.add_argument("--name", required=True)
     p.add_argument("--style", choices=blocks.STYLES, default="md")
-    p.add_argument("--content", default=None, help="fichier du contenu, '-' = stdin")
+    p.add_argument("--content", default=None, help="content file, '-' = stdin")
     p.set_defaults(func=cmd_block)
 
     p = sub.add_parser("sf", help="software-factory")
     ssub = p.add_subparsers(dest="sfcmd", required=True)
-    q = ssub.add_parser("apply", help="fusions settings.json, tasks.json, .gitignore (SF-01 a SF-04)")
+    q = ssub.add_parser("apply", help="merges settings.json, tasks.json, .gitignore (SF-01 to SF-04)")
     q.add_argument("--root", default=".")
-    q.add_argument("--stacks", default="", help="node,dotnet,python,cpp,rust (separees par des virgules)")
+    q.add_argument("--stacks", default="", help="node,dotnet,python,cpp,rust (comma-separated)")
     q.set_defaults(func=cmd_sf_apply)
-    q = ssub.add_parser("install", help="ecrit un fichier genere sans ecraser (SF-04)")
+    q = ssub.add_parser("install", help="writes a generated file without overwriting (SF-04)")
     q.add_argument("--root", default=".")
     q.add_argument("--dest", required=True)
-    q.add_argument("--source", required=True, help="fichier du contenu, '-' = stdin")
+    q.add_argument("--source", required=True, help="content file, '-' = stdin")
     q.set_defaults(func=cmd_sf_install)
-    q = ssub.add_parser("copy-core", help="copie le noyau sous .claude/harness/ (D1)")
+    q = ssub.add_parser("copy-core", help="copies the core under .claude/harness/ (D1)")
     q.add_argument("--root", default=".")
     q.set_defaults(func=cmd_sf_copy_core)
 
-    p = sub.add_parser("factory-run", help="orchestration factory-run (FR-01 a FR-04)")
+    p = sub.add_parser("factory-run", help="factory-run orchestration (FR-01 to FR-04)")
     fsub = p.add_subparsers(dest="frcmd", required=True)
     q = fsub.add_parser("start")
     q.add_argument("--root", default=".")
     q.add_argument("--arguments-file", default=None,
-                   help="fichier contenant $ARGUMENTS, ecrit par l'outil Write (jamais via le shell)")
+                   help="file holding $ARGUMENTS, written by the Write tool (never through the shell)")
     q.set_defaults(func=cmd_fr_start)
     q = fsub.add_parser("record")
     _agent_args(q)
     q.add_argument("--agent", required=True, choices=factory.AGENTS)
     q.set_defaults(func=cmd_fr_record)
 
-    p = sub.add_parser("ship-pr", help="orchestration ship-pr (SP-01 a SP-19)")
+    p = sub.add_parser("ship-pr", help="ship-pr orchestration (SP-01 to SP-19)")
     psub = p.add_subparsers(dest="spcmd", required=True)
     q = psub.add_parser("start")
     q.add_argument("--root", default=".")
@@ -407,7 +407,7 @@ def build_parser() -> argparse.ArgumentParser:
     q = psub.add_parser("pr")
     q.add_argument("--run", required=True)
     q.add_argument("--title", default=None)
-    q.add_argument("--body-file", default=None, help="fichier du corps, '-' = stdin")
+    q.add_argument("--body-file", default=None, help="body file, '-' = stdin")
     q.set_defaults(func=cmd_sp_pr)
     q = psub.add_parser("reviewer")
     _agent_args(q)
@@ -425,11 +425,11 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--run", required=True)
     q.add_argument("--summary", default="")
     q.add_argument("--fixed", nargs="*", default=[])
-    q.add_argument("--not-fixed", action="append", default=[], help="ID:raison, repetable")
+    q.add_argument("--not-fixed", action="append", default=[], help="ID:reason, repeatable")
     q.set_defaults(func=cmd_sp_commit)
     q = psub.add_parser("merge")
     q.add_argument("--run", required=True)
-    q.add_argument("--check", action="store_true", help="verifie et resume sans merger")
+    q.add_argument("--check", action="store_true", help="checks and summarizes without merging")
     q.set_defaults(func=cmd_sp_merge)
     return parser
 
@@ -444,11 +444,11 @@ def main(argv: Optional[List[str]] = None) -> int:
     try:
         return args.func(args)
     except ghflow.Stop as exc:
-        sys.stderr.write("ARRET : %s\n" % exc)
+        sys.stderr.write("STOP: %s\n" % exc)
         return 1
     except (Usage, ValueError, factory.RunOver, shippr.LoopError, fusion.FusionError,
             blocks.BlockError, FileNotFoundError) as exc:
-        sys.stderr.write("ERREUR : %s\n" % exc)
+        sys.stderr.write("ERROR: %s\n" % exc)
         return 2
 
 

@@ -1,11 +1,12 @@
-# Blocs delimites dans un fichier texte (D9 : module seul, non utilise par
-# software-factory dans cet increment).
+# Delimited blocks in a text file (D9: standalone module, not used by
+# software-factory in this increment).
 #
-# Styles :
-#   md   : <!-- nom:debut --> ... <!-- nom:fin -->
-#   hash : # >>> nom >>> ... # <<< nom <<<
-# L'insertion est reentrante : un bloc present est remplace en place, sinon il
-# est ajoute en fin de fichier ; le texte hors bloc n'est jamais modifie.
+# Styles:
+#   md   : <!-- name:debut --> ... <!-- name:fin -->
+#   hash : # >>> name >>> ... # <<< name <<<
+# Insertion is reentrant: an existing block is replaced in place, otherwise it
+# is appended at the end of the file; text outside the block is never modified.
+# The "debut"/"fin" markers are part of the on-disk format and are kept as is.
 
 from __future__ import annotations
 
@@ -16,17 +17,17 @@ STYLES = ("md", "hash")
 
 
 class BlockError(ValueError):
-    """Bloc mal forme (marqueur ouvrant sans fermant, ou l'inverse)."""
+    """Malformed block (opening marker without closing marker, or the reverse)."""
 
 
 def markers(name: str, style: str) -> Tuple[str, str]:
     if not re.match(r"^[A-Za-z0-9_.-]+$", name):
-        raise BlockError("nom de bloc invalide : %r" % (name,))
+        raise BlockError("invalid block name: %r" % (name,))
     if style == "md":
         return "<!-- %s:debut -->" % name, "<!-- %s:fin -->" % name
     if style == "hash":
         return "# >>> %s >>>" % name, "# <<< %s <<<" % name
-    raise BlockError("style inconnu : %r" % (style,))
+    raise BlockError("unknown style: %r" % (style,))
 
 
 def _span(text: str, name: str, style: str) -> Optional[Tuple[int, int]]:
@@ -36,9 +37,9 @@ def _span(text: str, name: str, style: str) -> Optional[Tuple[int, int]]:
     if start == -1 and end == -1:
         return None
     if start == -1 or end == -1 or end < start:
-        raise BlockError("bloc %r mal forme" % name)
+        raise BlockError("block %r is malformed" % name)
     if text.find(start_m, start + 1) != -1:
-        raise BlockError("bloc %r present plusieurs fois" % name)
+        raise BlockError("block %r is present several times" % name)
     return start, end + len(end_m)
 
 

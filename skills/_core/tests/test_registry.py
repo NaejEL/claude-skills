@@ -1,4 +1,4 @@
-# Module hcore.registry : registre cumulatif et dedoublonnage (SP-07, D2).
+# Module hcore.registry: cumulative registry and deduplication (SP-07, D2).
 
 import json
 import unittest
@@ -10,7 +10,7 @@ from hcore import registry
 class NormalizeTest(unittest.TestCase):
     def test_sp07_title_normalized(self):
         """SP-07."""
-        self.assertEqual(registry.normalize_title("  Écart  de Borne !"), "ecart de borne")
+        self.assertEqual(registry.normalize_title("  Naïve  Bound Check !"), "naive bound check")
         self.assertEqual(registry.finding_key("./src\\a.py", "Off-by-one"),
                          registry.finding_key("src/a.py", "off by one"))
 
@@ -24,9 +24,9 @@ class RegistryFileTest(helpers.TempDirCase):
         """SP-07."""
         path = self.tmp / "ship-pr-20261016-120000.registry.jsonl"
         reg = registry.Registry(path)
-        reg.add(helpers.finding(title="Faux positif"), "REJECTED", round=1)
+        reg.add(helpers.finding(title="False positive"), "REJECTED", round=1)
         again = registry.Registry(path)
-        key = registry.finding_key("src/a.py", "faux positif")
+        key = registry.finding_key("src/a.py", "false positive")
         self.assertTrue(again.known(key))
         self.assertEqual(again.current(key), "REJECTED")
 
@@ -42,7 +42,7 @@ class RegistryFileTest(helpers.TempDirCase):
         self.assertEqual(registry.Registry(path).current(lines[0]["key"]), "FIXED")
 
     def test_sp07_add_is_idempotent_even_after_reload(self):
-        """SP-07 : une relance apres interruption ne doublonne pas le registre."""
+        """SP-07: a relaunch after an interruption does not duplicate the registry."""
         path = self.tmp / "r.registry.jsonl"
         registry.Registry(path).add(helpers.finding(), "REJECTED", round=1, id="R1-F1", reason="r")
         registry.Registry(path).add(helpers.finding(), "REJECTED", round=1, id="R1-F1", reason="r")

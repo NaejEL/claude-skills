@@ -1,5 +1,5 @@
-# Module hcore.interp : detection de l'interpreteur (D5, CA14), avec des
-# executables simules (scripts lances par l'interpreteur des tests).
+# Module hcore.interp: interpreter detection (D5, CA14), with simulated
+# executables (scripts launched by the tests' interpreter).
 
 import os
 import stat
@@ -64,7 +64,7 @@ class InterpTest(helpers.TempDirCase):
         self.assertEqual(len(seen), 1)
 
     def fake_on_path(self, name, version):
-        """Executable `name` place dans un dossier dedie, rendu seul PATH."""
+        """Executable `name` placed in a dedicated directory, made the only PATH entry."""
         bindir = self.tmp / "bin"
         bindir.mkdir(exist_ok=True)
         if sys.platform == "win32":
@@ -76,13 +76,13 @@ class InterpTest(helpers.TempDirCase):
         return bindir
 
     def test_d5_candidate_resolved_by_path_like_command_v(self):
-        """D5 : meme regle que la boucle Bash des SKILL.md ; le candidat est
-        cherche dans le PATH, jamais dans le dossier de l'interpreteur courant."""
+        """D5: same rule as the Bash loop of the SKILL.md files; the candidate is
+        looked up in the PATH, never in the current interpreter's directory."""
         bindir = self.fake_on_path("python", "3.11.7")
         with mock.patch.dict(os.environ, {"PATH": str(bindir)}):
             found = interp.detect([["python"]], timeout=10)
         self.assertEqual(found["version"], "3.11.7")
-        empty = self.tmp / "vide"
+        empty = self.tmp / "empty"
         empty.mkdir()
         with mock.patch.dict(os.environ, {"PATH": str(empty)}):
             self.assertIsNone(interp.detect([["python"], ["python3"]], timeout=10))

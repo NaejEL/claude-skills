@@ -1,23 +1,24 @@
-# Fusions de fichiers de software-factory, jamais d'ecrasement.
+# software-factory file merges, never an overwrite.
 #
-# - SF-01 : .claude/settings.json, regles permissions.deny en Read(...) de la
-#   stack detectee plus les regles generiques ; tableaux fusionnes sans doublon,
-#   toute cle existante preservee.
-# - SF-02 : .vscode/tasks.json (version 2.0.0), input factorySpec et trois
-#   taches Factory ajoutes une seule fois ; taches et inputs existants preserves.
-# - SF-03 : .gitignore complete sans dupliquer une ligne (factory-logs/,
+# - SF-01: .claude/settings.json, permissions.deny rules as Read(...) for the
+#   detected stack plus the generic rules; arrays merged without duplicates,
+#   every existing key preserved.
+# - SF-02: .vscode/tasks.json (version 2.0.0), factorySpec input and three
+#   Factory tasks added only once; existing tasks and inputs preserved.
+# - SF-03: .gitignore completed without duplicating a line (factory-logs/,
 #   .claude/runs/).
-# - SF-04 : etat de chaque fichier : cree / fusionne / identique /
-#   personnalise-conserve. Un fichier inchange n'est pas reecrit (seconde
-#   application identique octet pour octet).
-# - Lecture tolerante : BOM UTF-8 et JSONC (commentaires, virgules finales)
-#   acceptes, comme les ecrivent VS Code et les outils Windows. Un JSON strict
-#   est re-serialise ; un JSONC est complete par insertion de texte, ses
-#   commentaires conserves (voir jsonc.py). BOM et fin de ligne CRLF conserves.
-# - Tout ou rien : les trois fusions sont calculees avant toute ecriture ; un
-#   fichier illisible fait echouer l'ensemble sans rien modifier.
-# - D1 : copie de _core dans le projet sous .claude/harness/, jamais melangee
-#   avec un noyau existant different (rien n'est copie dans ce cas).
+# - SF-04: state of each file: created / merged / identical /
+#   customized-kept (the state values below are the French labels shared by
+#   all the skills and are kept as is). An unchanged file is not rewritten
+#   (second application byte-for-byte identical).
+# - Tolerant reading: UTF-8 BOM and JSONC (comments, trailing commas)
+#   accepted, as VS Code and Windows tools write them. A strict JSON file is
+#   re-serialized; a JSONC file is completed by inserting text, its comments
+#   kept (see jsonc.py). BOM and CRLF line endings kept.
+# - All or nothing: the three merges are computed before any write; an
+#   unreadable file makes the whole operation fail without modifying anything.
+# - D1: copy of _core into the project under .claude/harness/, never mixed
+#   with a different existing core (nothing is copied in that case).
 
 from __future__ import annotations
 
@@ -46,8 +47,9 @@ GITIGNORE_LINES = ["factory-logs/", ".claude/runs/"]
 FACTORY_INPUT = {
     "id": "factorySpec",
     "type": "promptString",
-    "description": "Chemin de la spec approuvée (specs/SPEC-*.md)",
+    "description": "Path of the approved spec (specs/SPEC-*.md)",
 }
+# The task labels are the SF-02 deduplication keys of existing projects: kept as is.
 FACTORY_TASKS = [
     {
         "label": "Factory: CI run",
@@ -66,22 +68,22 @@ FACTORY_TASKS = [
     {
         "label": "Factory: nouvelle spec (session)",
         "type": "shell",
-        "command": "echo 'Ouvrir Claude Code et taper : /factory-run \"<votre besoin>\"'",
+        "command": "echo 'Open Claude Code and type: /factory-run \"<your need>\"'",
         "problemMatcher": [],
     },
 ]
 
 
 class FusionError(ValueError):
-    """Fichier existant illisible : on ne le reecrit pas."""
+    """Unreadable existing file: it is not rewritten."""
 
 
 def deny_rules(stacks: Iterable[str]) -> List[str]:
-    """SF-01 : regles de la stack detectee uniquement, puis les generiques."""
+    """SF-01: rules of the detected stack only, then the generic ones."""
     rules: List[str] = []
     for stack in stacks:
         if stack not in STACK_DENY:
-            raise FusionError("stack inconnue : %r (connues : %s)" % (stack, ", ".join(STACK_DENY)))
+            raise FusionError("unknown stack: %r (known: %s)" % (stack, ", ".join(STACK_DENY)))
         rules.extend(r for r in STACK_DENY[stack] if r not in rules)
     rules.extend(r for r in GENERIC_DENY if r not in rules)
     return rules
@@ -90,13 +92,13 @@ def deny_rules(stacks: Iterable[str]) -> List[str]:
 def merge_settings(existing: Optional[Dict[str, Any]], stacks: Iterable[str]) -> Dict[str, Any]:
     data = json.loads(json.dumps(existing)) if existing is not None else {}
     if not isinstance(data, dict):
-        raise FusionError("settings.json n'est pas un objet JSON")
+        raise FusionError("settings.json is not a JSON object")
     perms = data.setdefault("permissions", {})
     if not isinstance(perms, dict):
-        raise FusionError("permissions n'est pas un objet")
+        raise FusionError("permissions is not an object")
     deny = perms.setdefault("deny", [])
     if not isinstance(deny, list):
-        raise FusionError("permissions.deny n'est pas un tableau")
+        raise FusionError("permissions.deny is not an array")
     for rule in deny_rules(stacks):
         if rule not in deny:
             deny.append(rule)
@@ -107,12 +109,12 @@ def merge_tasks(existing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """SF-02."""
     data = json.loads(json.dumps(existing)) if existing is not None else {}
     if not isinstance(data, dict):
-        raise FusionError("tasks.json n'est pas un objet JSON")
+        raise FusionError("tasks.json is not a JSON object")
     data.setdefault("version", "2.0.0")
     inputs = data.setdefault("inputs", [])
     tasks = data.setdefault("tasks", [])
     if not isinstance(inputs, list) or not isinstance(tasks, list):
-        raise FusionError("inputs et tasks doivent etre des tableaux")
+        raise FusionError("inputs and tasks must be arrays")
     if not any(isinstance(i, dict) and i.get("id") == FACTORY_INPUT["id"] for i in inputs):
         inputs.append(dict(FACTORY_INPUT))
     labels = {t.get("label") for t in tasks if isinstance(t, dict)}
@@ -123,7 +125,7 @@ def merge_tasks(existing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
 
 
 def merge_gitignore(text: Optional[str], lines: Iterable[str] = GITIGNORE_LINES) -> str:
-    """SF-03 : lignes ajoutees avec la fin de ligne du fichier (CRLF conserve)."""
+    """SF-03: lines added with the file's line ending (CRLF kept)."""
     content = text or ""
     present = {line.strip() for line in content.splitlines()}
     missing = [line for line in lines if line not in present]
@@ -140,15 +142,15 @@ def dump_json(data: Any) -> str:
 
 
 def _read_text(path: Path) -> Optional[str]:
-    """Texte brut (fins de ligne et BOM intacts), ou None si absent."""
+    """Raw text (line endings and BOM intact), or None if absent."""
     if not path.exists():
         return None
     with open(path, encoding="utf-8", newline="") as fh:
         try:
             return fh.read()
         except UnicodeDecodeError as exc:
-            raise FusionError("%s n'est pas encode en UTF-8 (encodage attendu : UTF-8, BOM accepte ; "
-                              "octet invalide en position %d), fichier laisse intact" % (path, exc.start))
+            raise FusionError("%s is not UTF-8 encoded (expected encoding: UTF-8, BOM accepted; "
+                              "invalid byte at position %d), file left untouched" % (path, exc.start))
 
 
 def _write(path: Path, text: str) -> None:
@@ -160,14 +162,14 @@ def _write(path: Path, text: str) -> None:
 
 
 def _plan_json(path: Path, merged_of: Callable[[Any], Any]) -> Tuple[str, Optional[str]]:
-    """Etat et nouveau texte d'un fichier JSON/JSONC, sans rien ecrire."""
+    """State and new text of a JSON/JSONC file, without writing anything."""
     raw = _read_text(path)
     if raw is None:
         return CREATED, dump_json(merged_of(None))
     try:
         doc = jsonc.loads(raw)
     except ValueError as exc:
-        raise FusionError("%s n'est pas du JSON valide, fusion refusee : %s" % (path, exc))
+        raise FusionError("%s is not valid JSON, merge refused: %s" % (path, exc))
     merged = merged_of(doc.value)
     if json.dumps(merged) == json.dumps(doc.value):
         return IDENTICAL, None
@@ -175,7 +177,7 @@ def _plan_json(path: Path, merged_of: Callable[[Any], Any]) -> Tuple[str, Option
         try:
             return MERGED, doc.patched(merged)
         except ValueError as exc:
-            raise FusionError("%s : fusion JSONC impossible, fichier laisse intact : %s" % (path, exc))
+            raise FusionError("%s: JSONC merge impossible, file left untouched: %s" % (path, exc))
     text = dump_json(merged)
     if doc.newline == "\r\n":
         text = text.replace("\n", "\r\n")
@@ -193,7 +195,7 @@ def _plan_gitignore(path: Path) -> Tuple[str, Optional[str]]:
 
 
 def apply(root: Path, stacks: Iterable[str]) -> Dict[str, str]:
-    """SF-01 a SF-04 : calcule les trois fusions, puis ecrit (tout ou rien)."""
+    """SF-01 to SF-04: computes the three merges, then writes (all or nothing)."""
     root = Path(root)
     stacks = list(stacks)
     plans = {
@@ -209,7 +211,7 @@ def apply(root: Path, stacks: Iterable[str]) -> Dict[str, str]:
 
 
 def install_file(dest: Path, content: str) -> str:
-    """SF-04 : un fichier genere n'ecrase jamais un fichier existant different."""
+    """SF-04: a generated file never overwrites a different existing file."""
     dest = Path(dest)
     state = file_state(dest, content)
     if state == CREATED:
@@ -218,7 +220,7 @@ def install_file(dest: Path, content: str) -> str:
 
 
 def file_state(dest: Path, content: str) -> str:
-    """Etat qu'aurait l'installation de `content` en `dest`, sans rien ecrire."""
+    """State that installing `content` at `dest` would have, without writing anything."""
     if not dest.exists():
         return CREATED
     current = _read_text(dest) or ""
@@ -228,12 +230,12 @@ def file_state(dest: Path, content: str) -> str:
 
 
 def copy_core(core_dir: Path, root: Path) -> Dict[str, Any]:
-    """D1 : copie _core tel quel sous <root>/.claude/harness/, sans bytecode.
+    """D1: copies _core as is under <root>/.claude/harness/, without bytecode.
 
-    Jamais de noyau melange : si un fichier deja present differe de la source
-    (noyau personnalise ou d'une autre version), il reste personnalise-conserve
-    et RIEN n'est copie, pas meme les fichiers absents ; `copied` vaut False et
-    `blocked_by` liste les fichiers en cause, a signaler a l'utilisateur."""
+    Never a mixed core: if a file already present differs from the source
+    (customized core or another version), it stays customized-kept (KEPT)
+    and NOTHING is copied, not even the missing files; `copied` is False and
+    `blocked_by` lists the files at fault, to be reported to the user."""
     core_dir, dest_dir = Path(core_dir), Path(root) / ".claude" / "harness"
     plan: List[Tuple[str, Path, str, str]] = []
     for src in sorted(core_dir.rglob("*")):
