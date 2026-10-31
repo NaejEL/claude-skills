@@ -33,9 +33,9 @@ Ordre repris de l'annexe de `specs/SPEC-noyau-core-journal.md`, qui fait foi.
 | 6 | Versioning / upgrade / doctor du noyau distribué | à faire | 0, 2 |
 | 7 | Politique d'autonomie | **gelé** jusqu'à la fin du 5 | 5 |
 | 8 | Hooks Claude Code | gelé | 5, 7 |
-| 9 | Profils | gelé | 5 |
-| 10 | Scout | gelé | 9 |
-| 11 | `/audit` unifié | gelé | 3, 4, 5, 9 |
+| 9 | Profils | **livré en Phase 2** (gel levé par l'utilisateur) : `specs/SPEC-phase2-profils-audit.md` | 5 |
+| 10 | Scout | **livré en Phase 2** (gel levé) | 9 |
+| 11 | `/audit` unifié | **livré en Phase 2** (gel levé) | 3, 4, 5, 9 |
 | 12 | File et worktrees | gelé | 5, 7 |
 | 13 | Étude du packaging en plugin | à faire, document seul | 6 |
 
@@ -46,13 +46,13 @@ Ordre repris de l'annexe de `specs/SPEC-noyau-core-journal.md`, qui fait foi.
 | Q-partage | Forme du partage de code entre skills globaux | **tranchée le 2026-10-16** : mixte. ship-pr via `${CLAUDE_SKILL_DIR}/../_core` (à confirmer par la recette R1), factory-run généré via une copie dans `.claude/harness/` (D1 de la spec 0) |
 | Q-registre | Format JSONL du registre | **tranchée le 2026-10-16** : clés anglaises `file`/`line`/`title`/`verdict`, dédoublonnage sur fichier + titre normalisé, fichier dans `.harness/runs/` non versionné (D2 de la spec 0) |
 | Q2 | Modèle par rôle : le paramètre `model` de l'outil Agent seul, ou aussi `model:` en frontmatter ? Contredit `ai-lab:135` (D1). | ouverte |
-| Q3 | Sort de `/lab-run` : alias, orchestrateur distinct, ou orchestrateur générique ? | ouverte, incrément 4 ou 8 |
+| Q3 | Sort de `/lab-run` : alias, orchestrateur distinct, ou orchestrateur générique ? | **tranchée en Phase 2** : seconde instance du gabarit commun, profil `research` imposé (LP-06) |
 | Q4 | Enchaînements malgré `disable-model-invocation` (D3) | ouverte, incrément 5 |
 | Q5 | Gate de pré-enregistrement du labo : reste-t-elle (a) ? | ouverte, incrément 5 |
 | Q6 | Premier `--upgrade` d'un projet sans blocs (D5) | ouverte, incrément 7 |
 | Q8 | Registre versionné ou local : ce dépôt ignore déjà `AUDIT-*.md` | fusionnée dans Q-registre |
 | Q9 | Schéma de finding unique, avec `occurrences[]` | ouverte, incréments 1 et 4 |
-| Q10 | Format des profils : JSON, car la stdlib n'a pas de YAML | ouverte, incrément 8 |
+| Q10 | Format des profils : JSON, car la stdlib n'a pas de YAML | **tranchée en Phase 2** : `profile.json` plus fragments Markdown (PF-01) |
 | Q11 | Corriger D8, C1, C2, C3 à part ? | ouverte, D8 = incrément 3 |
 | Q13 | Emplacement des tests | **tranchée** : tests unitaires dans `skills/_core/tests/`, fixtures dans `tests/fixtures/` |
 | Q14 | ship-pr et brainstorm consomment le noyau sans devenir des profils | ouverte |
@@ -319,3 +319,9 @@ Spec : `specs/SPEC-phase1-fin-L8-L14.md` (APPROUVEE), qui renvoie aux sections �
 - **Recettes restantes (utilisateur)** : R4 (`/code-index` deux fois sur une fixture personnalisée), R5 (`/ai-lab` sur un `lab-models.json`), R6 (chaque audit sur fixture), R7 (`/brainstorm` interactif).
 
 - Mineur (relecture L8-L14, 2026-10-31) : `lab-ci.sh` cherche `Statut : PRE-ENREGISTRE` par grep sur n'importe quelle ligne, alors que `labrun.entry` exige la ligne exacte.
+- Mineur (relecture Phase 2, 2026-11-01) : `SPEC-vib-*` non produit (E-A2, SO-02/AD-08/AD-10) ; `allowed_writes` de vibecode-audit n'inclut pas `SPEC-vib-*`.
+- Mineur (relecture Phase 2) : l'ordre des sections de `AUDIT.md` diffère de SO-01 (blocs conservés à l'intérieur de chaque jeu ; tri par `audit.PROFILES`, pas par ordre du tampon).
+- Mineur (relecture Phase 2) : cadrage en deux gates au lieu d'une seule (AD-08/E-A5).
+- Mineur (relecture Phase 2) : le test des écarts attendus (`expected-gaps.json`) ne vérifie que les identifiants.
+- Mineur (relecture Phase 2) : `loop.route --models` avec un rôle hors profil rend un exit 2 peu explicite.
+- Mineur (relecture Phase 2) : `cmd_sf_args` appelle `profiles.discover()` deux fois.

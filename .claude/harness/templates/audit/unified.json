@@ -1,0 +1,14 @@
+{
+  "head": [
+    "# Audit du projet",
+    "",
+    "Généré par /audit le $date. Profils : $profiles. Lentilles : $lenses. Audit $coverage."
+  ],
+  "coverage": {"complete": "complet", "sampled": "échantillonné"},
+  "launch": {"from": "`/lab-run \"", "to": "`/factory-run --profile research \""},
+  "imported": "Repris depuis : $file",
+  "next": [
+    "## Suite",
+    "Ce rapport diagnostique ; il ne remédie pas. Pour exécuter un point retenu, lancer `/factory-run` sur la spec correspondante (elle porte sa propre gate d'approbation) ou, pour une question de recherche, sur la ligne « Lancer » de sa fiche."
+  ]
+}

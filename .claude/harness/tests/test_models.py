@@ -30,7 +30,7 @@ class RolesTest(helpers.TempDirCase):
         self.assertEqual(models.ROLES, (
             "factory.planner", "factory.builder", "factory.verifier", "shippr.reviewer", "shippr.validator",
             "audit.auditor", "audit.validator", "lab.director.cadrage", "lab.director.interpretation",
-            "lab.neuro", "lab.math", "lab.builder", "lab.verifier", "lab.validator"))
+            "lab.neuro", "lab.math", "lab.builder", "lab.verifier", "lab.validator", "harness.scout"))
         self.write("models.json", {"builder": "sonnet"})
         with self.assertRaises(ModelsError):
             models.load(self.tmp / ".claude" / "models.json", models.FACTORY_ROLES)

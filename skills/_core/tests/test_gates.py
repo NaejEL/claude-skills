@@ -82,10 +82,11 @@ class PolicyTest(helpers.TempDirCase):
 
 
 class CatalogTest(unittest.TestCase):
-    def test_gt08_catalog_has_the_27_gates(self):
-        """GT-08: single catalog of the 27 gates, every entry complete."""
-        self.assertEqual(len(gates.CATALOG), 27)
-        for gate in gates.CATALOG.values():
+    def test_gt08_catalog_has_the_32_core_gates(self):
+        """GT-08: the catalog (27 gates of Phase 1, 5 of Phase 2 in the core, the rest declared by
+        the profiles, PF-05), every entry complete."""
+        self.assertEqual(len(gates.CATALOG), 32)
+        for gate in gates.all_gates().values():
             self.assertIn(gate.kind, gates.KINDS, gate.id)
             self.assertIn(gate.headless, gates.HEADLESS, gate.id)
             self.assertTrue(gate.options and all(gate.options), gate.id)
@@ -267,9 +268,10 @@ class VerifierDefectsTest(helpers.TempDirCase):
         """GT-08: the free-answer gates are declared in the catalog; every declared
         default is itself a valid answer of its gate."""
         free = sorted(g.id for g in gates.CATALOG.values() if g.free)
-        self.assertEqual(free, ["brainstorm.round", "brainstorm.subject", "factory-run.need",
-                                "factory-run.questions", "lab-run.pi-questions", "ship-pr.target"])
-        for gate in gates.CATALOG.values():
+        self.assertEqual(free, ["audit.profiles", "brainstorm.round", "brainstorm.subject", "factory-run.need",
+                                "factory-run.profile", "factory-run.questions", "lab-run.pi-questions",
+                                "ship-pr.target", "software-factory.profiles"])
+        for gate in gates.all_gates().values():
             if gate.default is not None:
                 self.assertEqual(gates.check_option(gate, gate.default), gate.default, gate.id)
 

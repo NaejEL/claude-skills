@@ -51,7 +51,7 @@ from pathlib import Path
 from string import Template
 from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
-from . import findings, fusion, gates, models, registry, relaunch, tshirt, verdicts
+from . import findings, fusion, gates, models, profiles, registry, relaunch, tshirt, verdicts
 
 TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 AUDIT_TEXTS = TEMPLATES / "audits.json"
@@ -113,9 +113,7 @@ _LAB_ROLES = ("lab.neuro", "lab.math", "lab.director.cadrage", "lab.validator")
 
 PROFILES: Dict[str, Profile] = {p.skill: p for p in (
     Profile(
-        skill="legacy-audit", units_option="--categories", units=("hygiene", "portabilite", "qualite", "filet"),
-        auditors=(Auditor("hygiene", "hygiene", "HYG"), Auditor("portabilite", "portabilite", "PORT"),
-                  Auditor("qualite", "qualite", "QUAL"), Auditor("filet", "filet", "FIL")),
+        skill="legacy-audit", units_option="--categories", units=(), auditors=(),
         cap_option="--max-specs", cap_max=25, cap_default=15, dead=NOT_AUDITED,
         deliverable="ROADMAP-legacy.md", spec_prefix="leg", statuses=BASE_STATUSES, settled=False,
         auditor_format="legacy-auditor", dedup="file-line-category", numbering=(("LEG", "LEG"),),
@@ -123,23 +121,16 @@ PROFILES: Dict[str, Profile] = {p.skill: p for p in (
         counters=("raw", "confirmed", "rejected"), roles=models.AUDIT_ROLES, aliases=None,
         auditor_roles={}, validator_role="audit.validator", on_zero="report", deliver_unvalidated=False),
     Profile(
-        skill="ai-lab-audit", units_option="--lenses", units=("fidelite", "validite", "fuites", "bio", "route"),
-        auditors=(Auditor("fidelite", "fidelite", "FID"), Auditor("validite", "validite", "VAL"),
-                  Auditor("fuites", "fuites", "LEAK"), Auditor("bio", "bio", "BIO"),
-                  Auditor("route", "route", "ROAD")),
+        skill="ai-lab-audit", units_option="--lenses", units=(), auditors=(),
         cap_option="--max-questions", cap_max=12, cap_default=6, dead=NOT_AUDITED,
         deliverable="AUDIT-lab.md", spec_prefix="lab", statuses=BASE_STATUSES, settled=True,
         auditor_format="lab-audit-auditor", dedup="place-lens", numbering=(("COR", "COR"), ("Q", "Q")),
         theme_gate="ai-lab-audit.selection", max_calls=2, final_gate="ai-lab-audit.final",
         counters=("raw", "confirmed", "rejected", "corrections", "questions"), roles=_LAB_ROLES, aliases="lab",
-        auditor_roles={"fidelite": "lab.math", "validite": "lab.math", "fuites": "lab.math",
-                       "bio": "lab.neuro", "route": "lab.director.cadrage"},
+        auditor_roles={},
         validator_role="lab.validator", on_zero="report", deliver_unvalidated=False),
     Profile(
-        skill="vibecode-audit", units_option="--axes", units=("securite", "maintenabilite", "evolutivite"),
-        auditors=(Auditor("acces", "securite", "ACC"), Auditor("injection", "securite", "INJ"),
-                  Auditor("metier", "securite", "MET"), Auditor("maintenabilite", "maintenabilite", "MNT"),
-                  Auditor("evolutivite", "evolutivite", "EVO")),
+        skill="vibecode-audit", units_option="--axes", units=(), auditors=(),
         cap_option="--max-findings", cap_max=30, cap_default=15, dead=SURFACE,
         deliverable="AUDIT-vibecode.md", spec_prefix=None, statuses=BASE_STATUSES, settled=False,
         auditor_format="vibecode-auditor", dedup="pattern", numbering=(("VIB", "VIB"),),
@@ -148,6 +139,27 @@ PROFILES: Dict[str, Profile] = {p.skill: p for p in (
         aliases=None, auditor_roles={}, validator_role="audit.validator", on_zero="deliverable",
         deliver_unvalidated=True),
 )}
+
+
+# PX-04, PF-05: units, auditors (lens, unit, prefix) and the model role of each lens come from the profiles.
+_LENS_SET_OF = {"legacy-audit": "legacy", "vibecode-audit": "vibecode", "ai-lab-audit": "research"}
+
+
+def _fill(p: Profile) -> Profile:
+    prof, lens_set = profiles.find_set(_LENS_SET_OF[p.skill])
+    units, lenses = profiles.lens_set_of(prof, lens_set["name"])
+    return p._replace(
+        units=tuple(units),
+        auditors=tuple(Auditor(l["name"], l.get("axis") or l["name"], l["prefix"]) for l in lenses),
+        auditor_roles={l["name"]: l["model_role"] for l in lenses if l["model_role"] != "audit.auditor"})
+
+
+PROFILES = {name: _fill(p) for name, p in PROFILES.items()}
+
+
+def lens_flag(skill: str, lens: str, flag: str) -> Any:
+    prof, _ = profiles.find_set(_LENS_SET_OF[skill])
+    return next((l.get(flag) for l in prof["lenses"] if l["name"] == lens), None)
 
 
 def profile(skill: str) -> Profile:
@@ -405,18 +417,19 @@ def _assign_id(state: Dict[str, Any], prefix: str, wanted: Any, reserved: Iterab
 
 def git_pre_finding(p: Profile, state: Dict[str, Any], a: Auditor, items: List[Dict[str, Any]]
                     ) -> Optional[Dict[str, Any]]:
-    """LA-03: GIT_ABSENT -> a pre-finding of the hygiene family (versioning
-    absent), added to what the hygiene auditor returned; it is validated and
+    """LA-03: GIT_ABSENT -> a pre-finding of the lens flagged git_prefinding (versioning
+    absent), added to what its auditor returned; it is validated and
     deduplicated like any other finding."""
-    if p.skill != "legacy-audit" or a.name != "hygiene" or not state.get("git_absent"):
+    if not lens_flag(p.skill, a.name, "git_prefinding") or not state.get("git_absent"):
         return None
     fid = _assign_id(state, a.prefix, None, [i["id"] for i in items])
     return findings.adapt(p.auditor_format, dict(texts()[p.skill]["git_absent"], id=fid), fid, a.unit, p.skill)
 
 
-LAB_AGENTS = ("lab-director", "lab-neuro", "lab-math")
-LAB_SKILL = ".claude/skills/lab-run/SKILL.md"
-ROLE_AGENTS = {"lab.math": "lab-math", "lab.neuro": "lab-neuro", "lab.director.cadrage": "lab-director"}
+_LAB_PROFILE = profiles.by_machine("lab")
+ROLE_AGENTS = {l["model_role"]: l["subagent_type"] for l in _LAB_PROFILE["lenses"] if l.get("subagent_type")}
+LAB_AGENTS = tuple(dict.fromkeys(ROLE_AGENTS.values()))
+LAB_SKILL = ".claude/skills/%s/SKILL.md" % _LAB_PROFILE["orchestrator"]["name"]
 
 
 def lab_present(repo: Path) -> bool:
@@ -476,8 +489,12 @@ def _parse_auditor_output(p: Profile, state: Dict[str, Any], a: Auditor, output:
 
 
 def record_auditor(state: Dict[str, Any], reg: registry.Registry, name: str, output: Optional[str],
-                   dead: bool) -> Tuple[Dict[str, Any], Dict[str, Any]]:
-    """AU-04, AU-06: an auditor's return. Returns (decision, journal fields)."""
+                   dead: bool, peers: Optional[Dict[str, str]] = None) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+    """AU-04, AU-06: an auditor's return. Returns (decision, journal fields).
+    `peers` (AD-07): RG-02 key -> "<id> (<set>)" of the findings the other lens
+    sets of the same /audit cycle already reported; the first set keeps the
+    finding, a later set drops the twin as a DUPLICATE."""
+    peers = peers or {}
     p = profile(state["audit_skill"])
     a = _auditor(p, name)
     slot = state["auditors"].get(name)
@@ -527,8 +544,9 @@ def record_auditor(state: Dict[str, Any], reg: registry.Registry, name: str, out
         if project is not None:
             previous = "%s@%s" % (project["status"], project["source"])
         blocking = project is not None and project["status"] in registry.BLOCKING
+        sibling = peers.get(registry.project_key(f))
         covered = covered_by_parts(state, f) if p.dedup == "pattern" and twin is None and earlier is None \
-            and not blocking else None
+            and not blocking and sibling is None else None
         if covered is not None:
             why = "union of the occurrences of %s (%s): already split" % (", ".join(covered["parts"]),
                                                                          covered["group"])
@@ -540,14 +558,15 @@ def record_auditor(state: Dict[str, Any], reg: registry.Registry, name: str, out
                 reg.add(item, findings.DUPLICATE, id=f["id"], reason=why)
             duplicates.append({"id": f["id"], "title": f["title"], "reason": why})
             continue
-        if earlier is None and not blocking and twin is not None and p.dedup == "pattern" \
+        if earlier is None and not blocking and sibling is None and twin is not None and p.dedup == "pattern" \
                 and state["origin"].get(twin) != name:
             # VA-07: the same pattern from two auditors is merged, never dropped
             # at random, whatever the call order and the twin's status (lot L12).
             merges.append({"finding": f["id"], "with": twin})
-        elif twin is not None or earlier is not None or blocking:
+        elif twin is not None or earlier is not None or blocking or sibling is not None:
             why = ("already in %s as %s (%s)" % (p.deliverable, earlier["id"], earlier["status"] or earlier["section"])
                    if earlier is not None else "previous=%s" % previous if blocking
+                   else "already reported as %s in this audit cycle" % sibling if sibling is not None
                    else "duplicate of %s (this run)" % twin)
             f = findings.transition(f, findings.DUPLICATE, reason=why, previous=previous)
             state["findings"][f["id"]] = f

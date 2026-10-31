@@ -1,0 +1,84 @@
+{
+  "gaps": [
+    {
+      "id": "E-A1",
+      "finding": "deliverable layout",
+      "why": "a single AUDIT.md instead of three files (ROADMAP 2.3)"
+    },
+    {
+      "id": "E-A2",
+      "finding": "VIB patterns assigned to milestones",
+      "why": "not delivered in this lot: vibecode keeps its own attack table, no SPEC-vib-*"
+    },
+    {
+      "id": "E-A3",
+      "finding": "Q-* Lancer line",
+      "why": "/factory-run --profile research instead of /lab-run (ROADMAP 2.3, D9)"
+    },
+    {
+      "id": "E-A4",
+      "finding": "finding shared by a legacy and a vibecode lens",
+      "why": "listed once (AD-07): a later set of the same cycle drops the twin of an earlier set (key RG-02, audit open boundary)"
+    },
+    {
+      "id": "E-A5",
+      "finding": "gate ids",
+      "why": "audit.* ids replace legacy-audit.*, vibecode-audit.*, ai-lab-audit.*; one final gate"
+    },
+    {
+      "id": "E-A6",
+      "finding": "SPEC-lab-* condition",
+      "why": "software profile active or factory inferred, equivalent before Phase 2"
+    },
+    {
+      "id": "E-A7",
+      "finding": "AUDIT.md header",
+      "why": "lists profiles and lenses"
+    },
+    {
+      "id": "E-A8",
+      "finding": "alias warning",
+      "why": "alias warning at the top of the session, journaled as an alias event"
+    },
+    {
+      "id": "E-A9",
+      "finding": "headless full software audit",
+      "why": "stops before writing (legacy gate stop); the vibecode-audit alias keeps its behavior (AX-06)"
+    },
+    {
+      "id": "E-A10",
+      "finding": "more than 5 lenses",
+      "why": "auditors go in waves (AD-04); no alias is concerned"
+    },
+    {
+      "id": "E-I1",
+      "finding": ".claude/harness.json",
+      "why": "written at installation (HJ-01)"
+    },
+    {
+      "id": "E-I2",
+      "finding": "orchestrator",
+      "why": "per-profile blocks (EP-06)"
+    },
+    {
+      "id": "E-I3",
+      "finding": "ai-lab.code-index",
+      "why": "merged into software-factory.code-index, asked once (EP-04)"
+    },
+    {
+      "id": "E-I4",
+      "finding": "/lab-run",
+      "why": "generated from the common template; equivalence is structural (LR-* replays)"
+    },
+    {
+      "id": "E-I5",
+      "finding": "journal",
+      "why": "harness-scout lines and the software-factory.profiles gate event"
+    },
+    {
+      "id": "E-I6",
+      "finding": "/software-factory on a research project",
+      "why": "proposes research instead of installing only the factory (ROADMAP 2.2)"
+    }
+  ]
+}

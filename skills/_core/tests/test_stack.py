@@ -48,7 +48,7 @@ class DetectTest(helpers.TempDirCase):
             make(self.tmp, rel)
         found = stack.detect(self.tmp)
         self.assertEqual(found["stacks"], ["node", "dotnet", "python", "rust"])
-        self.assertTrue(set(found["stacks"]) <= set(fusion.STACK_DENY))
+        self.assertTrue(set(found["stacks"]) <= set(fusion.DENY_BY_STACK))
         self.assertEqual(sorted(found["families"]), ["dotnet", "go", "node", "python", "rust", "terraform"])
         self.assertNotIn("node_modules/pkg/package.json", found["manifests"])
         self.assertIn("api/App.csproj", found["manifests"])

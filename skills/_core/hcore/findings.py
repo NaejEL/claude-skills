@@ -40,7 +40,7 @@
 # - FD-10: finding -> PR comment, byte for byte the body ghflow.comment_body
 #   posted at BASE1 (ghflow now calls it).
 # - FD-11: forbidden strings in any rendered deliverable: "Statut :" followed
-#   by APPROUVEE or PRE-ENREGISTRE.
+#   by the ready status of an artefact of a profile (PF-05).
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ from pathlib import Path
 from string import Template
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from . import journal, verdicts
+from . import journal, profiles, verdicts
 
 SEVERITIES = ("critical", "major", "minor")
 SIZES = ("XS", "S", "M", "L", "XL")
@@ -59,7 +59,9 @@ EVIDENCE_KINDS = ("code", "journal", "structural")
 NATURES = ("correction", "question")
 RISKS = ("faible", "moyen", "eleve")
 VIB_AXES = ("securite", "maintenabilite", "evolutivite")
-LAB_VERIFIER_KINDS = ("protocol", "leak", "stats", "code", "convention")
+_VERIFIERS = profiles.verifier_formats()
+# FD-05: the Verifier formats are the verify agents of the profiles; the kind taxonomy comes with them.
+LAB_VERIFIER_KINDS = tuple(k for v in _VERIFIERS.values() for k in v["kinds"])
 MAX_LISTED_OCCURRENCES = 5
 
 PROPOSED, CONFIRMED, REJECTED, DUPLICATE = "PROPOSED", "CONFIRMED", "REJECTED", "DUPLICATE"
@@ -86,16 +88,20 @@ TEXT_FIELDS = ("impact", "remediation", "risk_rationale", "reason", "category", 
 OPTIONAL = TEXT_FIELDS + ("milestone", "evidence", "occurrences", "count", "sampled", "nature", "size", "depends_on",
                           "regression_risk", "raw", "settled_by", "deliverable_status", "history")
 
-FORMATS = ("shippr-reviewer", "legacy-auditor", "lab-audit-auditor", "vibecode-auditor",
-           "factory-verifier", "lab-verifier")
+FORMATS = ("shippr-reviewer", "legacy-auditor", "lab-audit-auditor", "vibecode-auditor") + tuple(_VERIFIERS)
 FORMAT_SOURCE = {"shippr-reviewer": "ship-pr", "legacy-auditor": "legacy-audit",
                  "lab-audit-auditor": "ai-lab-audit", "vibecode-auditor": "vibecode-audit",
-                 "factory-verifier": "factory-run", "lab-verifier": "lab-run"}
-LEGACY_FAMILIES = {"HYG": "hygiene", "PORT": "portabilite", "QUAL": "qualite", "FIL": "filet"}
-VIB_FAMILIES = {"ACC": "acces", "INJ": "injection", "MET": "metier", "MNT": "maintenabilite",
-                "EVO": "evolutivite"}
+                 **{agent: v["source"] for agent, v in _VERIFIERS.items()}}
+def _families(debt: str) -> Dict[str, str]:
+    return {l["prefix"]: l["name"] for p in profiles.discover().values() for l in p["lenses"] if l["debt"] == debt}
 
-FORBIDDEN = re.compile(r"Statut[ \t]*:[ \t]*(APPROUV[EÉ]E|PR[EÉ]-ENREGISTR[EÉ])")
+
+LEGACY_FAMILIES = _families("accumulation")
+VIB_FAMILIES = _families("generation")
+
+# FD-11, PF-05: built from the ready statuses of the profiles ("Statut : <X>" -> any accent of E).
+FORBIDDEN = re.compile(r"Statut[ \t]*:[ \t]*(%s)" % "|".join(
+    re.escape(s.split(":", 1)[1].strip()).replace("E", "[EÉ]") for s in profiles.ready_statuses()))
 TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 SPEC_TEMPLATE = TEMPLATES / "spec-factory.md"
 # French deliverable texts (shared format) are data, not code strings.
@@ -393,13 +399,13 @@ def adapt(fmt: str, obj: Dict[str, Any], fid: Optional[str] = None, axis: Option
             f["size"] = obj["difficulty"]
         f["depends_on"] = list(obj.get("depends_on") or [])
     else:
-        # factory-verifier / lab-verifier issue: {file, severity, [kind,] description}.
+        # verifier issue: {file, severity, [kind,] description}.
         # X7: partial conversion, the Verifier validates an implementation and
         # gives neither a line nor an excerpt.
         description = _str(obj, "description", where)
-        if fmt == "lab-verifier" and obj.get("kind") not in LAB_VERIFIER_KINDS:
+        if _VERIFIERS.get(fmt, {}).get("kinds") and obj.get("kind") not in LAB_VERIFIER_KINDS:
             raise FindingError("%s: kind must be one of %s" % (where, "|".join(LAB_VERIFIER_KINDS)))
-        default_axis = obj.get("kind") if fmt == "lab-verifier" else "verification"
+        default_axis = obj.get("kind") if _VERIFIERS.get(fmt, {}).get("kinds") else "verification"
         title = description.strip().splitlines()[0][:120]
         f = _base(fid, source, obj.get("severity"), axis or default_axis, title, obj)
         f["evidence"] = _code_or_structural(obj.get("file"), None)

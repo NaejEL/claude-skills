@@ -11,7 +11,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -23,8 +25,9 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from hcore import CORE_VERSION  # noqa: E402
-from hcore import (audit, blocks, bs, counters, cx, factory, findings, fusion, gates, ghflow,  # noqa: E402
-                   interp, journal, lab, labrun, models, registry, runs, shippr, stack, tshirt, verdicts)
+from hcore import (aliases, audit, blocks, bs, counters, cx, factory, findings, fusion, gates,  # noqa: E402
+                   ghflow, interp, journal, lab, labrun, loop, models, profiles, registry, runs, scout,
+                   shippr, stack, stamp, tshirt, unified, verdicts)
 from hcore import proc  # noqa: E402
 from hcore.proc import Runner  # noqa: E402
 
@@ -212,6 +215,168 @@ def cmd_models_write(args: argparse.Namespace) -> int:
     return 0
 
 
+
+# ------------------------------------------------------------------ profiles
+
+def _profiles_dir(value: Optional[str]) -> Optional[Path]:
+    return Path(value) if value else None
+
+
+def cmd_profile_validate(args: argparse.Namespace) -> int:
+    errors = profiles.validate(Path(args.path))
+    if errors:
+        for e in errors:
+            sys.stderr.write("ERROR: %s\n" % e)
+        emit({"valid": False, "errors": errors})
+        return 2
+    emit({"valid": True, "errors": []})
+    return 0
+
+
+def cmd_profile_list(args: argparse.Namespace) -> int:
+    emit({"profiles": profiles.summary(_profiles_dir(args.profiles_dir))})
+    return 0
+
+
+def cmd_profile_show(args: argparse.Namespace) -> int:
+    """The data a skill needs to generate the files of a profile (EP-04)."""
+    prof = profiles.get(args.name, _profiles_dir(args.profiles_dir))
+    roles = []
+    for role in prof["roles"]:
+        roles.append(dict(role, mission_text=profiles.fragment(prof, role["mission"])))
+    lenses = [dict(l, fragment_text=profiles.fragment(prof, l["fragment"]),
+                   critical_text=profiles.fragment(prof, l["critical_definition"])) for l in prof["lenses"]]
+    sets = [dict(s_, **{k.replace("fragment", "text"): profiles.fragment(prof, s_[k])
+                        for k in ("fragment", "map_fragment", "intro_fragment", "validator_fragment") if k in s_})
+            for s_ in prof["lens_sets"]]
+    out = {"name": prof["name"], "orchestrator": prof["orchestrator"], "ci": prof["ci"], "roles": roles,
+           "artefacts": prof["artefacts"], "loop": prof["loop"], "model_presets": prof["model_presets"],
+           "verifier": prof["verifier"], "lenses": lenses, "lens_sets": sets}
+    for key, rel in prof["fragments"].items():
+        out[key + "_text"] = profiles.fragment(prof, rel)
+    emit(out)
+    return 0
+
+
+# --------------------------------------------------------------------- stamp
+
+def cmd_stamp_add(args: argparse.Namespace) -> int:
+    names = [n for n in (args.profiles or "").split(";") if n.strip()]
+    if not names:
+        raise Usage("stamp add expects --profiles p[;p]")
+    emit(stamp.add(Path(args.root), [n.strip() for n in names], args.by, args.date))
+    return 0
+
+
+def cmd_stamp_resolve(args: argparse.Namespace) -> int:
+    emit(stamp.resolve(Path(args.root)))
+    return 0
+
+
+def cmd_stamp_compare(args: argparse.Namespace) -> int:
+    emit(stamp.compare(Path(args.root), json.loads(read_file(args.verdict))))
+    return 0
+
+
+# --------------------------------------------------------------------- scout
+
+def cmd_scout_signals(args: argparse.Namespace) -> int:
+    result = scout.signals(Path(args.root))
+    result["judgement"] = scout.judgement_criteria()
+    emit(result)
+    return 0
+
+
+def cmd_scout_verdict(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    output = None
+    try:
+        if args.signals:
+            try:
+                output = json.loads(read_file(args.signals))
+            except ValueError as exc:
+                raise Usage("--signals is not valid JSON: %s" % exc)
+            if not isinstance(output, dict):
+                raise Usage("--signals expects a JSON object")
+    finally:
+        _remove_transit(root, args.signals)
+    result = scout.verdict(root, output, args.scout_failed)
+    moment = datetime.now()
+    out_dir = root / runs.RUNS_DIR
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / ("scout-%s.json" % moment.strftime("%Y%m%d-%H%M%S"))
+    path.write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    try:
+        resolved = models.resolve_readonly(root, ("harness.scout",), args.models)
+    except models.ModelsError as exc:
+        raise Usage(str(exc))
+    if args.run:
+        run = _run_path(args.run)
+    else:
+        run = runs.create(root, args.skill, {"scout": True})
+    record = journal.make_record(agent="harness-scout", model=resolved["roles"]["harness.scout"]["model"],
+                                 duration_ms=_count_arg("--duration-ms", args.duration_ms, []),
+                                 iteration=0, verdict="DEAD" if args.scout_failed else "DONE",
+                                 produced=len(output.get("signals", [])) if output else 0,
+                                 tokens=_count_arg("--tokens", args.tokens, []))
+    journal.append(run, journal.sanitize(record)[0])
+    emit(dict(result, verdict_file=path.relative_to(root).as_posix(), run=runs.display(run),
+              model=resolved["roles"]["harness.scout"]))
+    return 0
+
+
+# --------------------------------------------------------------------- audit (Phase 2)
+
+def _active_for_audit(args: argparse.Namespace) -> List[str]:
+    if args.profile:
+        names = [n.strip() for n in args.profile.split(";") if n.strip()]
+        known = profiles.discover()
+        unknown = [n for n in names if n not in known]
+        if unknown:
+            raise Usage("unknown profile: %s (known: %s)" % (", ".join(unknown), ", ".join(known)))
+        return names
+    resolved = stamp.resolve(Path(args.root))
+    if not resolved["profiles"]:
+        raise Usage("no active profile: pass --profile or run the scout (gate audit.profiles)")
+    return resolved["profiles"]
+
+
+def cmd_audit_select(args: argparse.Namespace) -> int:
+    """AD-03, AD-04, AD-09: lens selection, waves and caps."""
+    names = _active_for_audit(args)
+    known = profiles.discover()
+    selected = [known[n] for n in names]
+    try:
+        lenses = profiles.select_lenses(selected, args.lenses, known)
+        options = {"--max-specs": args.max_specs, "--max-findings": args.max_findings,
+                   "--max-questions": args.max_questions}
+        caps = profiles.caps(selected, options)
+    except profiles.SelectionError as exc:
+        raise Usage(str(exc))
+    active_sets = {s["name"]: s for p in selected for s in p["lens_sets"]}
+    lenses = [l for l in lenses if l["set"] in active_sets]
+    emit({"profiles": names, "lenses": [l["name"] for l in lenses],
+          "details": [{"name": l["name"], "profile": l["profile"], "set": l["set"], "prefix": l["prefix"],
+                       "model_role": l["model_role"], "debt": l["debt"], "shape": l["shape"]} for l in lenses],
+          "waves": profiles.waves(lenses), "caps": caps, "via": args.via})
+    return 0
+
+
+def cmd_audit_alias_args(args: argparse.Namespace) -> int:
+    try:
+        text = read_file(args.arguments_file) if args.arguments_file else ""
+    finally:
+        _remove_transit(Path(args.root), args.arguments_file)
+    emit(aliases.translate(args.skill, text))
+    return 0
+
+
+def cmd_gate_list(args: argparse.Namespace) -> int:
+    emit({"gates": [{"id": g.id, "kind": g.kind, "default": g.default, "rationale": g.rationale,
+                     "headless": g.headless, "phase2_auto": g.phase2_auto}
+                    for g in gates.all_gates().values()]})
+    return 0
+
 # --------------------------------------------------------------------- gates
 
 def _gate_run(args: argparse.Namespace, gate: gates.Gate) -> Optional[Path]:
@@ -234,11 +399,15 @@ def cmd_gate_decide(args: argparse.Namespace) -> int:
     root = Path(runs.load_state(run)["root"]) if run is not None else Path(args.root)
     # GT-01: an invalid .claude/harness.json is refused BEFORE any run is opened
     # (no orphan run left behind by an exit 2).
-    event = gates.decide(gate.id, gates.read_policy(root))
+    event = gates.decide(gate.id, gates.read_policy(root), ambiguous=args.ambiguous)
     if run is None:
         run = runs.create(root, gate.skill, {"gate_only": True})
     journal.append(run, event)
     if event["decision"] == gates.STOP:
+        if event.get("ambiguous"):
+            raise gates.GateStop("gate %s: ambiguous proposal under autonomy auto: see %s; resume with /%s "
+                                 "--profile <p>[;<p>]" % (gate.id, args.verdict or "the scout-*.json verdict",
+                                                           gate.skill))
         raise gates.GateStop(gates.stop_message(gate, "decision default without a default to apply"))
     emit(dict(event, options=list(gate.options), dialogue=gate.dialogue, run=runs.display(run)))
     return 0
@@ -293,8 +462,18 @@ def cmd_block(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------- software-factory
 
 def cmd_sf_apply(args: argparse.Namespace) -> int:
-    stacks = [s for s in (args.stacks or "").split(",") if s.strip()]
-    emit(fusion.apply(Path(args.root), [s.strip() for s in stacks]))
+    stacks = [s.strip() for s in (args.stacks or "").split(",") if s.strip()]
+    if args.profiles:
+        known = profiles.discover()
+        names = [n.strip() for n in args.profiles.replace(",", ";").split(";") if n.strip()]
+        unknown = [n for n in names if n not in known]
+        if unknown:
+            raise Usage("unknown profile: %s (known: %s)" % (", ".join(unknown), ", ".join(known)))
+        merged = profiles.merged([known[n] for n in names], stacks, Path(args.root), args.test_command,
+                                 args.test_windows)
+        emit(fusion.apply_merged(Path(args.root), merged))
+        return 0
+    emit(fusion.apply(Path(args.root), stacks))
     return 0
 
 
@@ -326,6 +505,27 @@ def cmd_sf_install(args: argparse.Namespace) -> int:
         emit({args.dest: result["state"], "model": value, "model_block": result["model_block"]})
     finally:
         _remove_transit(Path(args.root), args.source)
+    return 0
+
+
+def cmd_sf_args(args: argparse.Namespace) -> int:
+    """EP-01: [--profile p[;p] | --rescan] [first need]; both options -> exit 2, unknown profile -> exit 2."""
+    root = Path(args.root)
+    try:
+        text = read_file(args.arguments_file) if args.arguments_file else ""
+    finally:
+        _remove_transit(root, args.arguments_file)
+    rest, forced = loop.extract_profile_option(text)
+    rescan = re.search(r"(?:(?<=\s)|^)--rescan(?=\s|$)", rest) is not None
+    if rescan:
+        rest = re.sub(r"(?:(?<=\s)|^)--rescan(?=\s|$)", "", rest, count=1).strip()
+    if forced is not None and rescan:
+        raise Usage("--profile and --rescan cannot be used together")
+    names = [n.strip() for n in (forced or "").split(";") if n.strip()]
+    unknown = [n for n in names if n not in profiles.discover()]
+    if unknown:
+        raise Usage("unknown profile: %s (known: %s)" % (", ".join(unknown), ", ".join(profiles.discover())))
+    emit({"profiles": names, "rescan": rescan, "need": rest})
     return 0
 
 
@@ -371,13 +571,40 @@ def cmd_fr_start(args: argparse.Namespace) -> int:
     try:
         # X6: --models "role=model;..." taken out of $ARGUMENTS, for this cycle only.
         rest, override = models.extract_option(arguments)
-        resolved = models.resolve_root(root, models.FACTORY_ROLES, override)
     except models.ModelsError as exc:
         raise Usage(str(exc))
-    choice = factory.entry(rest, root)
-    state = factory.new_state({r: e["model"] for r, e in resolved["roles"].items()})
-    run = runs.create(root, "factory-run", state)
-    result = dict(choice, run=runs.display(run), models=resolved["roles"])
+    # LP-05, LP-06: the input is routed to a profile of the stamp.
+    stamped = stamp.resolve(root)
+    instance = args.orchestrator if args.orchestrator != "factory-run" else None
+    try:
+        routed = loop.route(rest, root, stamped["profiles"], instance, forced_profile=args.profile)
+    except loop.LoopUsage as exc:
+        raise Usage(str(exc))
+    except loop.LoopStop as exc:
+        raise ghflow.Stop(str(exc))
+    if routed["gate"]:
+        emit({"profile": None, "gate": routed["gate"], "candidates": routed["candidates"],
+              "default": routed["default"], "need": routed["need"], "source": stamped["source"]})
+        return 0
+    prof = profiles.get(routed["profile"])
+    rest = loop.extract_profile_option(rest)[0]
+    lab_machine = loop.machine_of(prof) == "lab"
+    try:
+        resolved = models.resolve_root(root, tuple(prof["model_roles"]), override, "lab" if lab_machine else None)
+    except models.ModelsError as exc:
+        raise Usage(str(exc))
+    assignment = {r: e["model"] for r, e in resolved["roles"].items()}
+    if lab_machine:
+        entered = labrun.entry(rest, root)
+        state = labrun.new_state(assignment, entered["mode"])
+        choice = {"mode": "build" if entered["mode"] == "build" else "plan", "protocol": entered["protocol"]}
+    else:
+        choice = factory.entry(rest, root)
+        state = factory.new_state(assignment)
+    state["profile"] = prof["name"]
+    run = runs.create(root, args.orchestrator, state)
+    result = dict(choice, profile=prof["name"], orchestrator=args.orchestrator, run=runs.display(run),
+                  models=resolved["roles"])
     if choice["mode"] == "plan":
         result["need"] = rest
     if resolved["warnings"]:
@@ -386,13 +613,20 @@ def cmd_fr_start(args: argparse.Namespace) -> int:
     return 0
 
 
+def _profile_extra(state: Dict[str, Any]) -> Dict[str, Any]:
+    """LP-07: every journal line of a routed run carries its profile."""
+    return {"profile": state["profile"]} if state.get("profile") else {}
+
+
 def cmd_fr_record(args: argparse.Namespace) -> int:
     run = _run_path(args.run)
     state = runs.load_state(run)
+    if state.get("profile") and loop.machine_of(profiles.get(state["profile"])) == "lab":
+        return cmd_lr_record(args)
     measure = _measure(state, args, args.agent)
     decision, fields = factory.record(state, args.agent, read_output(args.output), args.dead)
     model = _model(args, state, factory.AGENT_ROLES[args.agent])
-    _log(run, args, args.agent, measure, fields, decision, model)
+    _log(run, args, args.agent, measure, fields, decision, model, **_profile_extra(state))
     runs.save_state(run, state)
     emit(decision)
     return 0
@@ -720,7 +954,7 @@ def cmd_finding_forbidden(args: argparse.Namespace) -> int:
             found[path] = hits
     emit({"clean": not found, "hits": found})
     if found:
-        raise ghflow.Stop("forbidden string ('Statut :' followed by APPROUVEE or PRE-ENREGISTRE) in: %s"
+        raise ghflow.Stop("forbidden string ('Statut :' followed by the ready status of an artefact) in: %s"
                           % ", ".join(sorted(found)))
     return 0
 
@@ -809,6 +1043,18 @@ def cmd_audit_start(args: argparse.Namespace) -> int:
     finally:
         _remove_transit(Path(args.root), args.arguments_file)
     parsed = audit.parse_arguments(args.skill, arguments, Path(args.root))
+    if args.only:
+        # AD-03: /audit selects single lenses; the engine selects units (an axis may be partial).
+        try:
+            wanted = profiles.split_list(args.only)
+        except profiles.SelectionError as exc:
+            raise Usage("--only: %s" % exc)
+        outside = [w for w in wanted if w not in parsed["auditors"]]
+        if outside:
+            raise Usage("--only: lens not in this audit: %s" % ", ".join(outside))
+        parsed["auditors"] = [a for a in parsed["auditors"] if a in wanted]
+        parsed["units"] = [u for u in parsed["units"]
+                           if any(x.unit == u and x.name in wanted for x in p.auditors)]
     repo = Path(parsed["repo"])
     try:
         # X5: an audit writes nothing but its allowed paths: no models.json migration.
@@ -817,7 +1063,13 @@ def cmd_audit_start(args: argparse.Namespace) -> int:
         raise Usage(str(exc))
     deliverable = repo / p.deliverable
     resumed = None
-    if deliverable.is_file():
+    imports: List[Dict[str, str]] = []
+    import_warnings: List[str] = []
+    if args.unified:
+        # MG-01 to MG-03: AUDIT.md first, then the previous deliverable if it was never imported.
+        found = unified.resume(repo, args.skill)
+        resumed, imports, import_warnings = found["parsed"], found["imports"], found["warnings"]
+    elif deliverable.is_file():
         resumed = audit.parse_deliverable(args.skill, deliverable.read_text(encoding="utf-8"))
     run_cmd = Runner(cwd=str(repo))
     git_absent = audit.probe_git(run_cmd, repo)
@@ -829,6 +1081,8 @@ def cmd_audit_start(args: argparse.Namespace) -> int:
     factory_here = (repo / ".claude" / "skills" / "factory-run" / "SKILL.md").is_file()
     assignment = {r: e["model"] for r, e in resolved["roles"].items()}
     state = audit.new_state(args.skill, parsed, git_absent, factory_here, project, resumed, assignment)
+    state["unified"] = bool(args.unified)
+    state["imports"] = imports
     run = runs.create(repo, args.skill, state)
     reg = registry.Registry(runs.registry_path(run))
     count = audit.register_resumed(resumed, reg) if resumed else 0
@@ -846,6 +1100,11 @@ def cmd_audit_start(args: argparse.Namespace) -> int:
               "resumed": None if resumed is None else {"entries": count, "numbering": resumed["numbering"],
                                                        "ids": audit.resumed_ids(resumed)},
               "project_findings": len(project), "allowed_writes": audit.allowed_writes(args.skill)}
+    if args.unified:
+        result["imports"] = imports
+        result["allowed_writes"] = [unified.DELIVERABLE] + result["allowed_writes"][1:]
+    if import_warnings:
+        result["import_warnings"] = import_warnings
     if resolved["warnings"]:
         result["model_warnings"] = resolved["warnings"]
     emit(result)
@@ -855,7 +1114,8 @@ def cmd_audit_start(args: argparse.Namespace) -> int:
 def cmd_audit_auditor(args: argparse.Namespace) -> int:
     run, state, p, reg = _audit_ctx(args)
     measure = _measure(state, args, "auditor:" + args.unit)
-    decision, fields = audit.record_auditor(state, reg, args.unit, read_output(args.output), args.dead)
+    peers = unified.cycle_peers(Path(state["repo"]), run) if state.get("unified") else None
+    decision, fields = audit.record_auditor(state, reg, args.unit, read_output(args.output), args.dead, peers)
     model = _model(args, state, audit.auditor_role(p, args.unit))
     _log(run, args, "auditor", measure, fields, decision, model, unit=args.unit)
     runs.save_state(run, state)
@@ -898,6 +1158,10 @@ def cmd_audit_consolidate(args: argparse.Namespace) -> int:
 
 
 def cmd_audit_plan(args: argparse.Namespace) -> int:
+    if args.run is None:
+        return cmd_audit_select(args)
+    if args.data_file is None:
+        raise Usage("audit plan expects --data-file with --run")
     run, state, p, reg = _audit_ctx(args)
     data = _json_file("--data-file", args.data_file)     # read, not consumed: 'render' takes it later
     if not isinstance(data, dict):
@@ -934,8 +1198,52 @@ def cmd_audit_render(args: argparse.Namespace) -> int:
     if not isinstance(data, dict):
         raise Usage("--data-file expects a JSON object")
     text = audit.render(p.skill, audit.document(state, data))
+    if state.get("unified"):
+        # SO-05: the old deliverable is never written; the set block waits for 'audit assemble'.
+        section = Path(state["repo"]) / runs.RUNS_DIR / ("section-%s.md" % p.skill)
+        section.parent.mkdir(parents=True, exist_ok=True)
+        with open(str(section), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(unified.strip_set_block(p.skill, text))
+        state["section_file"] = section.name
+        runs.save_state(run, state)
+        emit({"section": section.name, "deliverable": unified.DELIVERABLE})
+        return 0
     result = audit.write_text(p.skill, Path(state["repo"]), Path(state["repo"]) / p.deliverable, text)
     runs.save_state(run, state)
+    emit(result)
+    return 0
+
+
+def cmd_audit_open(args: argparse.Namespace) -> int:
+    """AD-12: the journal audit-<timestamp>.jsonl of /audit; `--via` is journaled (AX-04, E-A8)."""
+    root = Path(args.root)
+    run = runs.create(root, "audit", {"unified": True})
+    if args.via:
+        journal.append(run, {"event": "alias", "alias": args.via, "target": "audit"})
+    emit({"run": runs.display(run), "via": args.via})
+    return 0
+
+
+def cmd_audit_assemble(args: argparse.Namespace) -> int:
+    """SO-01, MG-02: AUDIT.md from the section blocks of the runs, in the order given."""
+    repo = Path(args.root).resolve()
+    blocks_: List[Tuple[str, str]] = []
+    imports: List[Dict[str, str]] = []
+    consumed: List[Path] = []
+    for value in args.set_run:
+        run = _run_path(value)
+        state = runs.load_state(run)
+        if not state.get("section_file"):
+            raise Usage("run %s has no rendered section: call 'audit render' first" % value)
+        path = repo / runs.RUNS_DIR / state["section_file"]
+        blocks_.append((state["audit_skill"], read_file(str(path))))
+        imports += state.get("imports", [])
+        consumed.append(path)
+    result = unified.assemble(repo, blocks_, args.date or datetime.now().strftime("%Y-%m-%d"),
+                              [n for n in args.profiles.split(";") if n], [n for n in args.lenses.split(";") if n],
+                              args.sampled, imports)
+    for path in consumed:
+        path.unlink()
     emit(result)
     return 0
 
@@ -1059,7 +1367,7 @@ def cmd_lr_record(args: argparse.Namespace) -> int:
     measure = _measure(state, args, slot)
     decision, fields = labrun.record(state, args.agent, args.mode, read_output(args.output), args.dead)
     model = _model(args, state, labrun.role_of(args.agent, args.mode))
-    _log(run, args, args.agent, measure, fields, decision, model)
+    _log(run, args, args.agent, measure, fields, decision, model, **_profile_extra(state))
     runs.save_state(run, state)
     emit(decision)
     return 0
@@ -1158,6 +1466,11 @@ def build_parser() -> argparse.ArgumentParser:
         q.add_argument("--run", default=None, help="run journal; absent (decide only): a new run of the gate's skill")
         q.add_argument("--root", default=".")
         q.set_defaults(func=func)
+        if name == "decide":
+            q.add_argument("--ambiguous", action="store_true",
+                           help="AR-02: the scout proposal is ambiguous (phase2_auto gates)")
+            q.add_argument("--verdict", default=None, help="scout verdict file, named in the stop message")
+    gsub.add_parser("list", help="the gate catalog (core and profiles)").set_defaults(func=cmd_gate_list)
     q.add_argument("--answer", default=None, help="option chosen by the user")
     q.add_argument("--answer-file", default=None, help="free answer, file written by Write (consumed)")
     q.add_argument("--headless", action="store_true", help="AskUserQuestion unavailable: headless fallback (GT-06)")
@@ -1228,6 +1541,8 @@ def build_parser() -> argparse.ArgumentParser:
     q = asub.add_parser("start", help="arguments, git probe, resume; opens the run in the audited repository")
     q.add_argument("--skill", required=True, choices=sorted(audit.PROFILES))
     q.add_argument("--root", default=".", help="current directory of the session (REPO is relative to it)")
+    q.add_argument("--only", default=None, help="l;l: keeps these lenses only (AD-03)")
+    q.add_argument("--unified", action="store_true", help="/audit: resume from AUDIT.md and the previous deliverables (MG-01)")
     q.add_argument("--arguments-file", default=None, help="file holding $ARGUMENTS, written by Write (consumed)")
     q.set_defaults(func=cmd_audit_start)
     q = asub.add_parser("auditor", help="return of a lens or family auditor (AU-04, AU-06)")
@@ -1243,10 +1558,35 @@ def build_parser() -> argparse.ArgumentParser:
         q = asub.add_parser(name)
         q.add_argument("--run", required=True)
         q.set_defaults(func=func)
-    q = asub.add_parser("plan", help="ceiling, spec mapping, load and quick wins of the arbitrated findings (LA-10)")
-    q.add_argument("--run", required=True)
-    q.add_argument("--data-file", required=True, help="the render data of the skill (not consumed)")
+    q = asub.add_parser("plan", help="with --run: ceiling, spec mapping, load and quick wins (LA-10); without: "
+                                     "lens selection, waves and caps of /audit (AD-03, AD-04, AD-09)")
+    q.add_argument("--run", default=None)
+    q.add_argument("--data-file", default=None, help="the render data of the skill (not consumed)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--profile", default=None, help="p[;p]: forces the active profiles")
+    q.add_argument("--lenses", default=None)
+    q.add_argument("--max-specs", default=None)
+    q.add_argument("--max-findings", default=None)
+    q.add_argument("--max-questions", default=None)
+    q.add_argument("--via", default=None, help="alias that invoked the audit (journaled)")
     q.set_defaults(func=cmd_audit_plan)
+    q = asub.add_parser("open", help="opens the audit-<timestamp> journal of /audit, journals --via (AD-12)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--via", default=None)
+    q.set_defaults(func=cmd_audit_open)
+    q = asub.add_parser("assemble", help="writes AUDIT.md from the rendered set blocks (SO-01, MG-02)")
+    q.add_argument("--root", default=".", help="the audited repository")
+    q.add_argument("--set-run", action="append", required=True, help="run of a lens set, in the order of the stamp")
+    q.add_argument("--profiles", required=True, help="p;p")
+    q.add_argument("--lenses", required=True, help="l;l")
+    q.add_argument("--date", default=None)
+    q.add_argument("--sampled", action="store_true")
+    q.set_defaults(func=cmd_audit_assemble)
+    q = asub.add_parser("alias-args", help="arguments of an old audit skill -> arguments of /audit (AX-05)")
+    q.add_argument("--skill", required=True, choices=sorted(aliases.ALIASES))
+    q.add_argument("--root", default=".")
+    q.add_argument("--arguments-file", default=None, help="file holding $ARGUMENTS, written by Write (consumed)")
+    q.set_defaults(func=cmd_audit_alias_args)
     q = asub.add_parser("settle", help="TRANCHEE (journal <date>) when the entry is later than the audit (AA-10)")
     q.add_argument("--audit-date", required=True)
     q.add_argument("--entry-date", required=True)
@@ -1270,6 +1610,48 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--run", required=True)
     q.add_argument("--deliverable", action="store_true", help="the deliverable holding the CONFIRMED is written")
     q.set_defaults(func=cmd_audit_publish)
+    p = sub.add_parser("profile", help="profiles: data folders (PF-01 to PF-05)")
+    prsub = p.add_subparsers(dest="prcmd", required=True)
+    q = prsub.add_parser("validate", help="exit 0 if conforming, 2 with the list of errors (PF-03)")
+    q.add_argument("path")
+    q.set_defaults(func=cmd_profile_validate)
+    q = prsub.add_parser("list", help="profiles, lenses and roles (PF-04)")
+    q.add_argument("--profiles-dir", default=None)
+    q.set_defaults(func=cmd_profile_list)
+    q = prsub.add_parser("show", help="roles and fragments of a profile, for the generation (EP-04)")
+    q.add_argument("name")
+    q.add_argument("--profiles-dir", default=None)
+    q.set_defaults(func=cmd_profile_show)
+    p = sub.add_parser("stamp", help="profile stamp of .claude/harness.json (HJ-01 to HJ-05); no removal")
+    stsub2 = p.add_subparsers(dest="stampcmd", required=True)
+    q = stsub2.add_parser("add")
+    q.add_argument("--root", default=".")
+    q.add_argument("--profiles", required=True, help="p[;p]")
+    q.add_argument("--by", required=True, choices=stamp.BY_VALUES)
+    q.add_argument("--date", default=None, help="YYYY-MM-DD (default: today)")
+    q.set_defaults(func=cmd_stamp_add)
+    q = stsub2.add_parser("resolve", help="{source, profiles}: stamp, inferred or none (HJ-04)")
+    q.add_argument("--root", default=".")
+    q.set_defaults(func=cmd_stamp_resolve)
+    q = stsub2.add_parser("compare", help="added / kept / vanished against a scout verdict (EP-03)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--verdict", required=True)
+    q.set_defaults(func=cmd_stamp_compare)
+    p = sub.add_parser("scout", help="profile scout (SC-01 to SC-08)")
+    scsub = p.add_subparsers(dest="sccmd", required=True)
+    q = scsub.add_parser("signals", help="deterministic signals of every profile and the judgement criteria")
+    q.add_argument("--root", default=".")
+    q.set_defaults(func=cmd_scout_signals)
+    q = scsub.add_parser("verdict", help="verifies the proofs, scores and ranks the profiles (SC-05)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--signals", default=None, help="the agent's JSON block, written by Write (consumed)")
+    q.add_argument("--scout-failed", action="store_true", help="the agent died twice (SC-06)")
+    q.add_argument("--run", default=None)
+    q.add_argument("--skill", default="software-factory", choices=("software-factory", "audit"))
+    q.add_argument("--models", default=None)
+    q.add_argument("--duration-ms", default=None)
+    q.add_argument("--tokens", default=None)
+    q.set_defaults(func=cmd_scout_verdict)
     p = sub.add_parser("block", help="delimited blocks (D9, BK-01)")
     p.add_argument("action", choices=("get", "upsert", "remove"))
     p.add_argument("--file", required=True)
@@ -1283,6 +1665,9 @@ def build_parser() -> argparse.ArgumentParser:
     q = ssub.add_parser("apply", help="merges settings.json, tasks.json, .gitignore (SF-01 to SF-04)")
     q.add_argument("--root", default=".")
     q.add_argument("--stacks", default="", help="node,dotnet,python,cpp,rust (comma-separated)")
+    q.add_argument("--profiles", default=None, help="p[;p]: union of the profiles' deny rules, tasks, .gitignore (HJ-06)")
+    q.add_argument("--test-command", default=None, help="with --profiles: test task of the profiles that have one")
+    q.add_argument("--test-windows", default=None)
     q.set_defaults(func=cmd_sf_apply)
     q = ssub.add_parser("install", help="writes a generated file without overwriting (SF-04)")
     q.add_argument("--root", default=".")
@@ -1292,6 +1677,10 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--model-role", default=None, choices=models.ROLES,
                    help="generated agent: its role's model written in a frontmatter block (X1)")
     q.set_defaults(func=cmd_sf_install)
+    q = ssub.add_parser("args", help="entry point arguments: --profile, --rescan, first need (EP-01)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--arguments-file", default=None, help="file holding $ARGUMENTS, written by Write (consumed)")
+    q.set_defaults(func=cmd_sf_args)
     q = ssub.add_parser("copy-core", help="copies the core under .claude/harness/ (D1); exit 1 if blocked")
     q.add_argument("--root", default=".")
     mode = q.add_mutually_exclusive_group()
@@ -1305,12 +1694,17 @@ def build_parser() -> argparse.ArgumentParser:
     fsub = p.add_subparsers(dest="frcmd", required=True)
     q = fsub.add_parser("start")
     q.add_argument("--root", default=".")
+    q.add_argument("--profile", default=None, help="forces the profile of this cycle (LP-05)")
+    q.add_argument("--orchestrator", default="factory-run",
+                   choices=sorted({p["orchestrator"]["name"] for p in profiles.discover().values()}),
+                   help="instance of the orchestrator template (LP-06)")
     q.add_argument("--arguments-file", default=None,
                    help="file holding $ARGUMENTS, written by the Write tool (never through the shell)")
     q.set_defaults(func=cmd_fr_start)
     q = fsub.add_parser("record")
     _agent_args(q)
-    q.add_argument("--agent", required=True, choices=factory.AGENTS)
+    q.add_argument("--agent", required=True, help="an agent of the run's profile")
+    q.add_argument("--mode", default=None, help="director mode of a loop with consultation (cadrage|interpretation)")
     q.set_defaults(func=cmd_fr_record)
 
     p = sub.add_parser("cx", help="code-index rules (CX-01 to CX-16)")

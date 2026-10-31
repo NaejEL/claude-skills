@@ -1,0 +1,1 @@
+Installation du profil jouet.

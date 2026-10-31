@@ -1,0 +1,1 @@
+- **(b) `portabilite`** (`PORT-`) — chemins absolus « marche sur ma machine », config d'environnement en dur, dépendances non épinglées / obsolètes / vulnérables, scripts non portables Windows/Unix, CI absente, build non reproductible ;

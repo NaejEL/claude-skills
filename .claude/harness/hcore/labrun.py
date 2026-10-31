@@ -3,7 +3,7 @@
 # - LR-01: models per role (hcore/models.py, MD-07): --models holds for the
 #   cycle only, "inherit" -> the Agent parameter is not passed.
 # - LR-02: entry on a path under experiments/ whose status line is exactly
-#   "Statut : PRE-ENREGISTRE" -> Build phase; otherwise Cadrage. The option
+#   the ready status line of the protocol -> Build phase; otherwise Cadrage. The option
 #   --models is taken out of $ARGUMENTS first. (The status lines are part of
 #   the French protocol format and are kept as is.)
 # - LR-03: an expert (neuro, math) that died or returned nothing usable is
@@ -23,13 +23,18 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from . import counters, relaunch, verdicts
+from . import counters, profiles, relaunch, verdicts
 
-DIRECTOR, NEURO, MATH = "lab-director", "lab-neuro", "lab-math"
-BUILDER, VERIFIER = "lab-builder", "lab-verifier"
+# PX-04: the agents, their model roles and the ready status line come from the profile with a lab loop.
+_PROFILE = profiles.by_machine("lab")
+_AGENTS = profiles.loop_agents(_PROFILE)
+_MODEL_ROLES = {r["name"]: r["model_role"] for r in _PROFILE["roles"]}
+DIRECTOR = _AGENTS["plan"]
+NEURO, MATH = _AGENTS["consult"]
+BUILDER, VERIFIER = _AGENTS["build"], _AGENTS["verify"]
 AGENTS = (DIRECTOR, NEURO, MATH, BUILDER, VERIFIER)
-EXPERTS = {NEURO: "neuro", MATH: "math"}
-PRE_REGISTERED_LINE = "Statut : PRE-ENREGISTRE"
+EXPERTS = {a: _MODEL_ROLES[a].rsplit(".", 1)[-1] for a in (NEURO, MATH)}
+PRE_REGISTERED_LINE = profiles.ready_status(_PROFILE)
 MODES = ("cadrage", "interpretation")
 
 
@@ -40,8 +45,8 @@ class RunOver(RuntimeError):
 def role_of(agent: str, mode: Optional[str]) -> str:
     """Model role of an agent call (MD-01)."""
     if agent == DIRECTOR:
-        return "lab.director." + (mode or "cadrage")
-    return "lab." + agent[len("lab-"):]
+        return _MODEL_ROLES[agent].rsplit(".", 1)[0] + "." + (mode or "cadrage")
+    return _MODEL_ROLES[agent]
 
 
 def entry(arguments: str, root: Path) -> Dict[str, Any]:

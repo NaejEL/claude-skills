@@ -37,7 +37,7 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from . import blocks, fusion, stack
+from . import blocks, fusion, profiles, stack
 
 CREATED, MERGED, IDENTICAL, KEPT = fusion.CREATED, fusion.MERGED, fusion.IDENTICAL, fusion.KEPT
 UPDATED = "mis-à-jour"
@@ -47,14 +47,14 @@ READ_TOOLS = ["mcp__rgkb__search", "mcp__rgkb__definition", "mcp__rgkb__symbols"
 DENY_RULES = ["Read(./.knowledge/index.sqlite)", "Read(./.knowledge/graph.json)"]
 RGKB_PATH = ".claude/rgkb/rgkb.py"
 
-READONLY_AGENTS = ("factory-planner", "factory-verifier", "lab-director", "lab-neuro", "lab-math", "lab-verifier")
-BUILDER_AGENTS = ("factory-builder", "lab-builder")
+# PF-05: the agents and the files of each installation come from the profiles.
+_LINEAR, _LAB = profiles.by_machine("linear"), profiles.by_machine("lab")
+READONLY_AGENTS = tuple(r["name"] for p in (_LINEAR, _LAB) for r in p["roles"] if r["read_only"])
+BUILDER_AGENTS = tuple(r["name"] for p in (_LINEAR, _LAB) for r in p["roles"] if not r["read_only"])
 ORCHESTRATORS = ("factory-run", "lab-run")
 CI_SCRIPTS = ("ci/factory.sh", "ci/factory.ps1", "ci/lab.sh", "ci/lab.ps1")
-FACTORY_FILES = (".claude/agents/factory-planner.md", ".claude/agents/factory-builder.md",
-                 ".claude/agents/factory-verifier.md", ".claude/skills/factory-run/SKILL.md")
-LAB_FILES = (".claude/agents/lab-director.md", ".claude/agents/lab-neuro.md", ".claude/agents/lab-math.md",
-             ".claude/agents/lab-builder.md", ".claude/agents/lab-verifier.md", ".claude/skills/lab-run/SKILL.md")
+FACTORY_FILES = tuple(profiles.files_of(_LINEAR))
+LAB_FILES = tuple(profiles.files_of(_LAB))
 GITIGNORE_NOTE = "# The knowledge base is shared on purpose (code-index): do not ignore it."
 COUNTER_RULE = "!.knowledge/**"
 

@@ -2,7 +2,7 @@
 # model block of generated agent files.
 #
 # - MD-01: closed role set (ROLES). An unknown role is an explicit error.
-# - MD-02: missing file -> "inherit" for every role.
+# - MD-02: missing file -> "inherit" for every role (SC-04: harness.scout is haiku).
 # - MD-03 / X8: an unknown value (or role) in the file is an explicit error,
 #   like in --models (decision X8 of 2026-10-17 replaces the "inherit with a
 #   warning" of ai-lab:158).
@@ -31,7 +31,7 @@ import shlex
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
-from . import blocks
+from . import blocks, profiles
 
 ALIASES = ("inherit", "opus", "fable", "sonnet", "haiku")
 FULL_ID = re.compile(r"^claude-[a-z0-9][a-z0-9.\-\[\]]*$")
@@ -41,7 +41,12 @@ SHIPPR_ROLES = ("shippr.reviewer", "shippr.validator")
 AUDIT_ROLES = ("audit.auditor", "audit.validator")
 LAB_ROLES = ("lab.director.cadrage", "lab.director.interpretation", "lab.neuro", "lab.math",
              "lab.builder", "lab.verifier", "lab.validator")
-ROLES = FACTORY_ROLES + SHIPPR_ROLES + AUDIT_ROLES + LAB_ROLES
+# SC-04: the scout is cheap by default (the one exception to MD-02).
+HARNESS_ROLES = ("harness.scout",)
+DEFAULTS = {"harness.scout": "haiku"}
+_BASE_ROLES = FACTORY_ROLES + SHIPPR_ROLES + AUDIT_ROLES + LAB_ROLES + HARNESS_ROLES
+# PF-05: the closed role set is the core roles plus the roles the profiles declare.
+ROLES = _BASE_ROLES + tuple(r for r in profiles.model_roles() if r not in _BASE_ROLES)
 ROLE_GROUPS = {"factory": FACTORY_ROLES, "shippr": SHIPPR_ROLES, "audit": AUDIT_ROLES, "lab": LAB_ROLES}
 ALIAS_TABLES = {"lab": {r[len("lab."):]: r for r in LAB_ROLES}}
 
@@ -120,7 +125,7 @@ def _read_mapping(path: Path, prefix: str = "") -> Dict[str, str]:
 def load(path: Path, roles: Iterable[str] = ROLES) -> Dict[str, str]:
     """MD-01 to MD-03: file assignment for `roles` (missing -> inherit)."""
     roles = tuple(roles)
-    result = {r: "inherit" for r in roles}
+    result = {r: DEFAULTS.get(r, "inherit") for r in roles}
     path = Path(path)
     if path.exists():
         data = _read_mapping(path)
@@ -252,7 +257,7 @@ def resolve_readonly(root: Path, roles: Iterable[str], override: Optional[str] =
     root = Path(root)
     target, legacy = root / MODELS_FILE, root / LEGACY_LAB_FILE
     warnings: List[str] = []
-    assignment = {r: "inherit" for r in roles}
+    assignment = {r: DEFAULTS.get(r, "inherit") for r in roles}
     if target.exists():
         assignment = load(target, roles)
         if legacy.exists():

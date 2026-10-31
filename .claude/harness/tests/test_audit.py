@@ -448,9 +448,10 @@ class DeliverableTest(EngineCase):
 
 # ------------------------------------------------------------------- replays
 
-def replay(test, skill, workdir, fixture=None, git=None, keep=None):
+def replay(test, skill, workdir, fixture=None, git=None, keep=None, unified=False, cycle=False):
     """Plays the core calls of an audit through the CLI on a frozen fixture
-    (tests/fixtures/audit/<skill>.json). Returns the outputs."""
+    (tests/fixtures/audit/<skill>.json). Returns the outputs. `unified`: the /audit flow
+    (start --unified, render of the set block, assemble into AUDIT.md)."""
     fx = fixture or json.loads((AUDIT_FIXTURES / ("%s.json" % skill)).read_text(encoding="utf-8"))
     repo = workdir / "repo"
     git = fx["git"] if git is None else git
@@ -471,8 +472,11 @@ def replay(test, skill, workdir, fixture=None, git=None, keep=None):
             "".join(json.dumps(e, ensure_ascii=False) + "\n" for e in fx["project"]), encoding="utf-8")
     h = lambda *a: helpers.harness(list(a), repo, env=env)  # noqa: E731
     out = {"repo": repo, "auditors": {}, "validators": {}}
+    if cycle:
+        check_ok(test, h("audit", "open", "--root", str(repo)))
     args = helpers.write_output(repo, "%s-arguments.txt" % skill, fx["arguments"])
-    start = check_ok(test, h("audit", "start", "--skill", skill, "--arguments-file", args))
+    start = check_ok(test, h("audit", "start", "--skill", skill, "--arguments-file", args,
+                             *(["--unified"] if unified else [])))
     test.assertFalse((repo / args).exists(), "transit file consumed")
     out["start"] = start
     run = start["run"]
@@ -505,7 +509,12 @@ def replay(test, skill, workdir, fixture=None, git=None, keep=None):
     out["render"] = check_ok(test, h("audit", "render", "--run", run, "--data-file", data))
     out["publish"] = check_ok(test, h("audit", "publish", "--run", run, "--deliverable"))
     out["run"] = repo / run
-    out["deliverable"] = (repo / audit.profile(skill).deliverable).read_text(encoding="utf-8")
+    if unified:
+        out["assemble"] = check_ok(test, h("audit", "assemble", "--set-run", run, "--profiles", "p", "--lenses", "l",
+                                           "--date", "2026-10-17"))
+        out["deliverable"] = (repo / "AUDIT.md").read_text(encoding="utf-8")
+    else:
+        out["deliverable"] = (repo / audit.profile(skill).deliverable).read_text(encoding="utf-8")
     out["h"] = h
     return out
 

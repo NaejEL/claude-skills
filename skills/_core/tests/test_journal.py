@@ -22,12 +22,13 @@ class NameTest(unittest.TestCase):
             journal.journal_name("unknown-skill", datetime.now())
 
     def test_jr01_the_ten_skill_names(self):
-        """JR-01: the ten skill names admitted in journal names."""
+        """JR-01 (PF-05): the skill names admitted in journal names: the core ones plus
+        the ones the profiles declare."""
         names = ("software-factory", "factory-run", "ship-pr", "code-index", "ai-lab", "lab-run",
-                 "ai-lab-audit", "legacy-audit", "vibecode-audit", "brainstorm")
-        self.assertEqual(journal.SKILLS, names)
+                 "ai-lab-audit", "legacy-audit", "vibecode-audit", "brainstorm", "audit")
+        self.assertEqual(sorted(journal.SKILLS), sorted(names))
         ca09 = (r"^(software-factory|factory-run|ship-pr|code-index|ai-lab|lab-run|ai-lab-audit|"
-                r"legacy-audit|vibecode-audit|brainstorm)-[0-9]{8}-[0-9]{6}\.jsonl$")
+                r"legacy-audit|vibecode-audit|brainstorm|audit)-[0-9]{8}-[0-9]{6}\.jsonl$")
         for skill in names:
             name = journal.journal_name(skill, datetime(2026, 10, 17, 9, 5, 7))
             self.assertRegex(name, journal.NAME_RE)

@@ -46,7 +46,7 @@ import re
 from pathlib import Path
 from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Sequence, Tuple
 
-from . import jsonc, models
+from . import jsonc, models, profiles
 
 CREATED = "créé"
 MERGED = "fusionné"
@@ -54,44 +54,14 @@ IDENTICAL = "identique"
 KEPT = "personnalisé-conservé"
 BLOCK_UPDATED = "bloc-mis-à-jour"
 
-STACK_DENY = {
-    "node": ["Read(./node_modules/**)", "Read(./dist/**)"],
-    "dotnet": ["Read(./**/bin/**)", "Read(./**/obj/**)"],
-    "python": ["Read(./.venv/**)", "Read(./**/__pycache__/**)", "Read(./.pytest_cache/**)"],
-    "cpp": ["Read(./build/**)"],
-    "rust": ["Read(./target/**)"],
-}
-GENERIC_DENY = ["Read(./factory-logs/**)", "Read(./.git/objects/**)"]
-GITIGNORE_LINES = ["factory-logs/", ".harness/runs/"]
-
-FACTORY_INPUT = {
-    "id": "factorySpec",
-    "type": "promptString",
-    "description": "Path of the approved spec (specs/SPEC-*.md)",
-}
-# The task labels are the SF-02 deduplication keys of existing projects: kept as is.
-FACTORY_TASKS = [
-    {
-        "label": "Factory: CI run",
-        "type": "shell",
-        "command": "./ci/factory.sh ${input:factorySpec}",
-        "windows": {"command": "pwsh -File ci/factory.ps1 ${input:factorySpec}"},
-        "problemMatcher": [],
-    },
-    {
-        "label": "Factory: CI run (YOLO)",
-        "type": "shell",
-        "command": "./ci/factory.sh ${input:factorySpec} --yolo",
-        "windows": {"command": "pwsh -File ci/factory.ps1 ${input:factorySpec} -Yolo"},
-        "problemMatcher": [],
-    },
-    {
-        "label": "Factory: nouvelle spec (session)",
-        "type": "shell",
-        "command": "echo 'Open Claude Code and type: /factory-run \"<your need>\"'",
-        "problemMatcher": [],
-    },
-]
+# PX-04, PF-05: the deny rules, the .gitignore lines, the tasks and the input of
+# the base installation are profile data (the fallback profile), unchanged.
+_BASE = profiles.get(profiles.fallback_name())
+DENY_BY_STACK = _BASE["settings"]["deny_by_stack"]
+GENERIC_DENY = _BASE["settings"]["deny_generic"]
+GITIGNORE_LINES = _BASE["gitignore"]
+BASE_INPUTS = _BASE["tasks"]["inputs"]
+BASE_TASKS = _BASE["tasks"]["tasks"]
 
 
 class FusionError(ValueError):
@@ -102,9 +72,9 @@ def deny_rules(stacks: Iterable[str]) -> List[str]:
     """SF-01: rules of the detected stack only, then the generic ones."""
     rules: List[str] = []
     for stack in stacks:
-        if stack not in STACK_DENY:
-            raise FusionError("unknown stack: %r (known: %s)" % (stack, ", ".join(STACK_DENY)))
-        rules.extend(r for r in STACK_DENY[stack] if r not in rules)
+        if stack not in DENY_BY_STACK:
+            raise FusionError("unknown stack: %r (known: %s)" % (stack, ", ".join(DENY_BY_STACK)))
+        rules.extend(r for r in DENY_BY_STACK[stack] if r not in rules)
     rules.extend(r for r in GENERIC_DENY if r not in rules)
     return rules
 
@@ -202,7 +172,7 @@ def merge_settings(existing: Optional[Dict[str, Any]], stacks: Iterable[str]) ->
 
 def merge_tasks(existing: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     """SF-02 expressed on FU-01."""
-    return merge_json(existing, [op_tasks([FACTORY_INPUT], FACTORY_TASKS)], "tasks.json")[0]
+    return merge_json(existing, [op_tasks(BASE_INPUTS, BASE_TASKS)], "tasks.json")[0]
 
 
 def merge_gitignore(text: Optional[str], lines: Iterable[str] = GITIGNORE_LINES) -> str:
@@ -314,8 +284,21 @@ def apply(root: Path, stacks: Iterable[str]) -> Dict[str, str]:
         ".claude/settings.json": plan_json(root / ".claude" / "settings.json",
                                            [op_array_union(("permissions", "deny"), deny)]),
         ".vscode/tasks.json": plan_json(root / ".vscode" / "tasks.json",
-                                        [op_tasks([FACTORY_INPUT], FACTORY_TASKS)]),
+                                        [op_tasks(BASE_INPUTS, BASE_TASKS)]),
         ".gitignore": plan_lines(root / ".gitignore", GITIGNORE_LINES),
+    }
+    return write_plans(root, plans)
+
+
+def apply_merged(root: Path, merged: Dict[str, Any]) -> Dict[str, str]:
+    """HJ-06, EP-05: the same three merges, from the union of several profiles (additive only)."""
+    root = Path(root)
+    plans = {
+        ".claude/settings.json": plan_json(root / ".claude" / "settings.json",
+                                           [op_array_union(("permissions", "deny"), merged["deny"])]),
+        ".vscode/tasks.json": plan_json(root / ".vscode" / "tasks.json",
+                                        [op_tasks(merged["inputs"], merged["tasks"])]),
+        ".gitignore": plan_lines(root / ".gitignore", merged["gitignore"]),
     }
     return write_plans(root, plans)
 

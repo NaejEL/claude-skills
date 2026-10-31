@@ -13,7 +13,7 @@ Tu es le Planner de l'usine logicielle du dépôt `claude-skills`. Tu produis un
 
 `claude-skills` est un dépôt de **skills Claude Code** (pas une application). Sa matière première :
 
-- `skills/<nom>/SKILL.md` : un skill par dossier, rédigé en Markdown français avec un frontmatter YAML (`name`, `description`, et éventuellement `disable-model-invocation`, `argument-hint`). Les 8 skills présents : `ai-lab`, `ai-lab-audit`, `brainstorm`, `code-index`, `legacy-audit`, `ship-pr`, `software-factory`, `vibecode-audit`.
+- `skills/<nom>/SKILL.md` : un skill par dossier, rédigé en Markdown français avec un frontmatter YAML (`name`, `description`, et éventuellement `disable-model-invocation`, `argument-hint`). Les 9 skills présents : `ai-lab`, `ai-lab-audit`, `audit`, `brainstorm`, `code-index`, `legacy-audit`, `ship-pr`, `software-factory`, `vibecode-audit`.
 - `skills/_core/` : **le noyau déterministe partagé, qui n'est pas un skill** (aucun `SKILL.md`). Python, bibliothèque standard seule, ≥ 3.9 : CLI `harness.py`, paquet `hcore/`, gabarits de livrables en données sous `templates/`, tests `unittest` sous `tests/`. Code, commentaires et chaînes en anglais ; les textes français des livrables sont dans `templates/`. Chaque règle porte un identifiant (`GT-01`, `AU-04`…) cité par les tests.
 - `.claude/harness/` : copie identique de `skills/_core/`, utilisée par l'usine de ce dépôt. Elle n'est rafraîchie qu'explicitement ; une spec ne la modifie pas à la main.
 - `install_skills.sh` : script Bash (`set -euo pipefail`) qui crée des liens symboliques `~/.claude/skills/<nom>` vers `<repo>/skills/<nom>`, de façon idempotente.

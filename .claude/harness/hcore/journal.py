@@ -10,7 +10,7 @@
 # after the reviewer/validator/agent call, they complete the last entry of that
 # slot (agent name, reviewer:<theme> or validator:<id>); a value already
 # logged is never overwritten (reported instead).
-# - JR-01: journal names of the ten skills (SKILLS).
+# - JR-01: journal names of the skills (SKILLS), core and profiles.
 # - JR-02: typed events. A line without "event" is an agent line (backward
 #   compatible with existing journals); "event": "gate" follows the GT-07
 #   schema (hcore/gates.py). Any other event type is invalid.
@@ -23,12 +23,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from . import gates
+from . import gates, profiles
 
-SKILLS = ("software-factory", "factory-run", "ship-pr", "code-index", "ai-lab", "lab-run",
-          "ai-lab-audit", "legacy-audit", "vibecode-audit", "brainstorm")
+# PF-05: the names of the profiles' skills come from the profiles.
+_CORE_SKILLS = ("software-factory", "ship-pr", "code-index", "ai-lab-audit", "legacy-audit",
+                "vibecode-audit", "brainstorm", "audit")
+SKILLS = _CORE_SKILLS + tuple(n for n in profiles.journal_names() if n not in _CORE_SKILLS)
 NAME_RE = re.compile(r"^(%s)-[0-9]{8}-[0-9]{6}\.jsonl$" % "|".join(re.escape(s) for s in SKILLS))
-EVENTS = ("gate",)
+EVENTS = ("gate", "alias")
 REQUIRED = ("agent", "model", "duration_ms", "iteration", "verdict", "findings", "tokens")
 FINDING_KEYS = ("produced", "validated", "rejected")
 FALLBACK_TEXT = "unknown"   # fallback value of an invalid text field (sanitize)
@@ -66,6 +68,9 @@ def validate_record(obj: Any) -> List[str]:
     if "event" in obj:
         if obj["event"] not in EVENTS:
             return ["unknown event type: %r" % (obj["event"],)]
+        if obj["event"] == "alias":
+            bad = [k for k in ("alias", "target") if not isinstance(obj.get(k), str) or not obj[k].strip()]
+            return ["alias event: %s must be a non-empty string" % k for k in bad]
         return gates.validate_event(obj)
     errors = ["missing field: %s" % k for k in REQUIRED if k not in obj]
     if errors:

@@ -59,5 +59,21 @@ class RuleTraceTest(unittest.TestCase):
         self.assertIn("MD-09 is replaced by X1", docs)
 
 
+SPEC2 = helpers.CORE.parent.parent / "specs" / "SPEC-phase2-profils-audit.md"
+PHASE2 = ("PF", "PX", "HJ", "SC", "AR", "EP", "LP", "AX", "AD", "LN", "SO", "MG", "NR")
+
+
+class Phase2RuleTraceTest(unittest.TestCase):
+    @unittest.skipUnless(SPEC2.is_file(), "Phase 2 spec absent (core copied into a project)")
+    def test_ca03_every_phase2_rule_named_in_a_test_docstring(self):
+        """CA-03: PF-, PX-, HJ-, SC-, AR-, EP-, LP-, AX-, AD-, LN-, SO-, MG- and NR- rules of the Phase 2
+        spec each appear, literally, in the docstring of at least one test."""
+        rules = sorted(set(re.findall(r"\b(?:%s)-[0-9]{2}\b" % "|".join(PHASE2), SPEC2.read_text(encoding="utf-8"))))
+        self.assertGreater(len(rules), 70)
+        docs = test_docstrings()
+        missing = [rule for rule in rules if not re.search(r"\b%s\b" % re.escape(rule), docs)]
+        self.assertEqual(missing, [])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -1,0 +1,14 @@
+# Projet de recherche
+
+## Vocabulaire
+
+- trace : état associatif
+
+## État du projet
+
+PoC de mémoire associative, GPU requis (CUDA).
+
+## Contraintes non négociables
+
+- aucun backprop
+- un mécanisme à la fois

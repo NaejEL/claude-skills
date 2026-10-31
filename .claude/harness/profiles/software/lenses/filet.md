@@ -1,0 +1,1 @@
+- **(d) `filet`** (`FIL-`) — tests absents ou vides, documentation absente (README, installation, usage), logs de debug résiduels, points d'entrée non documentés.

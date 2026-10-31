@@ -1,0 +1,1 @@
+- **(d) `bio`** (`BIO-`) — analogies biologiques de façade (le nom promet une propriété que l'implémentation n'a pas) ; mécanismes « repli » dont le déclencheur est déjà observé sans essai, ou implémentés sans déclencheur (contre « un symptôme avant un remède ») ; propriété biologique prédisant un comportement testable non mesuré ; référence citée inexactement.
