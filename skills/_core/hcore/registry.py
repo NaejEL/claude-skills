@@ -1,7 +1,7 @@
 # Cumulative registries of findings: the run registry (ship-pr, SP-07,
 # SP-09, D2) and the project registry (RG-01 to RG-07, below).
 #
-# File .claude/runs/ship-pr-<timestamp>.registry.jsonl, one JSON line per
+# File .harness/runs/ship-pr-<timestamp>.registry.jsonl, one JSON line per
 # finding event, keys file/line/title/verdict. The last event of a key gives
 # its current status. Deterministic deduplication on file + normalized title,
 # all statuses included (a REJECTED finding does not come back to life).
@@ -177,8 +177,9 @@ class ProjectRegistry:
         return "".join(json.dumps(entries[k], ensure_ascii=False, sort_keys=True) + "\n" for k in sorted(entries))
 
     def publish(self, run_entries: Iterable[Dict[str, Any]], source: str, run: str,
-                deliverable_written: bool = False) -> Dict[str, Any]:
-        """RG-03, RG-05, RG-06: publishes the last state of each finding of a run."""
+                deliverable_written: bool = False, exclude: bool = True) -> Dict[str, Any]:
+        """RG-03, RG-05, RG-06: publishes the last state of each finding of a run.
+        exclude=False (AU-12, GIT_ABSENT): no git command, no git exclusion."""
         from . import runs   # local: runs imports the journal, which imports the gates
         chosen: Dict[str, Dict[str, Any]] = {}
         for e in run_entries:
@@ -189,7 +190,7 @@ class ProjectRegistry:
                          "reason": e.get("reason"), "fix_commit": e.get("commit") or e.get("fix_commit"),
                          "settled_by": e.get("settled_by")}
                 chosen[e["key"]] = {k: v for k, v in entry.items() if v is not None}
-        excluded = git_exclude(self.root, PROJECT_EXCLUDE)
+        excluded = git_exclude(self.root, PROJECT_EXCLUDE) if exclude else None
         if not chosen:
             return {"file": PROJECT_FILE.as_posix(), "published": 0, "changed": False,
                     "excluded": excluded}

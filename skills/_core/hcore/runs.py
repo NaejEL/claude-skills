@@ -1,4 +1,4 @@
-# Files of a run under .claude/runs/ of the target repository:
+# Files of a run under .harness/runs/ of the target repository:
 #   <skill>-<timestamp>.jsonl            cycle journal
 #   <skill>-<timestamp>.state.json       counter state between two calls
 #   ship-pr-<timestamp>.registry.jsonl   findings registry (ship-pr)
@@ -29,7 +29,7 @@ if os.name == "nt":
 else:
     import fcntl
 
-RUNS_DIR = Path(".claude") / "runs"
+RUNS_DIR = Path(".harness") / "runs"
 LOCK_TIMEOUT = 120.0   # seconds
 LOCK_POLL = 0.02
 # Windows: os.replace fails with PermissionError while another process holds

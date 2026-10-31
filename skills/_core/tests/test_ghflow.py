@@ -292,7 +292,7 @@ class RoundFlowTest(helpers.TempDirCase):
         helpers.git(repo, "push", "-q", "-u", "origin", "main")
         helpers.git(repo, "checkout", "-q", "-b", "feature")
         helpers.git(repo, "push", "-q", "-u", "origin", "feature")
-        (repo / ".git" / "info" / "exclude").write_text(".claude/runs/\n", encoding="utf-8")
+        (repo / ".git" / "info" / "exclude").write_text(".harness/runs/\n", encoding="utf-8")
         self.st["root"] = str(repo)
         run = runs.create(repo, "ship-pr", self.st)
         (repo / "a.txt").write_text("fixed\n", encoding="utf-8")
@@ -428,12 +428,12 @@ class ExcludeTest(helpers.TempDirCase):
         before = exclude.read_text(encoding="utf-8")
         self.assertFalse(ghflow.ensure_exclude(run_cmd, self.tmp))
         self.assertEqual(exclude.read_text(encoding="utf-8"), before)
-        self.assertEqual(before.splitlines().count(".claude/runs/"), 1)
+        self.assertEqual(before.splitlines().count(".harness/runs/"), 1)
         run = runs.create(self.tmp, "ship-pr", {})
         journal.append(run, journal.make_record("reviewer", "inherit", 5, 1, "NO_FINDING"))
         registry.Registry(runs.registry_path(run)).add(helpers.finding(), "REJECTED")
         status = helpers.git(self.tmp, "status", "--porcelain", "--untracked-files=all")
-        self.assertNotIn(".claude/runs", status)
+        self.assertNotIn(".harness/runs", status)
 
 
 

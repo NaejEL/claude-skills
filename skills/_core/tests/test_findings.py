@@ -306,8 +306,11 @@ class ConversionTest(helpers.TempDirCase):
         self.assertIn("## Hors-périmètre\nRéécriture d'historique ; .gitignore par sous-dossier.", secret)
         leak = findings.adapt("lab-audit-auditor", dict(LAB_AUDIT, id="LEAK-01", lens="fuites", nature="correction"))
         spec = findings.to_spec(leak, self.sections(), "lab", 1)
-        self.assertIn("3. La baseline et la condition testée sont exécutées par la même commande", spec)
-        self.assertIn("4. Les résultats du tableau dépendant de cette éval sont marqués *à re-mesurer*", spec)
+        # Full text of both imposed criteria (ai-lab-audit:134), numbered after the skill's own.
+        self.assertIn("\n3. La baseline et la condition testée sont exécutées par la même commande "
+                      "à la variable manipulée près.\n", spec)
+        self.assertIn("\n4. Les résultats du tableau dépendant de cette éval sont marqués *à re-mesurer* "
+                      "dans l'audit.\n", spec)
         with self.assertRaises(FindingError):
             findings.to_spec(f, self.sections(risks="Statut : APPROUVEE trop tôt"), "leg", 3)
 

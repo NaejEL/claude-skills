@@ -12,7 +12,7 @@ Règle de l'utilisateur : la ROADMAP fait foi ; une règle héritée qui la cont
 - **X2** : les clés `lab.*` sont les clés réelles d'ai-lab (`ai-lab:147-155`).
 - **X3** : `rgkb.py` garde une implémentation autonome des blocs, parce qu'il est copié seul. Un test d'équivalence le lie à `hcore/blocks.py`, et la divergence sur le marqueur de fin absent est corrigée dans le sens du noyau.
 - **X4** : registre projet `.claude/findings.jsonl`, local, ajouté à `.git/info/exclude`, une ligne par finding (compacté) ; registres de run en événements (X11). La dédup inter-skills est un comportement nouveau voulu par la ROADMAP.
-- **X5** : journal partout. Les audits déclarent `.claude/runs/` dans leurs écritures autorisées. brainstorm n'écrit rien avant sa gate finale ; son journal est écrit à ce moment-là.
+- **X5** : journal partout. Les audits déclarent `.harness/runs/` dans leurs écritures autorisées. brainstorm n'écrit rien avant sa gate finale ; son journal est écrit à ce moment-là.
 - **X6** : `--models "role=modele;…"` sur tous les orchestrateurs (factory-run, ship-pr, audits, ai-lab). Sans l'option, le comportement est inchangé.
 - **X7** : conversion verdict du Verifier → schéma de finding partielle, et documentée comme telle.
 - **X8** : valeur de modèle inconnue = erreur explicite, dans le fichier comme dans `--models` (D8). `ai-lab:158` est aligné.
@@ -283,7 +283,7 @@ Restent en prose :
 | --- | --- | --- | --- |
 | AL-01 | `deny` : Python, générique, et données, poids, caches **présents** seulement | :207 | FU-01 |
 | AL-02 | tâches : input `labProtocol`, 4 tâches « Lab: … », variantes `windows` | :211-219 | FU-01 |
-| AL-03 | `.gitignore` += `lab-logs/`, `experiments/results/` et `.claude/runs/` (écart E2) | :203 | FU-03 |
+| AL-03 | `.gitignore` += `lab-logs/`, `experiments/results/` et `.harness/runs/` (écart E2) | :203 | FU-03 |
 | AL-04 | fichiers générés jamais écrasés ; états | :20, :22 | FU-04 |
 | AL-05 | `models.json` remplace `lab-models.json` (migration MD-05) | :144-158 | MD |
 | AL-06 | préréglages de modèles comme données ; gate `ai-lab.models` | :137-142 | MD-08, GT |
@@ -430,7 +430,7 @@ Restent en prose :
 
 **Écarts proposés**, chacun à confirmer :
 - **E1** : le noyau est copié sous `.claude/harness/` par ai-lab, comme D1 l'a fait pour software-factory.
-- **E2** : journaux sous `.claude/runs/` pour les dix skills, et exclusion git.
+- **E2** : journaux sous `.harness/runs/` pour les dix skills, et exclusion git.
 - **E3** : C2 corrigé dans lab-run (agent mort en Verify et en interprétation).
 - **E4** : C3 : les replis headless de ship-pr deviennent définis.
 - **E5** : `.claude/models.json` est créé par la migration (MD-05).
@@ -592,7 +592,7 @@ Restent en prose :
 - **X3 — Une seule implémentation des blocs.** C'est impossible tant que `rgkb.py` est copié seul dans les projets (`code-index:53`) : il a sa propre implémentation, divergente sur un marqueur de fin absent (`rgkb.py:825-826`).
 - **X4 — Registre partagé.**
   - La ROADMAP le veut « même philosophie que `.knowledge/` » (versionné, une ligne par finding).
-  - Q-registre / D2 le place dans `.claude/runs/`, non versionné, en journal d'événements de plusieurs lignes par finding.
+  - Q-registre / D2 le place dans `.harness/runs/`, non versionné, en journal d'événements de plusieurs lignes par finding.
   - Une dédup inter-runs et inter-skills est un **nouveau** comportement, contraire à « identique ».
   - Un fichier versionné serait commité par `git add -A` dans `fix(review)` (`ghflow.py`, `commit_round`) et rendrait l'arbre sale au préflight suivant.
 - **X5 — Journal et interdits d'écriture.**

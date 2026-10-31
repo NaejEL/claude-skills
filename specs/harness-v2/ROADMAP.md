@@ -38,7 +38,7 @@ Contenu minimal du noyau :
 - **Registre cumulatif** : un fichier par projet, format texte une ligne par finding (même philosophie que `.knowledge/`), partagé entre skills — un finding rejeté dans `ship-pr` ne ressuscite ni au tour suivant ni dans un audit ultérieur.
 - **Modèles par rôle** : `.claude/models.json` unique (remplace `lab-models.json`, migration lue une fois et jamais destructive), clés par rôle (`factory.planner|builder|verifier`, `shippr.reviewer|validator`, `audit.auditor|validator`, rôles `lab.*` existants), valeur = modèle ou `inherit`, override `--models "role=modele;…"` partout. Application : `model:` du frontmatter pour les agents fichiers, paramètre `model` du tool Agent pour les agents dynamiques. Profils prêts à l'installation.
 - **Fusion de `settings.json`** et **blocs délimités** : une seule implémentation, réentrante, jamais d'écrasement hors bloc.
-- **Journal de cycle** : `.claude/runs/<skill>-<horodatage>.jsonl` — par étape : agent, modèle, durée, itération, verdict, findings produits/validés/rejetés, tokens si l'outillage les expose. Pas d'interprétation, des faits.
+- **Journal de cycle** : `.harness/runs/<skill>-<horodatage>.jsonl` — par étape : agent, modèle, durée, itération, verdict, findings produits/validés/rejetés, tokens si l'outillage les expose. Pas d'interprétation, des faits.
 - **Détection de stack** et **estimation T-shirt** : une copie.
 
 Les skills existants sont rebranchés sur le noyau **sans changement de comportement observable** dans cette phase — c'est un refacto, il doit être vérifiable par un cycle identique avant/après sur un projet fixture. Chaque skill rebranché est un commit.
@@ -95,7 +95,7 @@ Vérification de non-régression : sur les fixtures (Phase 6), `/audit` en profi
 
 - **Tampon** `.claude/harness.json` écrit dans chaque projet équipé : version du dépôt claude-skills (tag git ou hash), date, skills installés et leurs options, politique d'autonomie choisie, profils actifs.
 - **`--upgrade`** sur `/software-factory` (donc tous les profils), `/code-index` : lit le tampon, régénère uniquement les blocs délimités, préserve tout le hors-bloc, migre les formats (lab-models → models, anciens registres), montre le diff complet, applique. Idempotent : relancer sans changement produit zéro diff. Un projet sans tampon (installé avant cette version) est détecté par la présence des fichiers générés, et le tampon est créé à la première mise à jour.
-- **`/harness-doctor`** : dans un projet — version installée vs version du dépôt, blocs délimités divergents, fichiers attendus manquants, hooks git rgkb déclarés mais absents, `models.json` absent, `gh` non authentifié ; avec `--scan <racine>` — balaye les sous-dossiers, une ligne par projet équipé : version, retard, dernier cycle (depuis `.claude/runs/`). Propose `--upgrade` mais ne le lance que si la politique d'autonomie l'y autorise.
+- **`/harness-doctor`** : dans un projet — version installée vs version du dépôt, blocs délimités divergents, fichiers attendus manquants, hooks git rgkb déclarés mais absents, `models.json` absent, `gh` non authentifié ; avec `--scan <racine>` — balaye les sous-dossiers, une ligne par projet équipé : version, retard, dernier cycle (depuis `.harness/runs/`). Propose `--upgrade` mais ne le lance que si la politique d'autonomie l'y autorise.
 - Les fichiers régénérés portent en en-tête la version qui les a produits.
 
 ---
@@ -130,7 +130,7 @@ Le défaut installé pour moi est `auto`. Le défaut de chaque gate est écrit d
 - Dérive de périmètre détectée par hook (Phase 5) deux fois dans le même cycle.
 - Toute action qui coûterait de l'argent hors de l'abonnement ou toucherait un secret.
 
-Chaque arrêt écrit un fichier `.claude/runs/STOP-<horodatage>.md` lisible en 30 secondes : où, pourquoi, quoi faire pour reprendre, commande exacte.
+Chaque arrêt écrit un fichier `.harness/runs/STOP-<horodatage>.md` lisible en 30 secondes : où, pourquoi, quoi faire pour reprendre, commande exacte.
 
 ### 4.4 File et boucle
 
@@ -173,6 +173,6 @@ Un document court : faut-il remplacer `install_skills.*` par le mécanisme de pl
 - **Rétrocompatibilité** : un projet équipé avec la version actuelle continue de fonctionner sans `--upgrade` ; `--upgrade` ne détruit jamais, migre et explique.
 - **Idempotence** partout : installation, upgrade, index, hooks.
 - **Documentation** : README mis à jour par skill, même ton et même niveau de détail que l'existant, plus des sections « Profils », « Politique d'autonomie » et « Mettre à jour un projet équipé ».
-- **Journal** : chaque décision prise automatiquement en `auto` est dans `.claude/runs/`, jamais silencieuse.
+- **Journal** : chaque décision prise automatiquement en `auto` est dans `.harness/runs/`, jamais silencieuse.
 - **Désaccord** : si une consigne contredit ce que tu trouves dans le code réel ou dans la doc Claude Code actuelle, tu t'arrêtes et me le dis, tu ne tranches pas seul.
 - **Fin de phase** : diff complet, procédure de vérification manuelle (commandes exactes, résultat attendu), liste de ce qui a été reporté à une phase suivante et pourquoi.

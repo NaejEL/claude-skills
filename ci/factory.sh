@@ -58,7 +58,7 @@ if [ "$yolo" -eq 1 ]; then
     cmd+=(--dangerously-skip-permissions)
 else
     cmd+=(--permission-mode acceptEdits)
-    cmd+=(--allowedTools "Read,Glob,Grep,Write,Edit,Bash(git *),Bash(bash *),Bash(bats *),Bash(shellcheck *),Bash(pwsh *)")
+    cmd+=(--allowedTools "Read,Glob,Grep,Write,Edit,Bash(git *),Bash(python *),Bash(python3 *),Bash(py *),Bash(bash *),Bash(bats *),Bash(shellcheck *),Bash(pwsh *)")
 fi
 
 echo "Spec      : $spec"

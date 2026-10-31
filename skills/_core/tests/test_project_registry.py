@@ -290,7 +290,7 @@ class ShipPrProjectReplayTest(helpers.TempDirCase):
         self.assertEqual(start["project_findings"], 0)
         # RG-05, iteration 2: excluded from the preflight on, before any publication.
         exclude = (self.work / ".git" / "info" / "exclude").read_text(encoding="utf-8").splitlines()
-        for line in (".claude/runs/",) + registry.PROJECT_EXCLUDE:
+        for line in (".harness/runs/",) + registry.PROJECT_EXCLUDE:
             self.assertEqual(exclude.count(line), 1, line)
         check_ok(self, self.h("ship-pr", "sync", "--run", run))
         body = helpers.write_output(self.work, "pr-body.md", "Body\n")

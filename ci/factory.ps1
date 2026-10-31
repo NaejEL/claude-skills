@@ -40,7 +40,7 @@ if ($Yolo) {
 }
 else {
     $claudeArgs += @('--permission-mode', 'acceptEdits')
-    $claudeArgs += @('--allowedTools', 'Read,Glob,Grep,Write,Edit,Bash(git *),Bash(bash *),Bash(bats *),Bash(shellcheck *),Bash(pwsh *)')
+    $claudeArgs += @('--allowedTools', 'Read,Glob,Grep,Write,Edit,Bash(git *),Bash(python *),Bash(python3 *),Bash(py *),Bash(bash *),Bash(bats *),Bash(shellcheck *),Bash(pwsh *)')
     $mode = 'acceptEdits + liste blanche'
 }
 

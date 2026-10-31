@@ -19,7 +19,7 @@
 #   after each step (no reply posted twice on a relaunch).
 # - SP-19: merge with a merge commit and branch deletion, refused if a theme
 #   is not covered or if the loop is not finished.
-# - D3: adds .claude/runs/ (and, RG-05, the project registry files) to
+# - D3: adds .harness/runs/ (and, RG-05, the project registry files) to
 #   .git/info/exclude, idempotent.
 # - FD-10: the comment body is the PR comment conversion of the finding schema.
 
@@ -36,7 +36,7 @@ from .proc import Result
 HTTP_422 = re.compile(r"\bHTTP 422\b")   # gh message: "... (HTTP 422)"
 
 Run = Callable[..., Result]
-EXCLUDE_LINE = ".claude/runs/"
+EXCLUDE_LINE = ".harness/runs/"
 
 MSG_GH_AUTH = "gh not authenticated — run `gh auth login`"
 MSG_NO_GITHUB = "no GitHub remote"
@@ -90,7 +90,7 @@ def worktree_and_repo(run: Run) -> Dict[str, Any]:
 
 
 def ensure_exclude(run: Run, root: Path) -> bool:
-    """D3 and RG-05: adds .claude/runs/ and the project registry files to
+    """D3 and RG-05: adds .harness/runs/ and the project registry files to
     .git/info/exclude if missing (under lock, atomically). Returns True if a
     line was added."""
     added = registry_mod.git_exclude(Path(root), (EXCLUDE_LINE,) + registry_mod.PROJECT_EXCLUDE, run)

@@ -83,7 +83,7 @@ La ROADMAP §6 demande :
 
 ### 2. Rejeu déterministe : agents simulés et faux `gh` — `SM`
 
-- `SM-01` : un **agent simulé** est une sortie figée (FX-05). Elle est écrite par le runner là où le SKILL.md prescrit l'outil Write (`.claude/runs/…`), puis passée au noyau par `--output`, exactement comme `test_replay.py`.
+- `SM-01` : un **agent simulé** est une sortie figée (FX-05). Elle est écrite par le runner là où le SKILL.md prescrit l'outil Write (`.harness/runs/…`), puis passée au noyau par `--output`, exactement comme `test_replay.py`.
   - **Builder simulé** : applique un correctif figé (`git apply`).
   - **Verifier simulé** : exécute la **vraie** commande de test du projet (`<PY> -m unittest`). Son `tests_passed` reflète l'exit code réel.
   - **Scout simulé** : sortie figée au format SC-03 de la Phase 2.
@@ -167,7 +167,7 @@ Chaque scénario part de ses fixtures, dans un dossier temporaire neuf, indépen
 **`stop-iteration3`** — arrêt propre à la 3e itération, en `auto` :
 - `stop-iteration3.1` : 3 verdicts `CHANGES_REQUESTED` → `fail` à l'itération 3.
 - `stop-iteration3.2` : un 4e `record` de Builder est refusé (exit ≠ 0).
-- `stop-iteration3.3` : `.claude/runs/STOP-<horodatage>.md` existe. Il contient les rubriques de la Phase 4 (où, pourquoi, quoi faire, commande exacte), les issues restantes et le chemin de la spec.
+- `stop-iteration3.3` : `.harness/runs/STOP-<horodatage>.md` existe. Il contient les rubriques de la Phase 4 (où, pourquoi, quoi faire, commande exacte), les issues restantes et le chemin de la spec.
 - `stop-iteration3.4` : aucun journal `ship-pr-*`, et la spec n'est pas passée à un statut livré.
 - `stop-iteration3.5` (contre-épreuve) : CR, CR, Verifier mort, APPROVED → `success` à l'itération 3. L'agent mort n'a pas consommé d'itération.
 

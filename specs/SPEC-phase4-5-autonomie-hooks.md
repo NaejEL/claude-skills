@@ -60,7 +60,7 @@ Le BACKLOG §2 gèle les incréments 7 (autonomie), 8 (hooks) et 12 (file et wor
 
 **Journal, runs et sous-processus**
 - `hcore/journal.py:22-23` : noms fermés.
-- `hcore/runs.py:32` : `.claude/runs/` relatif à la racine de l'arbre de travail, donc un dossier par worktree.
+- `hcore/runs.py:32` : `.harness/runs/` relatif à la racine de l'arbre de travail, donc un dossier par worktree.
 - `hcore/proc.py:37-54` : injection d'exécutables simulés en `HCORE_TEST_MODE=1`.
 - `Runner` lance sans shell (`:65-83`).
 
@@ -157,7 +157,7 @@ Le BACKLOG §2 gèle les incréments 7 (autonomie), 8 (hooks) et 12 (file et wor
   - `gate` : gate sans défaut en `auto`, ou condition (a) vraie ;
   - `conflict` : FB-05 ;
   - `child` : arrêt d'un processus enfant.
-- `SX-02` : `K stop write --root R --skill S --kind K [--run <run>] --details-file F` écrit `.claude/runs/STOP-<AAAAMMJJ-HHMMSS>.md`.
+- `SX-02` : `K stop write --root R --skill S --kind K [--run <run>] --details-file F` écrit `.harness/runs/STOP-<AAAAMMJJ-HHMMSS>.md`.
   - En cas de collision de nom, une seconde est ajoutée, comme dans `runs.create`.
   - `F` est écrit par Write et supprimé après lecture, comme les fichiers de transit.
 - `SX-03` : format, lisible en 30 secondes.
@@ -188,7 +188,7 @@ Le BACKLOG §2 gèle les incréments 7 (autonomie), 8 (hooks) et 12 (file et wor
   - un événement de journal `stop` `{kind, path}` ;
   - un exit 1, avec sur stderr `STOP: <raison> (see <chemin>)`.
 - `SX-06` : après un arrêt, toute commande du noyau sur le même run rend exit 1 et cite le STOP. Il n'y a ni 4e itération, ni poursuite silencieuse (§4.3).
-- `SX-07` : les fichiers STOP vivent sous `.claude/runs/`, exclus de git (D3). Le harnais ne les supprime jamais.
+- `SX-07` : les fichiers STOP vivent sous `.harness/runs/`, exclus de git (D3). Le harnais ne les supprime jamais.
 
 ### 4. Spec `BLOQUEE`, statuts et reprise — `BQ`
 
@@ -278,8 +278,8 @@ Le BACKLOG §2 gèle les incréments 7 (autonomie), 8 (hooks) et 12 (file et wor
     - argv en liste, jamais de shell ;
     - `cwd = R` ;
     - processus détaché, dans un nouveau groupe ;
-    - sorties vers `.claude/runs/chain-<id>.out.json` et `.err.txt` ;
-    - fiche `.claude/runs/chain-<id>.json` `{id, skill, args, pid, root, parent_run, started, status}`.
+    - sorties vers `.harness/runs/chain-<id>.out.json` et `.err.txt` ;
+    - fiche `.harness/runs/chain-<id>.json` `{id, skill, args, pid, root, parent_run, started, status}`.
   - Suivi : `K chain status --id` et `K chain wait --id --max-seconds 540`, appelé en boucle par le skill, sous la limite de l'outil Bash. Le résultat se lit dans l'état du run de l'enfant (retrouvé par `chain_id`), dans ses STOP et dans son code de sortie.
   - Contraintes :
     - liste blanche = `chain.allowed_tools` du tampon (liste blanche CI de l'installation), plus `Bash(gh *)` et `Skill` quand ship-pr est enchaîné ;
@@ -366,7 +366,7 @@ Le BACKLOG §2 gèle les incréments 7 (autonomie), 8 (hooks) et 12 (file et wor
 - `FQ-07` : un seul coordinateur par dépôt : verrou OS `<git-common-dir>/harness/coordinator.lock`, partagé avec FB. Un second → exit 1.
 - `FQ-08` : préalables : factory installée, arbre propre, branche courante = cible ou basculable proprement. Sinon arrêt `gate`.
 - `FQ-09` : `run` exige une politique effective `auto`. Sinon arrêt `gate` (« requires --autonomy auto »). Raison : les enfants ne peuvent pas poser de question, et ce dépôt est en `gate` (AP-08).
-- `FQ-10` : journal `.claude/runs/factory-queue-<horodatage>.jsonl`.
+- `FQ-10` : journal `.harness/runs/factory-queue-<horodatage>.jsonl`.
 
 ### 10. Worktrees — `WT`
 
@@ -386,12 +386,12 @@ Le BACKLOG §2 gèle les incréments 7 (autonomie), 8 (hooks) et 12 (file et wor
   Le harnais ne touche jamais au worktree principal ni à ceux de l'utilisateur (i3, Orca), hors l'arbre depuis lequel l'utilisateur a lancé `/factory-queue run`.
 - `WT-05` : transfert de la spec. Si `git show origin/<cible>:<spec>` diffère de la copie de l'arbre lanceur, ou n'existe pas :
   - la spec est copiée dans le worktree, au même chemin relatif ;
-  - l'original est déplacé dans `.claude/runs/handoff/<horodatage>-<nom>` ;
+  - l'original est déplacé dans `.harness/runs/handoff/<horodatage>-<nom>` ;
   - le transfert est journalisé.
 
   Sans ce déplacement, le `git pull` après merge échouerait sur un fichier non suivi de même chemin.
 - `WT-06` : collecte avant suppression.
-  - `<wt>/.claude/runs/*` est copié vers `<principal>/.claude/runs/wt-<slug>/`.
+  - `<wt>/.harness/runs/*` est copié vers `<principal>/.harness/runs/wt-<slug>/`.
   - `<wt>/.claude/findings.jsonl` est publié dans celui de l'arbre principal (RG-03, idempotent).
 - `WT-07` : nettoyage après merge : collecte, puis `git worktree remove <path>` (non forcé ; s'il est sale, il est conservé et signalé), puis suppression de la branche locale du harnais, puis retrait du registre. Sans merge, le worktree est conservé et le rapport donne son chemin et la commande de reprise.
 - `WT-08` : `/factory-run --worktree [--ship <cible>]`.
@@ -412,7 +412,7 @@ Le BACKLOG §2 gèle les incréments 7 (autonomie), 8 (hooks) et 12 (file et wor
   - Conflit non trivial : `git rebase --abort`, plus aucun lancement d'enfant, attente des enfants en cours, puis arrêt `conflict`.
   - Ship : enfant `ship-pr <cible> --spec <spec>` avec `cwd = <wt>`.
   - PR mergée → WT-07 ; PR laissée ouverte → worktree conservé, on passe à la suivante.
-- `FB-06` : état `.claude/runs/factory-batch-<horodatage>.state.json` ; `--resume <id>` reprend.
+- `FB-06` : état `.harness/runs/factory-batch-<horodatage>.state.json` ; `--resume <id>` reprend.
 - `FB-07` : FQ-07 et FQ-09 s'appliquent.
 - `FB-08` : journal `factory-batch-*.jsonl`.
 
@@ -430,11 +430,11 @@ Le BACKLOG §2 gèle les incréments 7 (autonomie), 8 (hooks) et 12 (file et wor
 - `HK-04` : une erreur interne fait toujours trois choses, sans jamais bloquer :
   - exit 0 ;
   - sur stdout, `{"systemMessage": "harness hook <nom>: internal error (<type>); action allowed"}` ;
-  - une ligne `{ts, hook, tool, error}` dans `.claude/runs/hook-errors.jsonl`.
+  - une ligne `{ts, hook, tool, error}` dans `.harness/runs/hook-errors.jsonl`.
 
   Cas couverts : stdin invalide, marqueur illisible, échec de git, dépassement de 5 s de budget interne, exception quelconque. Jamais de traceback bloquant.
 - `HK-05` : activation contextuelle (ROADMAP §5, mécanisme proposé).
-  - `K activate --skill <factory-run|lab-run|ship-pr> --run <run> --session "${CLAUDE_SESSION_ID}"` écrit `.claude/runs/active/<session_id>.json`, en pile. Le contexte au sommet de la pile s'applique.
+  - `K activate --skill <factory-run|lab-run|ship-pr> --run <run> --session "${CLAUDE_SESSION_ID}"` écrit `.harness/runs/active/<session_id>.json`, en pile. Le contexte au sommet de la pile s'applique.
   - `K deactivate` le retire en fin de cycle : succès, échec ou arrêt.
   - Le hook lit `session_id` sur stdin. Pas de marqueur pour cette session → les hooks contextuels laissent passer.
   - Un marqueur est périmé si son run n'est plus `running` ou s'il date de plus de 12 h : il est ignoré, puis retiré au prochain `activate`.
@@ -443,7 +443,7 @@ Le BACKLOG §2 gèle les incréments 7 (autonomie), 8 (hooks) et 12 (file et wor
     - une variable d'environnement est impossible en session interactive (I1) ;
     - un fichier est lisible par les hooks des sous-agents ;
     - le marqueur par session ne bloque pas les éditions manuelles de l'utilisateur dans une autre session ;
-    - le marqueur est sous `.claude/runs/`, hors git.
+    - le marqueur est sous `.harness/runs/`, hors git.
 - `HK-06` : `software-factory` installe les hooks (étape de fusion des settings), et `--upgrade` les régénère. La configuration du linter vit dans `harness.json`, clé `hooks.lint`.
 - `HK-07` : chemins normalisés : séparateurs `\` et `/`, casse ignorée sous Windows, `..` résolus, relatifs à la racine du contexte.
 
@@ -463,7 +463,7 @@ Le BACKLOG §2 gèle les incréments 7 (autonomie), 8 (hooks) et 12 (file et wor
      - `stash drop` ou `stash clear` ;
      - `worktree remove` ou `worktree prune` ;
   5. suppression de fichiers : `rm`, `rmdir`, `unlink`, `del`, `erase`, `rd`, `Remove-Item` ou `ri`, `find … -delete`, `find … -exec rm`, `xargs rm`, `git rm` sans `--cached`. La suppression n'est admise que si **chaque** cible est générée :
-     - sous un dossier d'artefacts (`STACK_DENY`, `factory-logs/`, `lab-logs/`, `experiments/results/`, `.claude/runs/`, `__pycache__/`) ;
+     - sous un dossier d'artefacts (`STACK_DENY`, `factory-logs/`, `lab-logs/`, `experiments/results/`, `.harness/runs/`, `__pycache__/`) ;
      - ou créée pendant le cycle actif (non suivie et absente de l'instantané de `start`) ;
      - ou dans le `Périmètre fichiers` de la spec active.
 
@@ -481,12 +481,12 @@ Le BACKLOG §2 gèle les incréments 7 (autonomie), 8 (hooks) et 12 (file et wor
 - `HP-01` : actif quand le sommet du marqueur est `factory-run` ou `lab-run`, depuis la phase Build, et que la spec déclare `Périmètre fichiers`. Sans ce champ, tout passe (§5 : « si elle en déclare un »).
 - `HP-02` : sont admis :
   - un chemin qui correspond à un glob du périmètre ;
-  - `.claude/runs/**` ;
+  - `.harness/runs/**` ;
   - la spec active ;
   - un chemin hors de la racine (hors contenu du projet).
 - `HP-03` : blocage : exit 2, avec `Blocked: <chemin> is outside the scope declared by <spec> (Périmètre fichiers: <globs>). Stay within the spec; if the spec is wrong, stop and report it.` Le compteur de dérives augmente.
 - `HD-01` : actif quand le sommet du marqueur est `ship-pr`.
-  - Admis : `git diff --name-only origin/<cible>...HEAD`, calculé à l'appel, et `.claude/runs/**`.
+  - Admis : `git diff --name-only origin/<cible>...HEAD`, calculé à l'appel, et `.harness/runs/**`.
   - Blocage : exit 2, avec `Blocked: scope limited to the PR diff — <chemin> is not in git diff --name-only origin/<cible>...HEAD.` Le compteur de dérives augmente.
   - Le message est en anglais : ce sont des textes publiés (BACKLOG §5, qui prime).
 - `HD-02` : un échec de git → HK-04.
@@ -691,9 +691,9 @@ Recherches par `grep`. Dossiers temporaires créés par les tests. Exécutables 
   - Au plus N enfants de build simultanés (horodatages de `fake_claude`).
   - Aucun chevauchement entre deux enfants `ship-pr`.
   - Rebase avant chaque ship ; conflit non trivial → `rebase --abort` et arrêt `conflict`.
-  - Les journaux des worktrees sont copiés sous `.claude/runs/wt-<slug>/` avant suppression.
+  - Les journaux des worktrees sont copiés sous `.harness/runs/wt-<slug>/` avant suppression.
 - [ ] **CA-25 — `--worktree`.**
-  - Spec non suivie → copiée dans le worktree, et original sous `.claude/runs/handoff/`.
+  - Spec non suivie → copiée dans le worktree, et original sous `.harness/runs/handoff/`.
   - Après merge simulé, le worktree et la branche locale sont supprimés, et le registre est vide.
   - Base sans `.claude/harness/` → arrêt `gate`.
 
@@ -711,7 +711,7 @@ Recherches par `grep`. Dossiers temporaires créés par les tests. Exécutables 
 - [ ] **CA-29 — Garde permanente.** Sans aucun marqueur, `git push --force` → exit 2. Avec un marqueur actif → exit 2 et un arrêt `destructive`.
 - [ ] **CA-30 — Périmètre factory-run.**
   - Marqueur avec `SPEC-perimetre.md` : fichier dans le périmètre → exit 0 ; hors périmètre → exit 2, avec le message HP-03.
-  - Sont admis : `.claude/runs/x.md`, la spec active, un chemin hors de la racine, les variantes Windows de `\`.
+  - Sont admis : `.harness/runs/x.md`, la spec active, un chemin hors de la racine, les variantes Windows de `\`.
   - Spec sans champ → exit 0. Aucun marqueur → exit 0.
 - [ ] **CA-31 — Diff de ship-pr.** Dépôt temporaire avec une PR simulée : un fichier du diff → exit 0 ; un fichier hors diff → exit 2, et stderr contient `scope limited to the PR diff`.
 - [ ] **CA-32 — Contexte par session.**
@@ -724,7 +724,7 @@ Recherches par `grep`. Dossiers temporaires créés par les tests. Exécutables 
   - 2e dérive dans le même run → exit 2, arrêt `drift`, et la sortie contient `"continue": false`.
   - `K factory-run record` suivant → exit 1.
   - Un nouveau run repart à zéro.
-- [ ] **CA-34 — Erreur interne.** Les cas suivants rendent exit 0, un `systemMessage` sur stdout et une ligne ajoutée à `.claude/runs/hook-errors.jsonl`, pour `pre-edit`, `pre-bash` et `post-edit` :
+- [ ] **CA-34 — Erreur interne.** Les cas suivants rendent exit 0, un `systemMessage` sur stdout et une ligne ajoutée à `.harness/runs/hook-errors.jsonl`, pour `pre-edit`, `pre-bash` et `post-edit` :
   - stdin non JSON ;
   - marqueur corrompu ;
   - git absent ;

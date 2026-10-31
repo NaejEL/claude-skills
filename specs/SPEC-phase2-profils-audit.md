@@ -123,7 +123,7 @@ Faits sur les skills :
   - Il rend `{profiles[], proposal[], clear, uncertainties[], rejected_signals[]}`, avec `clear` = aucun profil `uncertain`.
 - `SC-06` : un agent mort ou une sortie inexploitable → une relance (`relaunch.py`). Au second échec, le verdict est calculé sur les seuls signaux déterministes, avec `clear: false` et l'incertitude « scout non recueilli ». Un scout muet n'est pas un scout d'accord.
 - `SC-07` : aucun profil `retained`, aucun `uncertain` → `proposal = [<profil fallback>]`, `by: fallback`, `clear: true`. Cela reproduit l'existant : `/software-factory` installe une factory même sans marqueur (`software-factory:35`).
-- `SC-08` : verdict écrit sous `.claude/runs/scout-<horodatage>.json`, journalisé, jamais versionné.
+- `SC-08` : verdict écrit sous `.harness/runs/scout-<horodatage>.json`, journalisé, jamais versionné.
 
 ### 5. Arbitrage `auto` / `gate` — `AR`
 
@@ -228,9 +228,9 @@ Faits sur les skills :
   - `--max-findings` : `vibecode`, `min(N, 30)`, défaut 15.
   - `--max-questions` : `research`, `min(N, 12)`, défaut 6.
   - Une option dont le jeu est inactif → exit 2.
-- `AD-10` : seules écritures : `AUDIT.md`, les specs (`specs/SPEC-leg-*`, `SPEC-vib-*`, `SPEC-lab-*`) et `.claude/runs/` (X5 de la Phase 1).
+- `AD-10` : seules écritures : `AUDIT.md`, les specs (`specs/SPEC-leg-*`, `SPEC-vib-*`, `SPEC-lab-*`) et `.harness/runs/` (X5 de la Phase 1).
 - `AD-11` : modèles. Lentilles `legacy` et `vibecode` → `audit.auditor` ; validateurs → `audit.validator`. Lentilles `research` → `lens.model_role` (AA-06) ; validateurs → `lab.validator`.
-- `AD-12` : journal `.claude/runs/audit-<horodatage>.jsonl`. `--via` est journalisé (`event: alias`).
+- `AD-12` : journal `.harness/runs/audit-<horodatage>.jsonl`. `--via` est journalisé (`event: alias`).
 
 ### 10. Propriétés de lentille — `LN`
 
@@ -498,7 +498,7 @@ Les projets vide et ambigu sont fabriqués par les tests dans un dossier tempora
 - [ ] **CA-20 — `AUDIT.md` unique.** Rejeu sur chaque fixture :
   - `AUDIT.md` et les specs sont égaux à `audit-expected/<p>/` (date fixée) ;
   - FD-11 ne trouve rien ;
-  - `git status --porcelain` du projet temporaire ne liste ni `ROADMAP-legacy.md`, ni `AUDIT-vibecode.md`, ni `AUDIT-lab.md`, ni aucun chemin hors de `AUDIT.md`, `specs/` et `.claude/runs/` (`.claude/` est exclu par RG-05) ;
+  - `git status --porcelain` du projet temporaire ne liste ni `ROADMAP-legacy.md`, ni `AUDIT-vibecode.md`, ni `AUDIT-lab.md`, ni aucun chemin hors de `AUDIT.md`, `specs/` et `.harness/runs/` (`.claude/` est exclu par RG-05) ;
   - sur `profile-research`, la ligne `Lancer : \`/factory-run --profile research "` est présente.
 - [ ] **CA-21 — Migration.** Projet temporaire = `profile-software` + `audit-legacy-deliverables` :
   - `AUDIT.md` contient `LEG-03` à `FAIT`, `VIB-02` à `EN_COURS`, `Q-01` à `TRANCHEE (journal 2026-09-12)` (avec `research` forcé), et de nouveaux ids à partir de `LEG-04` et `VIB-03` ;

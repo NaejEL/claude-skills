@@ -243,6 +243,31 @@ def resolve_root(root: Path, roles: Iterable[str], override: Optional[str] = Non
             "migrated": migration["migrated"], "warnings": migration["warnings"]}
 
 
+def resolve_readonly(root: Path, roles: Iterable[str], override: Optional[str] = None,
+                     aliases: Optional[str] = None) -> Dict[str, Any]:
+    """Effective assignment without writing anything (X5: an audit writes only
+    its allowed paths): models.json if present, otherwise lab-models.json read
+    in memory with the lab. prefix (MD-05 is not run), then --models."""
+    roles = tuple(roles)
+    root = Path(root)
+    target, legacy = root / MODELS_FILE, root / LEGACY_LAB_FILE
+    warnings: List[str] = []
+    assignment = {r: "inherit" for r in roles}
+    if target.exists():
+        assignment = load(target, roles)
+        if legacy.exists():
+            warnings.append("%s ignored: %s exists and takes precedence"
+                            % (LEGACY_LAB_FILE.as_posix(), MODELS_FILE.as_posix()))
+    elif legacy.exists():
+        data = _read_mapping(legacy, prefix="lab.")
+        assignment.update({r: m for r, m in data.items() if r in roles})
+        warnings.append("%s read in memory (not migrated: this command writes no models file)"
+                        % LEGACY_LAB_FILE.as_posix())
+    if override:
+        assignment.update(parse_override(override, roles, aliases))
+    return {"roles": {r: entry(m) for r, m in assignment.items()}, "migrated": False, "warnings": warnings}
+
+
 def resolve(path: Path, override: Optional[str], roles: Iterable[str] = ROLES) -> Dict[str, str]:
     """Effective assignment (role -> model): file, then --models for this cycle."""
     roles = tuple(roles)

@@ -234,7 +234,7 @@ class WiringTest(helpers.TempDirCase):
         args.write_text("x --models \"factory.builder=gpt\"", encoding="utf-8")
         res = helpers.harness(["factory-run", "start", "--arguments-file", str(args)], self.tmp)
         self.assertEqual(res.returncode, 2)
-        self.assertEqual(len(list((self.tmp / ".claude" / "runs").glob("*.jsonl"))), 1)
+        self.assertEqual(len(list((self.tmp / ".harness" / "runs").glob("*.jsonl"))), 1)
 
 
 class VerifierDefectsTest(helpers.TempDirCase):

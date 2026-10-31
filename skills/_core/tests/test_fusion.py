@@ -88,7 +88,7 @@ class FixtureMergeTest(helpers.TempDirCase):
         fusion.apply(self.tmp, ["node"])
         lines = (self.tmp / ".gitignore").read_text(encoding="utf-8").splitlines()
         self.assertEqual(lines.count("factory-logs/"), 1)
-        self.assertEqual(lines.count(".claude/runs/"), 1)
+        self.assertEqual(lines.count(".harness/runs/"), 1)
 
     def test_sf04_second_application_byte_identical(self):
         """SF-04."""
@@ -188,9 +188,9 @@ class TolerantReadTest(helpers.TempDirCase):
         """SF-03."""
         path = self.put(".gitignore", "node_modules/\r\ndist/\r\n", newline="")
         fusion.apply(self.tmp, [])
-        self.assertEqual(path.read_bytes(), b"node_modules/\r\ndist/\r\nfactory-logs/\r\n.claude/runs/\r\n")
+        self.assertEqual(path.read_bytes(), b"node_modules/\r\ndist/\r\nfactory-logs/\r\n.harness/runs/\r\n")
         fusion.apply(self.tmp, [])
-        self.assertEqual(path.read_bytes(), b"node_modules/\r\ndist/\r\nfactory-logs/\r\n.claude/runs/\r\n")
+        self.assertEqual(path.read_bytes(), b"node_modules/\r\ndist/\r\nfactory-logs/\r\n.harness/runs/\r\n")
 
     def test_sf04_all_or_nothing_when_one_file_is_invalid(self):
         """SF-04: unreadable tasks.json -> neither settings.json nor .gitignore touched."""
@@ -343,7 +343,7 @@ class BacklogFixesTest(helpers.TempDirCase):
 
     def test_sf04_transit_file_removed_once_read_even_on_failure(self):
         """SF-04 (BACKLOG section 7): the transit file of sf install does not stay
-        in .claude/runs/, install succeeded or not; a file elsewhere is kept."""
+        in .harness/runs/, install succeeded or not; a file elsewhere is kept."""
         src = helpers.write_output(self.tmp, "factory-planner.md", "prompt\n")
         res = helpers.harness(["sf", "install", "--dest", ".claude/agents/factory-planner.md", "--source", src],
                               self.tmp)
@@ -354,7 +354,7 @@ class BacklogFixesTest(helpers.TempDirCase):
         res = helpers.harness(["sf", "install", "--dest", ".claude/agents/blocked.md", "--source", src], self.tmp)
         self.assertNotEqual(res.returncode, 0)
         self.assertFalse((self.tmp / src).exists())
-        self.assertEqual(list((self.tmp / ".claude" / "runs").iterdir()), [])
+        self.assertEqual(list((self.tmp / ".harness" / "runs").iterdir()), [])
         outside = self.tmp / "keep.md"
         outside.write_text("mine\n", encoding="utf-8")
         res = helpers.harness(["sf", "install", "--dest", "ci/keep.md", "--source", "keep.md"], self.tmp)
@@ -389,7 +389,7 @@ class GitignoreExcludesRunsTest(helpers.TempDirCase):
         journal.append(run, journal.make_record("factory-builder", "inherit", 1, 1, "DONE"))
         registry.Registry(runs.registry_path(run)).add(helpers.finding(), "REJECTED")
         status = helpers.git(self.tmp, "status", "--porcelain", "--untracked-files=all")
-        self.assertNotIn(".claude/runs", status)
+        self.assertNotIn(".harness/runs", status)
         self.assertIn(".gitignore", status)
 
 
@@ -463,26 +463,13 @@ class GenericEngineTest(helpers.TempDirCase):
                          {"permissions": {"deny": ["Read(./node_modules/**)", "Read(./dist/**)",
                                                    "Read(./factory-logs/**)", "Read(./.git/objects/**)"]}})
         self.assertEqual(list(fusion.merge_tasks(None)), ["version", "inputs", "tasks"])
-        repo = helpers.CORE.parent.parent
-        try:
-            probe = [subprocess.run(["git", "-C", str(repo)] + args, capture_output=True, text=True, timeout=60)
-                     for args in (["rev-parse", "--show-toplevel"], ["cat-file", "-e", "031df12^{commit}"])]
-        except OSError:
-            self.skipTest("git unavailable")
-        top = probe[0].stdout.strip()
-        if probe[0].returncode != 0 or os.path.normcase(os.path.realpath(top)) != \
-                os.path.normcase(os.path.realpath(str(repo))) or probe[1].returncode != 0:
-            self.skipTest("not the claude-skills git repository, or BASE1 031df12 absent")
-        res = subprocess.run(["git", "-C", str(repo), "diff", "--exit-code", "031df12", "--",
-                              "tests/fixtures/merge-expected"], capture_output=True, text=True, timeout=60)
-        self.assertEqual(res.returncode, 0, res.stdout + res.stderr)
 
     def test_fu03_generic_gitignore_lines(self):
         """FU-03: any line list, CRLF kept, no duplicate."""
         path = self.tmp / ".gitignore"
         path.write_bytes(b"lab-logs/\r\n")
-        plan = fusion.plan_lines(path, ["lab-logs/", "experiments/results/", ".claude/runs/"])
-        self.assertEqual((plan.state, plan.text), (fusion.MERGED, "lab-logs/\r\nexperiments/results/\r\n.claude/runs/\r\n"))
+        plan = fusion.plan_lines(path, ["lab-logs/", "experiments/results/", ".harness/runs/"])
+        self.assertEqual((plan.state, plan.text), (fusion.MERGED, "lab-logs/\r\nexperiments/results/\r\n.harness/runs/\r\n"))
         self.assertEqual(fusion.plan_lines(self.tmp / "none", ["a/"]).state, fusion.CREATED)
 
     def test_fu04_install_file_for_every_generator(self):

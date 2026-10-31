@@ -12,7 +12,7 @@ Dernière mise à jour : 2026-10-17.
 |---|---|
 | 2026-10-16 | `ROADMAP.md` est une **feuille de route**, pas un besoin. Un cycle `/factory-run` = **une** spec pour **un** incrément, plus en annexe la liste ordonnée des specs suivantes (titres et dépendances seulement). |
 | 2026-10-16 | **Code avant prose.** Tout ce qui est déterministe sort des SKILL.md et passe en Python stdlib sous `skills/_core/` : parsing des blocs JSON de verdict, compteur d'itérations et de rondes, registre cumulatif (dédoublonnage, statuts), journal de cycle, relance d'un agent mort, lecture de `models.json` et de `--models`, fusion de `settings.json`, blocs délimités. Les prompts ne gardent que le jugement : rôle, périmètre, interdits, format attendu. Objectif chiffré : chaque SKILL.md touché perd **au moins un tiers** de ses lignes sans perdre de règle. Chaque règle déplacée est pointée vers le code qui la porte. |
-| 2026-10-16 | **Mesurer avant d'étendre.** Le journal de cycle (`.claude/runs/<skill>-<horodatage>.jsonl` : agent, modèle, durée, itération, verdict, findings produits / validés / rejetés, tokens si disponibles) fait partie de l'incrément 1. **Aucun nouveau skill, aucun profil, aucun `/audit` unifié** avant une dizaine de cycles journalisés sur de vrais projets. |
+| 2026-10-16 | **Mesurer avant d'étendre.** Le journal de cycle (`.harness/runs/<skill>-<horodatage>.jsonl` : agent, modèle, durée, itération, verdict, findings produits / validés / rejetés, tokens si disponibles) fait partie de l'incrément 1. **Aucun nouveau skill, aucun profil, aucun `/audit` unifié** avant une dizaine de cycles journalisés sur de vrais projets. |
 | 2026-10-16 | Incrément 1 : rebranchement de **deux** skills seulement, `software-factory` (avec le `factory-run` qu'il génère) et `ship-pr`. Les autres ne bougent pas. |
 | 2026-10-16 | Pas de `/ship-pr` ni de push sans demande explicite sur ce dépôt : le harnais ne s'auto-modifie pas en autonomie. Une phase = une branche, diff montré, accord, merge. |
 
@@ -44,7 +44,7 @@ Ordre repris de l'annexe de `specs/SPEC-noyau-core-journal.md`, qui fait foi.
 | # | Question | Statut |
 |---|---|---|
 | Q-partage | Forme du partage de code entre skills globaux | **tranchée le 2026-10-16** : mixte. ship-pr via `${CLAUDE_SKILL_DIR}/../_core` (à confirmer par la recette R1), factory-run généré via une copie dans `.claude/harness/` (D1 de la spec 0) |
-| Q-registre | Format JSONL du registre | **tranchée le 2026-10-16** : clés anglaises `file`/`line`/`title`/`verdict`, dédoublonnage sur fichier + titre normalisé, fichier dans `.claude/runs/` non versionné (D2 de la spec 0) |
+| Q-registre | Format JSONL du registre | **tranchée le 2026-10-16** : clés anglaises `file`/`line`/`title`/`verdict`, dédoublonnage sur fichier + titre normalisé, fichier dans `.harness/runs/` non versionné (D2 de la spec 0) |
 | Q2 | Modèle par rôle : le paramètre `model` de l'outil Agent seul, ou aussi `model:` en frontmatter ? Contredit `ai-lab:135` (D1). | ouverte |
 | Q3 | Sort de `/lab-run` : alias, orchestrateur distinct, ou orchestrateur générique ? | ouverte, incrément 4 ou 8 |
 | Q4 | Enchaînements malgré `disable-model-invocation` (D3) | ouverte, incrément 5 |
@@ -166,7 +166,7 @@ Le cycle s'est arrêté en **échec explicite** après 3 itérations Build/Verif
    - Ce texte est dérivé des findings, entre guillemets doubles. Des backticks ou un `$()` y sont exécutés, et le commit `fix(review)` est corrompu sans retour possible, puisque l'amend est interdit.
    - Le défaut existait déjà à `BASE`, mais il contredit la règle que le skill pose lui-même.
    - Correction : options `--summary-file` / `--not-fixed-file`, écrites par Write.
-   - **Corrigé (phase 1)** : `ship-pr commit --summary-file` et `--not-fixed-file` (JSON `{"<id>": "<raison>"}`), `ship-pr pr --title-file` ; le SKILL.md prescrit ces fichiers, écrits par Write sous `.claude/runs/`. Tests : `test_replay.ShipPrReplayTest.test_untrusted_text_travels_by_file_drop_and_trailer`, `test_replay.UntrustedContentTest.test_skills_prescribe_files_for_untrusted_text_and_new_commands`.
+   - **Corrigé (phase 1)** : `ship-pr commit --summary-file` et `--not-fixed-file` (JSON `{"<id>": "<raison>"}`), `ship-pr pr --title-file` ; le SKILL.md prescrit ces fichiers, écrits par Write sous `.harness/runs/`. Tests : `test_replay.ShipPrReplayTest.test_untrusted_text_travels_by_file_drop_and_trailer`, `test_replay.UntrustedContentTest.test_skills_prescribe_files_for_untrusted_text_and_new_commands`.
 
 ### Défauts mineurs restants
 
@@ -176,8 +176,8 @@ Le cycle s'est arrêté en **échec explicite** après 3 itérations Build/Verif
   - **Corrigé (phase 1)** : arrêt exit 1, sans repli `gh pr comment`. Test : `test_ghflow.RoundFlowTest.test_sp16_file_level_failure_other_than_422_stops_without_pr_comment`.
 - L'état n'est pas sauvegardé sur les chemins d'erreur : si le push échoue après le commit, ou si les threads sont interrompus, une relance re-poste les réponses.
   - **Corrigé (phase 1)** : le hash du commit et les issues sont consignés (`unpushed`) et sauvegardés avant le push ; une relance pousse sans recommiter, et `end-round` refuse tant que le push n'est pas fait. Chaque réponse postée, puis chaque thread traité, est marqué et sauvegardé avant le suivant. Tests : `test_ghflow.RoundFlowTest.test_sp17_failed_push_keeps_hash_and_relaunch_does_not_recommit`, `test_sp17_cli_failed_push_saved_then_resumed`, `test_sp18_interrupted_threads_never_repost_a_reply`, `test_shippr.ExitTest.test_sp17_round_does_not_end_on_an_unpushed_fix_commit`.
-- Les fichiers de transit de `sf install` restent dans `.claude/runs/` si le skill s'arrête avant la Phase 5.
-  - **Corrigé (phase 1)** : `sf install` supprime son fichier source situé sous `.claude/runs/` dès sa lecture (try/finally, installation réussie ou non). Test : `test_fusion.BacklogFixesTest.test_sf04_transit_file_removed_once_read_even_on_failure`.
+- Les fichiers de transit de `sf install` restent dans `.harness/runs/` si le skill s'arrête avant la Phase 5.
+  - **Corrigé (phase 1)** : `sf install` supprime son fichier source situé sous `.harness/runs/` dès sa lecture (try/finally, installation réussie ou non). Test : `test_fusion.BacklogFixesTest.test_sf04_transit_file_removed_once_read_even_on_failure`.
 - `parse_themes` rejette les thèmes en double, une règle hors D8.
   - **Corrigé (phase 1)** : erreur explicite conservée, alignée sur D8 (borne invalide = erreur explicite, jamais de correction silencieuse) : le message nomme le thème en double, et l'aide de `--themes` documente la règle. Test : `test_counters.ThemesTest.test_sp02_duplicate_theme_is_explicit_error_naming_it`.
 - `copy-core` bloqué rend exit 0 avec `copied:false`, signalé trop faiblement.
@@ -185,7 +185,7 @@ Le cycle s'est arrêté en **échec explicite** après 3 itérations Build/Verif
 
 ### Revue ship-pr de la PR #2 (2026-10-17)
 
-Premier passage réel de `ship-pr` rebranché sur le noyau. Sortie par épuisement en ronde 2. Journal : `.claude/runs/ship-pr-20261017-131818.jsonl`.
+Premier passage réel de `ship-pr` rebranché sur le noyau. Sortie par épuisement en ronde 2. Journal : `.harness/runs/ship-pr-20261017-131818.jsonl`.
 
 - **Corrigé dans `cfea95e`** : `commit_round` acceptait un id en double. Le commit était poussé, puis l'état n'était pas sauvegardé.
 - **Friction constatée** : SKILL.md SP-07 demande d'« écarter au jugement » un doublon sémantique. Le noyau n'a aucune sous-commande pour le faire, donc il faut un validateur même pour un doublon évident. Le finding a été rejeté sur la forme, mais la friction est réelle. À trancher : une sous-commande `drop`, ou retirer la consigne.
@@ -198,7 +198,7 @@ Premier passage réel de `ship-pr` rebranché sur le noyau. Sortie par épuiseme
   - `drop` acceptait un cycle (`drop A --of B` puis `drop B --of A`), et le vrai finding disparaissait. **Corrigé (phase 1)** : un `--of` déjà `DUPLICATE` est refusé, la cible reste un finding validé ou à valider. Test : `test_shippr.SemanticDuplicateTest.test_sp07_drop_refuses_a_cycle_or_a_chain_of_duplicates`.
   - `--not-fixed-file` gardait en silence la dernière valeur d'une clé en double. **Corrigé (phase 1)** : `object_pairs_hook` qui refuse la clé en double (exit 2). Test : `test_replay.ShipPrReplayTest.test_not_fixed_file_duplicate_key_refused`.
   - Un résumé sur plusieurs lignes collait un corps au sujet du commit, sans ligne vide. **Corrigé (phase 1)** : refusé (exit 2 dans la CLI, arrêt avant tout appel git dans `commit_round`). Test : `test_replay.ShipPrReplayTest.test_multiline_summary_refused_before_any_commit`.
-  - Les fichiers de transit de ship-pr (`pr-title.txt`, `pr-body.md`, `drop.txt`, `summary.txt`, `not-fixed.json`) n'étaient jamais supprimés, et un fichier périmé pouvait être réutilisé. **Corrigé (phase 1)** : chaque fichier lu sous `.claude/runs/` par `--title-file`, `--body-file`, `--reason-file`, `--summary-file` et `--not-fixed-file` est supprimé une fois consommé (try/finally). La relance de `commit` après un push en échec n'a pas besoin de ces fichiers. Tests : `test_replay.ShipPrReplayTest.test_transit_files_removed_once_consumed`, `test_ghflow.RoundFlowTest.test_sp17_cli_failed_push_saved_then_resumed`.
+  - Les fichiers de transit de ship-pr (`pr-title.txt`, `pr-body.md`, `drop.txt`, `summary.txt`, `not-fixed.json`) n'étaient jamais supprimés, et un fichier périmé pouvait être réutilisé. **Corrigé (phase 1)** : chaque fichier lu sous `.harness/runs/` par `--title-file`, `--body-file`, `--reason-file`, `--summary-file` et `--not-fixed-file` est supprimé une fois consommé (try/finally). La relance de `commit` après un push en échec n'a pas besoin de ces fichiers. Tests : `test_replay.ShipPrReplayTest.test_transit_files_removed_once_consumed`, `test_ghflow.RoundFlowTest.test_sp17_cli_failed_push_saved_then_resumed`.
 - **`--not-fixed` en double** (constaté en phase 1) : `--not-fixed A:r1 --not-fixed A:r2` s'écrasaient dans un dict.
   - **Corrigé (phase 1)** : refusé (exit 2), y compris entre `--not-fixed` et `--not-fixed-file`. Tests : `test_ghflow.RoundFlowTest.test_sp09_not_fixed_given_twice_refused_by_the_cli`, `test_replay.ShipPrReplayTest.test_untrusted_text_travels_by_file_drop_and_trailer`.
 
@@ -235,10 +235,10 @@ Spec : `specs/SPEC-phase1-rebranchement.md`, statut APPROUVEE, décisions X1 à 
 | L1 | Corrections §7 : verrou, `--summary-file`, `--not-fixed-file`, `--title-file`, `--trailer`, `drop`, `journal amend` | **fait**, commit `31579e0` ; reliquat (fichier de transit déjà consommé = exit 2 explicite) livré avec L2 |
 | L2 | JR-01, JR-02 ; gates GT-01 à GT-08 ; câblage software-factory (gabarit) et ship-pr (C3) | **fait**, commit `eb9fd93` ; 7 défauts mineurs du Verifier corrigés avec L5 et L6 (ci-dessous) |
 | L3 | Modèles MD-01 à MD-08 ; câblage factory-run (gabarit) et ship-pr ; `--models` (X6) | **fait**, commit `eb9fd93` |
-| L4 | Régénération de l'usine du dépôt (UF-01 à UF-07) | à faire (dépend de L2, L3) |
-| L5 | Finding FD-01 à FD-11, registre projet RG-01 à RG-07 ; `comment_body` par FD-10 ; publication et lecture dans ship-pr (X4) | **livré, non commité** (arbre de travail), itération 2 du Verifier traitée |
-| L6 | Stack ST-01 à ST-05, T-shirt TS-01 à TS-05, fusion générique FU-01 à FU-06, blocs BK-01 ; SF sur FU ; Phase 1 de software-factory sur ST | **livré, non commité** (arbre de travail), itération 2 du Verifier traitée ; BK-02 reste au lot L8 |
-| L7 | Moteur d'audit AU-01 à AU-16 | à faire |
+| L4 | Régénération de l'usine du dépôt (UF-01 à UF-07) | **livré, non commité** (arbre de travail), itération 2 du Verifier traitée, voir ci-dessous |
+| L5 | Finding FD-01 à FD-11, registre projet RG-01 à RG-07 ; `comment_body` par FD-10 ; publication et lecture dans ship-pr (X4) | **fait**, commit `e9da1a4` ; test FD-08 durci avec L7 (texte intégral des deux critères `fuites`) |
+| L6 | Stack ST-01 à ST-05, T-shirt TS-01 à TS-05, fusion générique FU-01 à FU-06, blocs BK-01 ; SF sur FU ; Phase 1 de software-factory sur ST | **fait**, commit `e9da1a4` ; BK-02 reste au lot L8 |
+| L7 | Moteur d'audit AU-01 à AU-16 | **livré, non commité** (arbre de travail), itération 2 du Verifier traitée, voir ci-dessous ; SKILL.md des audits non rebranchés (L10 à L12) |
 | L8 à L13 | Rebranchement de code-index, ai-lab, ai-lab-audit, legacy-audit, vibecode-audit, brainstorm | à faire |
 | L14 | README, BACKLOG, rafraîchissement de `.claude/harness`, passage complet des CA | à faire |
 
@@ -264,8 +264,44 @@ Spec : `specs/SPEC-phase1-rebranchement.md`, statut APPROUVEE, décisions X1 à 
 - **ship-pr** : un champ de correction étranger à la source (par exemple `size_correction` chez un validateur ship-pr) est ignoré, comme avant le lot ; seul `SPLIT` hors vibecode-audit rend la sortie inexploitable.
 - **FD-07** : une `false_occurrence` hors de l'échantillon décrémente aussi `count` ; `corrected_count: 0` (littéral du gabarit de prompt) vaut « non fourni ».
 - **Gates** : une gate à plusieurs questions prend exactement une option valide par question, dans l'ordre (catalogue : questions séparées par ` ; `) ; une gate par thème (`legacy-audit.assignment`, `ai-lab-audit.selection`) prend 1 à 4 options de sa liste. Une réponse hors options (« Other ») ne tue plus le run : `gate answer` rend `action: reask` (exit 0), rien n'est journalisé, la question est reposée (prose de ship-pr et de software-factory).
-- **Registre projet** : `ship-pr start` exclut dès le préflight `.claude/runs/`, `.claude/findings.jsonl`, `.claude/findings.lock` et `.claude/findings.jsonl.*.tmp` ; `.git/info/exclude` est réécrit sous verrou (`exclude.hcore-lock`, `runs.locked_file`) et atomiquement ; `end-round` publie avant de sauver l'état final (un `LockTimeout` laisse la ronde ouverte, relancer `end-round`).
+- **Registre projet** : `ship-pr start` exclut dès le préflight `.harness/runs/`, `.claude/findings.jsonl`, `.claude/findings.lock` et `.claude/findings.jsonl.*.tmp` ; `.git/info/exclude` est réécrit sous verrou (`exclude.hcore-lock`, `runs.locked_file`) et atomiquement ; `end-round` publie avant de sauver l'état final (un `LockTimeout` laisse la ronde ouverte, relancer `end-round`).
 - **Stack, aligné sur BASE1 pour software-factory** : `environment.yml` et `*.ipynb` donnent la famille `python` mais pas la stack `python` ; tous les dossiers de premier niveau sont examinés ; ST-04 exclut les dossiers de `legacy-audit:37` à toute profondeur (`bin` compris, comme le cite cette ligne) et ceux ajoutés par `code-index:49` (`data`, `models`, `runs`…) à la racine seulement.
 - **FU-05** : `tools:` vide reste vide ; valeur entre guillemets et commentaire YAML de fin de ligne conservés. **FU-06** : `union_allowed_tools` rend `(texte, avertissements)` ; une valeur contenant l'autre guillemet, ou un `--allowedTools` sans valeur entre guillemets, est laissée telle quelle et signalée.
 - **Données** : les textes français des livrables (`Réécriture d'historique`, les deux critères `fuites`, « Aucune », barèmes DEV et GPU) sont dans `skills/_core/templates/deliverables.json`.
 - **Traçabilité** : LK-01 et LK-02 sont cités dans les tests ; `test_rules.py` contrôle aussi le préfixe LK.
+
+### L7 et L4 : ce qui est en place (2026-10-17)
+
+- **Moteur d'audit** (`hcore/audit.py`, CLI `harness.py audit …`) : profils des trois audits en données (unités, préfixes, plafonds, livrable, préfixe de spec, statuts, clé de dédup, numérotation, gates, compteurs, rôles de modèle) ; `audit start` (AU-01 à AU-03, `--models` retiré pour l'audit seulement, sonde git AU-12, reprise AU-09, run ouvert dans le dépôt audité, X5) ; `audit auditor` (AU-04, AU-06) ; `audit validator` (AU-05, FD-06, FD-07) ; `audit next` (AU-07, compteurs AU-13) ; `audit consolidate` (AU-08) ; `audit themes` (AU-16) ; `audit readjust` (AU-15) ; `audit render` (AU-10, AU-11) ; `audit spec` (AU-14) ; `audit publish` (RG-03, sans git si `GIT_ABSENT`).
+- **Gabarits** : textes français des trois livrables dans `skills/_core/templates/audits.json` ; les sections et lignes de tableau servent aussi à relire un livrable existant (reprise par les noms de champs, pas par les en-têtes).
+- **Rejeux** : `tests/test_audit.py` rejoue les trois audits par la CLI sur des sorties figées (`tests/fixtures/audit/<skill>.json`) et compare le livrable à `tests/fixtures/audit/<skill>.expected.md` ; chaque ligne de structure des squelettes de BASE1 (`skeletons.json`) s'y retrouve. CA-21, CA-29 et CA-30 y sont couverts ; CA-27 l'est pour la partie moteur (le rebranchement des SKILL.md reste à L10-L12).
+- **Usine du dépôt** (L4) : `.claude/agents/factory-*.md`, `.claude/skills/factory-run/SKILL.md`, `ci/factory.sh|.ps1` régénérés par `sf install` (agents avec `--model-role`, bloc `harness.model` à `inherit`) ; `sf apply --stacks ""` rend `identique` pour `settings.json`, `tasks.json` et `.gitignore` ; `.claude/harness/` copié par `sf copy-core` (Q-C). Tests : `tests/test_repo_factory.py` (UF-01 à UF-07, CA-31).
+- **Mutations** : 16 règles AU, 7 règles UF et FD-08 mutées une à une sur une copie jetable du dépôt : chaque mutation fait échouer son test.
+- **Écarts** :
+  - La régénération retire d'abord les six fichiers générés : SF-04 ne remplace jamais un fichier qui diffère, et des fichiers sans bloc `harness.model` resteraient `personnalisé-conservé` (point d'attention de L2-L3). Leurs personnalisations hors bloc sont reportées dans le contenu régénéré (contexte du dépôt, format de spec avec *Décisions*, message headless, options de `ci/factory.*`).
+  - `stack detect` ne trouve aucune stack du noyau dans ce dépôt : `sf apply` reçoit une liste vide, et `unittest` est imposé explicitement aux portes du Builder et du Verifier (CA-31), avec l'interpréteur détecté `py -3` (`Bash(py *)` en liste blanche).
+  - vibecode-audit : un même motif trouvé par deux auditeurs n'est pas écarté mais signalé (`merge`), la fusion VA-07 relevant de L12.
+  - legacy-audit et ai-lab-audit : un finding `UNVALIDATED` reste hors du livrable (compté au rapport) ; vibecode-audit le livre marqué `non validé`.
+  - Nouvelles sections de livrable, exigées par la prose mais absentes des squelettes : « Familles non auditées » (legacy-audit), « Lentilles non auditées » (ai-lab-audit), et en tête d'AUDIT-vibecode.md les encadrés « Ordre par défaut » (headless) et « Famille non auditée ».
+- **Reste** : rafraîchir `.claude/harness/` après toute évolution de `skills/_core/` (`sf copy-core --refresh`, L14).
+
+### L7 et L4 : itération 2 du Verifier (2026-10-17)
+
+- **Copie du noyau** : `T` ne contrôle plus que la cohérence interne de `.claude/harness/` (copie reconnue, `harness.py version` rend son propre `CORE_VERSION`, aucun bytecode) : un lot qui touche au noyau ne fait plus échouer `T`. L'identité stricte se vérifie à la demande : `HARNESS_CHECK_COPY=1` ou `sf copy-core --check` (exit 1 si la copie diffère). `sf copy-core --refresh` remplace une copie reconnue (fichiers du noyau créés ou remplacés), ne touche jamais un fichier étranger (signalé dans `foreign`) et laisse intact, en exit 1, un `.claude/harness/` qui n'est pas une copie de noyau.
+- **Reprise (AU-09)** : colonnes trouvées par l'en-tête du tableau ; colonne en plus et `|` non échappé dans un titre tolérés ; toute ligne de finding illisible (cellules manquantes, id absent, en-tête incomplet, ligne hors des sections connues, titre de bloc illisible) = arrêt explicite qui nomme le fichier et la ligne (exit 1), avant l'ouverture du run ; la numérotation part du plus grand id présent dans le texte.
+- **Statuts repris** : une ligne vibecode « non validé » reste `UNVALIDATED` (jamais publiée) ; une ligne et un bloc du même id font un seul finding ; un événement `DUPLICATE` n'écrase jamais l'état final d'une clé dans le registre de run.
+- **Reprise vibecode** : dédup par énoncé ou par ensemble d'occurrences des blocs de détail repris (vibecode-audit:82) ; un nouveau motif prend sa place dans l'ordre TS-03 au milieu des lignes reprises ; l'encadré de validation compte tous les motifs du rapport (repris compris : tableau d'attaque, liste courte, rejetés ; seuls ceux du tableau peuvent être `non validé`), gains rapides et critiques remontés aussi ; relancer sur le livrable produit rend un fichier identique, pour les trois audits.
+- **Fusion vibecode** : un même motif de deux auditeurs donne un `merge` quel que soit l'ordre d'appel et le statut du jumeau.
+- **Headless vibecode** : les mineurs suivent le défaut de `vibecode-audit.order` (« Les détailler ») ; un motif non validé n'est jamais mis en liste courte ; la fixture et son attendu sont corrigés.
+- **Modèles en audit** : `audit start` résout les modèles sans rien écrire (`models.resolve_readonly`, `lab-models.json` lu en mémoire) ; aucun `.claude/models.json` n'est créé dans le dépôt audité, même en cas d'échec.
+- **Divers** : `READJUST` lu dans le catalogue des gates (`readjust_option`) ; `TRANCHEE (journal <date>)` exige une date de calendrier valide ; `factory-run start` supprime son fichier de transit une fois lu ; usine du dépôt : `<PY>` selon la règle D5 dans le factory-run, le Builder, le Verifier et le Planner, liste blanche CI `Bash(python *)`, `Bash(python3 *)`, `Bash(py *)`.
+- **Mutations** : 26 mutations de l'itération 2 (un par point corrigé et par mutant survivant signalé) tuées sur une copie jetable.
+
+### L7 et L4 : itération 3 du Verifier (2026-10-18)
+
+- **Reprise vibecode après un SPLIT** : chaque part d'un `SPLIT` est dédoublonnée avant numérotation contre le rapport repris et contre le run (même énoncé ou même ensemble d'occurrences, vibecode-audit:82) ; une part déjà présente devient `DUPLICATE` et n'est jamais renumérotée. En amont, un motif dont les occurrences sont exactement l'union d'au moins deux parts (d'un même `split_from` du run, ou de blocs repris d'un même axe : le livrable ne garde pas le `split_from`) est écarté avant tout validateur.
+- **Ordre explicite** : un `order` qui omet un id repris de la table d'attaque est refusé ; `audit start` (`resumed.ids`) et `audit consolidate` (`resumed_ids`) rendent les ids repris par section.
+- **Colonne ajoutée par l'utilisateur** : une table reprise garde son en-tête ; les nouvelles lignes y reçoivent une cellule vide, la table reste alignée et relisible.
+- **Copie du noyau** : `check_core_copy` et `refresh_core` comparent en octets et ne lisent jamais un fichier étranger (un binaire est signalé, intact) ; `--refresh` refuse (exit 1) une copie qui déclare une `CORE_VERSION` supérieure à celle du noyau, sauf `--force` (`--force` sans `--refresh` = exit 2) ; une copie aux fins de ligne CRLF reste reconnue.
+- **D5 en headless** : `<PY>` est le champ `command` de `python .claude/harness/harness.py interp`, à défaut `python3 …`, puis `py -3 …` : trois commandes simples couvertes par `Bash(python *)`, `Bash(python3 *)`, `Bash(py *)` de `ci/factory.*` (la boucle shell, non couverte, a disparu du factory-run, du Builder, du Verifier et du Planner du dépôt). Le gabarit de software-factory n'est pas modifié : il écrit l'interpréteur retenu en clair et le met seul dans la liste blanche, ce qui fonctionne déjà en headless.
+- **Mutations** : 15 mutations de l'itération 3 tuées ; les 26 de l'itération 2 rejouées, toutes tuées.

@@ -76,7 +76,7 @@ Règle de l'utilisateur appliquée partout : **la ROADMAP fait foi**. Une règle
 - `skills/_core/hcore/models.py` est, à ce jour, le module non branché de la spec 0.
 
 **Registres**
-- D2 : registres de run `.claude/runs/ship-pr-<horodatage>.registry.jsonl` (exemple réel : `.claude/runs/ship-pr-20261017-131818.registry.jsonl`).
+- D2 : registres de run `.harness/runs/ship-pr-<horodatage>.registry.jsonl` (exemple réel : `.harness/runs/ship-pr-20261017-131818.registry.jsonl`).
 - RG-01 : registre projet `.claude/findings.jsonl`.
 - RG-07 : les registres de run restent lisibles sans migration, mais rien ne les publie après coup dans le registre projet.
 
@@ -218,7 +218,7 @@ Règle de l'utilisateur appliquée partout : **la ROADMAP fait foi**. Une règle
 
 ### 7. Moteur d'upgrade — `UP`
 
-- `UP-01` : `K upgrade plan --root R --skill software-factory|code-index [--params-file F] [--convert]` calcule toutes les modifications **sans écrire dans le projet**. Il n'écrit que sous `.claude/runs/` : `upgrade-<horodatage>.plan.json` et `upgrade-<horodatage>.diff`.
+- `UP-01` : `K upgrade plan --root R --skill software-factory|code-index [--params-file F] [--convert]` calcule toutes les modifications **sans écrire dans le projet**. Il n'écrit que sous `.harness/runs/` : `upgrade-<horodatage>.plan.json` et `upgrade-<horodatage>.diff`.
 - `UP-02` : contenu du plan.
   - **software-factory** : fichiers générés de tous les profils actifs, blocs d'orchestrateur, scripts CI, fusions (FU, SF-01 à SF-03, AL-01 à AL-03), copie du noyau (CO), migrations (MI), en-têtes, tampon.
   - **code-index** : `rgkb.py` (CX-05), blocs `rgkb` des fichiers câblés, fusions CX-06 à CX-08 et CX-15, `contributes`, hooks locaux (CX-21), tampon.
@@ -231,12 +231,12 @@ Règle de l'utilisateur appliquée partout : **la ROADMAP fait foi**. Une règle
 - `UP-05` : `K upgrade apply --plan P [--decisions-file F]`.
   - Il revérifie le sha256 de chaque fichier d'avant. Un seul écart → exit 1, `STOP: upgrade plan is stale, the project changed since it was shown; plan again`, rien n'est écrit.
   - Il écrit en tout ou rien (fichier temporaire puis remplacement), le tampon en dernier.
-  - Chaque fichier modifié ou supprimé est sauvegardé d'abord sous `.claude/runs/upgrade-<horodatage>/backup/<rel>`.
+  - Chaque fichier modifié ou supprimé est sauvegardé d'abord sous `.harness/runs/upgrade-<horodatage>/backup/<rel>`.
 - `UP-06` : **idempotence.** Un nouveau plan juste après l'apply rend `changes: []`. L'apply d'un plan vide n'écrit rien, tampon compris.
 - `UP-07` : chaque modification est classée parmi `header`, `block`, `merge` (ajout par union), `copy` (noyau `pristine`, `rgkb.py`), `create` (fichier généré manquant), `convert`, `migrate`, `stamp` et `local` (bloc `rgkb` d'un hook git). On a `blocks_only = true` si et seulement si toutes les modifications sont dans `{header, block, merge, copy, stamp, local}` (Q3).
 - `UP-08` : pas de retour en arrière. Un commit installé `ahead` ou `diverged` (VS-03), ou un `core_version` installé supérieur à celui du dépôt → exit 1, `STOP: project installed by a newer harness (<installé>) than this repository (<dépôt>); update claude-skills first (git pull)`.
-- `UP-09` : un seul upgrade à la fois par projet. Le verrou `.claude/runs/upgrade.lock` suit le mécanisme de LK-01.
-- `UP-10` : chaque modification appliquée est journalisée par un événement `{"event": "upgrade", "file", "kind", "from", "to"}` dans `.claude/runs/<skill>-<horodatage>.jsonl` (JR-04).
+- `UP-09` : un seul upgrade à la fois par projet. Le verrou `.harness/runs/upgrade.lock` suit le mécanisme de LK-01.
+- `UP-10` : chaque modification appliquée est journalisée par un événement `{"event": "upgrade", "file", "kind", "from", "to"}` dans `.harness/runs/<skill>-<horodatage>.jsonl` (JR-04).
 - `UP-11` : l'upgrade ne lance aucun sous-agent et ne fait réécrire aucun bloc par le LLM. La seule exception est le remplissage des paramètres manquants (RD-04).
 - `UP-12` : un skill ne modifie jamais les blocs d'un autre. software-factory ne touche pas aux blocs `rgkb`, et code-index ne touche pas aux blocs `harness.*`. Seules les listes d'outils passent de l'un à l'autre, par les contributions (RD-05).
 - `UP-13` : un fichier généré attendu mais manquant est recréé, avec la classe `create` (Q13).
@@ -244,7 +244,7 @@ Règle de l'utilisateur appliquée partout : **la ROADMAP fait foi**. Une règle
 ### 8. Migrations — `MI`
 
 - `MI-01` : la migration des modèles MD-05 est appelée par le plan software-factory et classée `migrate`. `lab-models.json` reste identique octet pour octet.
-- `MI-02` : les anciens registres de run `.claude/runs/*.registry.jsonl` (format D2, `DUPLICATE` compris) sont publiés dans `.claude/findings.jsonl` selon RG-03, avec deux nuances :
+- `MI-02` : les anciens registres de run `.harness/runs/*.registry.jsonl` (format D2, `DUPLICATE` compris) sont publiés dans `.claude/findings.jsonl` selon RG-03, avec deux nuances :
   - `CONFIRMED` n'est pas publié, puisque le livrable porteur est inconnu ;
   - chaque registre source est enregistré dans `migrations[]` par son sha256 et n'est plus jamais republié.
 
@@ -252,7 +252,7 @@ Règle de l'utilisateur appliquée partout : **la ROADMAP fait foi**. Une règle
 - `MI-03` : un tampon de Phase 2 passe au schéma 1 (HJ-08).
 - `MI-04` : un orchestrateur sans blocs de profil (EP-06, `personnalisé-conservé`) passe par la conversion CV.
 - `MI-05` : les anciens livrables d'audit (`ROADMAP-legacy.md`, `AUDIT-vibecode.md`, `AUDIT-lab.md`) ne sont pas migrés par l'upgrade. Ils sont rapportés avec la mention « repris par le prochain /audit (MG-01) ».
-- `MI-06` : les lignes `.gitignore` manquantes d'une installation antérieure, comme `.claude/runs/` sur un projet `pre-core`, sont ajoutées par FU-03 (classe `merge`).
+- `MI-06` : les lignes `.gitignore` manquantes d'une installation antérieure, comme `.harness/runs/` sur un projet `pre-core`, sont ajoutées par FU-03 (classe `merge`).
 - `MI-07` : chaque migration est idempotente et ne modifie ni ne supprime aucun fichier source.
 
 ### 9. Premier upgrade d'un fichier sans bloc (BACKLOG Q6) — `CV`
@@ -328,7 +328,7 @@ Règle de l'utilisateur appliquée partout : **la ROADMAP fait foi**. Une règle
   - `gh auth status` en échec → message `MSG_GH_AUTH`, `warn`.
   - Délai de 10 s. Jamais bloquant.
 - `DR-08` : signaux. Un profil absent du tampon dont le statut sur les seuls signaux déterministes (SC-02, SC-05 sans `judgement`) n'est pas `rejected` → `signals.propose_rescan: true`, avec la commande `/software-factory --rescan`. Le rescan n'est jamais lancé (ROADMAP §2.2 : « propose »).
-- `DR-09` : écritures du doctor : uniquement son journal `.claude/runs/harness-doctor-<horodatage>.jsonl` et les fichiers de plan UP-01. Sur un projet `none`, rien n'est écrit.
+- `DR-09` : écritures du doctor : uniquement son journal `.harness/runs/harness-doctor-<horodatage>.jsonl` et les fichiers de plan UP-01. Sur un projet `none`, rien n'est écrit.
 - `DR-10` : codes de sortie : exit 0 quand le rapport est produit, exit 2 si la racine est inexistante.
 
 ### 13. `/harness-doctor --scan <racine>` — `SN`
@@ -338,7 +338,7 @@ Règle de l'utilisateur appliquée partout : **la ROADMAP fait foi**. Une règle
   - Ne sont pas parcourus : `.git/`, `.claude/`, les dossiers d'artefacts de ST-03, les liens et les jonctions (aucun n'est suivi).
   - Le parcours continue sous un projet équipé (monorepo).
 - `SN-03` : une ligne JSON par projet, triée par chemin relatif : `{path, equipped_by, skills: {"<skill>": "<describe>"}, lag: {status, commits}, last_cycle: {skill, at, verdict} | null, next}`. `next` est la commande d'upgrade si le projet est en retard. Le skill affiche une ligne de tableau par projet.
-- `SN-04` : le dernier cycle est le fichier `.claude/runs/<nom>-<AAAAMMJJ-HHMMSS>.jsonl` le plus récent **d'après l'horodatage du nom**, pas d'après la date de modification. `verdict` = celui de la dernière ligne qui en porte un. Les fichiers `.registry.jsonl`, `.state.json`, `.plan.json`, `.diff` et `.lock` sont ignorés.
+- `SN-04` : le dernier cycle est le fichier `.harness/runs/<nom>-<AAAAMMJJ-HHMMSS>.jsonl` le plus récent **d'après l'horodatage du nom**, pas d'après la date de modification. `verdict` = celui de la dernière ligne qui en porte un. Les fichiers `.registry.jsonl`, `.state.json`, `.plan.json`, `.diff` et `.lock` sont ignorés.
 - `SN-05` : lecture seule absolue. Aucun fichier n'est créé ou modifié sous `R` : ni journal, ni plan.
 - `SN-06` : le scan ne lance jamais d'upgrade (Q7).
 
@@ -462,7 +462,7 @@ Au minimum un commit par lot, et un commit par skill touché : software-factory,
   - Un fichier `extra` est conservé et rapporté.
 - [ ] **CA-09 — Rendu déterministe.**
   - Deux rendus du même fragment avec les mêmes paramètres sont identiques (`cmp`).
-  - Un paramètre requis manquant → `action: fill_params`, et aucun fichier hors `.claude/runs/` ne change.
+  - Un paramètre requis manquant → `action: fill_params`, et aucun fichier hors `.harness/runs/` ne change.
 - [ ] **CA-10 — En-tête.**
   - Pour chaque fichier généré de `upgrade-expected/*` : `sed -n 1p` = `---` et `sed -n 2p` commence par `# harness: claude-skills ` (fichiers `.md` à frontmatter) ; ligne 2 pour `.sh`, ligne 1 pour `.ps1`.
   - `grep -L "harness: claude-skills"` sur ces fichiers → aucune sortie.
@@ -487,7 +487,7 @@ Au minimum un commit par lot, et un commit par skill touché : software-factory,
   - `factory-planner.md` (`suffix`) est converti, et `grep -F "## Règles maison"` le trouve hors des blocs (test `strip_blocks`) ;
   - `ci/factory.sh` (`suffix`) contient `export FACTORY_EXTRA=1` hors bloc ;
   - `factory-builder.md` (`modified`) et `ci/lab.ps1` (`untracked`) sont identiques (`cmp`), avec `kind: legacy` au tampon et deux événements `gate` `upgrade.convert` au journal ;
-  - avec `--convert`, ils sont convertis, et leur original se trouve dans `.claude/runs/upgrade-*/backup/` (`cmp`) ;
+  - avec `--convert`, ils sont convertis, et leur original se trouve dans `.harness/runs/upgrade-*/backup/` (`cmp`) ;
   - le plan des conversions a `blocks_only: false`.
 - [ ] **CA-19 — `/software-factory --upgrade`.**
   - `grep -F -- "--upgrade" skills/software-factory/SKILL.md skills/ai-lab/SKILL.md` ≥ 1 pour chacun.
@@ -573,7 +573,7 @@ Au minimum un commit par lot, et un commit par skill touché : software-factory,
 - **Base git approximative (CV-01).** Le plus ancien commit d'un fichier peut déjà contenir des personnalisations, puisque l'installation ne commite rien. Une telle personnalisation est alors vue comme du contenu généré et se retrouve, après conversion, seulement dans la sauvegarde. Le diff complet (UP-04) la rend visible avant l'apply.
 - **Tampon versionné.** `updated_at` et les hashes de blocs peuvent entrer en conflit entre branches d'équipe. Le fichier est petit et à clés stables ; un conflit s'y résout à la main.
 - **Retard en commits.** VS-03 n'a de sens que sur une même lignée du dépôt. Un clone d'une autre branche ou une réécriture d'historique donnent `diverged` ou `unknown`, avec un repli semver grossier.
-- **Noyau global et noyau du projet.** ship-pr et `/audit` utilisent le noyau global et écrivent `.claude/findings.jsonl` et `.claude/runs/` dans des projets dont la copie peut être plus ancienne. Le doctor signale l'écart (DR-02 `core`), mais aucune version de format n'est portée par `findings.jsonl`.
+- **Noyau global et noyau du projet.** ship-pr et `/audit` utilisent le noyau global et écrivent `.claude/findings.jsonl` et `.harness/runs/` dans des projets dont la copie peut être plus ancienne. Le doctor signale l'écart (DR-02 `core`), mais aucune version de format n'est portée par `findings.jsonl`.
 - **Diffs volumineux.** Le premier upgrade d'un projet `pre-core` (conversions, copie complète du noyau) produit un long diff à afficher en conversation. C'est assumé : la ROADMAP exige le diff complet.
 - **Coût du scan.** Une racine vaste multiplie les appels git pour le retard. La profondeur par défaut est bornée (SN-01), et liens et artefacts sont exclus.
 
@@ -589,7 +589,7 @@ Chaque question est tranchée par défaut ; la justification tient en une ligne.
 - **Q6 — Profondeur du scan.** Défaut : 3, avec `--depth N`. Justification : elle couvre `<racine>/<groupe>/<projet>/<sous-projet>` sans parcourir tout un disque.
 - **Q7 — Upgrades lancés par `--scan`.** Défaut : jamais ; la commande est affichée par projet. Justification : chaque upgrade exige son diff affiché dans son propre projet (UP-04).
 - **Q8 — Confirmation avant l'apply.** Défaut : aucune gate. Le plan haché (UP-05) garantit que seul le diff montré est appliqué. Justification : la ROADMAP dit « montre le diff complet, applique », et l'utilisateur a lui-même demandé `--upgrade`.
-- **Q9 — Emplacement des sauvegardes.** Défaut : `.claude/runs/upgrade-<horodatage>/backup/`. Justification : le dossier est déjà exclu de git (D3), et aucune nouvelle ligne `.gitignore` n'est nécessaire.
+- **Q9 — Emplacement des sauvegardes.** Défaut : `.harness/runs/upgrade-<horodatage>/backup/`. Justification : le dossier est déjà exclu de git (D3), et aucune nouvelle ligne `.gitignore` n'est nécessaire.
 - **Q10 — `software-factory --upgrade` lance-t-il `code-index --upgrade` ?** Défaut : non. Le doctor enchaîne les deux (PR-04). Justification : les enchaînements entre skills relèvent de la Phase 4, sauf celui que la Phase 3 nomme (doctor → upgrade).
 - **Q11 — Blocs `rgkb` rédigés ou en gabarit.** Défaut : en gabarit (RD-06). Justification : l'idempotence de la ROADMAP prime sur « rédigé pour l'agent concerné » (I7).
 - **Q12 — `context: fork` pour le doctor.** Défaut : non. Justification : le rapport doit rester dans la conversation, et l'invocation de skills en ligne est le mécanisme validé (R8).

@@ -1,4 +1,4 @@
-# JSONL cycle journal: .claude/runs/<skill>-<YYYYMMDD-HHMMSS>.jsonl
+# JSONL cycle journal: .harness/runs/<skill>-<YYYYMMDD-HHMMSS>.jsonl
 #
 # One line per sub-agent call: agent, model, duration_ms, iteration
 # (iteration or round), verdict, findings {produced, validated, rejected},
@@ -126,8 +126,11 @@ def append(path: Path, record: Dict[str, Any]) -> None:
 
 
 def slot_of(record: Dict[str, Any]) -> str:
-    """Slot of a journal entry: reviewer:<theme>, validator:<id>, or the agent name."""
+    """Slot of a journal entry: reviewer:<theme>, auditor:<lens or family>,
+    validator:<id>, or the agent name."""
     agent = record.get("agent")
+    if agent == "auditor" and "unit" in record:
+        return "auditor:%s" % record["unit"]
     if agent == "reviewer" and "theme" in record:
         return "reviewer:%s" % record["theme"]
     if agent == "validator" and "finding" in record:

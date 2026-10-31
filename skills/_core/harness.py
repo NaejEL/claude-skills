@@ -23,7 +23,7 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from hcore import CORE_VERSION  # noqa: E402
-from hcore import (blocks, counters, factory, findings, fusion, gates, ghflow, interp,  # noqa: E402
+from hcore import (audit, blocks, counters, factory, findings, fusion, gates, ghflow, interp,  # noqa: E402
                    journal, models, registry, runs, shippr, stack, tshirt, verdicts)
 from hcore import proc  # noqa: E402
 from hcore.proc import Runner  # noqa: E402
@@ -45,12 +45,12 @@ TRANSIT_MISSING = ("transit file %s was already consumed or never written: "
 
 
 def _input_path(value: str) -> Path:
-    """Path of an input file. A missing file under .claude/runs/ is a transit
+    """Path of an input file. A missing file under .harness/runs/ is a transit
     file already consumed (or never written): explicit usage error."""
     path = Path(value)
     if not path.is_file():
         parts = path.resolve().parts
-        if any(parts[i:i + 2] == (".claude", "runs") for i in range(len(parts) - 1)):
+        if any(parts[i:i + 2] == (".harness", "runs") for i in range(len(parts) - 1)):
             raise Usage(TRANSIT_MISSING % value)
     return path
 
@@ -299,7 +299,7 @@ def cmd_sf_apply(args: argparse.Namespace) -> int:
 
 
 def _remove_transit(root: Path, source: Optional[str]) -> None:
-    """The transit file written by Write under <root>/.claude/runs/ is removed
+    """The transit file written by Write under <root>/.harness/runs/ is removed
     once consumed, the command succeeded or not: nothing is left if the skill
     stops, and a stale file is never reused by a later call."""
     if not source or source == "-":
@@ -330,6 +330,23 @@ def cmd_sf_install(args: argparse.Namespace) -> int:
 
 
 def cmd_sf_copy_core(args: argparse.Namespace) -> int:
+    if args.force and not args.refresh:
+        raise Usage("--force goes with --refresh only")
+    if args.check:
+        # Strict identity of the copy with this core, on demand only.
+        result = fusion.check_core_copy(HERE, Path(args.root))
+        emit(dict(result, core_version=CORE_VERSION))
+        if not result["identical"]:
+            raise ghflow.Stop(".claude/harness/ differs from the core: %d different, %d missing, %d extra; "
+                              "refresh it with 'sf copy-core --refresh'"
+                              % (len(result["differs"]), len(result["missing"]), len(result["extra"])))
+        return 0
+    if args.refresh:
+        result = fusion.refresh_core(HERE, Path(args.root), force=args.force)
+        emit(dict(result, core_version=CORE_VERSION))
+        if not result["refreshed"]:
+            raise ghflow.Stop("%s: nothing refreshed, nothing touched" % result["reason"])
+        return 0
     result = fusion.copy_core(HERE, Path(args.root))
     emit(dict(result, core_version=CORE_VERSION))
     if not result["copied"]:
@@ -345,8 +362,12 @@ def cmd_sf_copy_core(args: argparse.Namespace) -> int:
 def cmd_fr_start(args: argparse.Namespace) -> int:
     root = Path(args.root)
     arguments = ""
-    if args.arguments_file:
-        arguments = read_file(args.arguments_file)
+    try:
+        if args.arguments_file:
+            arguments = read_file(args.arguments_file)
+    finally:
+        # The transit file is removed once read, the command succeeded or not.
+        _remove_transit(root, args.arguments_file)
     try:
         # X6: --models "role=model;..." taken out of $ARGUMENTS, for this cycle only.
         rest, override = models.extract_option(arguments)
@@ -760,10 +781,170 @@ def cmd_tshirt(args: argparse.Namespace) -> int:
     return 0
 
 
+# -------------------------------------------------------------------- audits
+
+def _audit_ctx(args: argparse.Namespace):
+    run = _run_path(args.run)
+    state = runs.load_state(run)
+    if "audit_skill" not in state:
+        raise Usage("not an audit run: %s" % args.run)
+    return run, state, audit.profile(state["audit_skill"]), registry.Registry(runs.registry_path(run))
+
+
+def _json_file(option: str, value: str) -> Any:
+    try:
+        return json.loads(read_file(value))
+    except ValueError as exc:
+        raise Usage("%s is not valid JSON: %s" % (option, exc))
+
+
+def cmd_audit_start(args: argparse.Namespace) -> int:
+    """AU-01 to AU-03, AU-09, AU-12: arguments, git probe, resume, run opened
+    in the audited repository (X5: journal under its .harness/runs/)."""
+    p = audit.profile(args.skill)
+    try:
+        arguments = read_file(args.arguments_file) if args.arguments_file else ""
+    finally:
+        _remove_transit(Path(args.root), args.arguments_file)
+    parsed = audit.parse_arguments(args.skill, arguments, Path(args.root))
+    repo = Path(parsed["repo"])
+    try:
+        # X5: an audit writes nothing but its allowed paths: no models.json migration.
+        resolved = models.resolve_readonly(repo, p.roles, parsed["models"], p.aliases)
+    except models.ModelsError as exc:
+        raise Usage(str(exc))
+    deliverable = repo / p.deliverable
+    resumed = None
+    if deliverable.is_file():
+        resumed = audit.parse_deliverable(args.skill, deliverable.read_text(encoding="utf-8"))
+    run_cmd = Runner(cwd=str(repo))
+    git_absent = audit.probe_git(run_cmd, repo)
+    # AU-12: with GIT_ABSENT, no git command afterwards (no exclusion either).
+    excluded = None if git_absent else registry.git_exclude(
+        repo, audit.RUN_EXCLUDE + registry.PROJECT_EXCLUDE, run_cmd)
+    project = {k: {"status": e["status"], "source": e["source"]}
+               for k, e in registry.ProjectRegistry(repo).read().items()}
+    factory_here = (repo / ".claude" / "skills" / "factory-run" / "SKILL.md").is_file()
+    assignment = {r: e["model"] for r, e in resolved["roles"].items()}
+    state = audit.new_state(args.skill, parsed, git_absent, factory_here, project, resumed, assignment)
+    run = runs.create(repo, args.skill, state)
+    reg = registry.Registry(runs.registry_path(run))
+    count = audit.register_resumed(resumed, reg) if resumed else 0
+    auditors = []
+    for a in p.auditors:
+        if a.name in parsed["auditors"]:
+            role = audit.auditor_role(p, a.name)
+            auditors.append(dict(resolved["roles"][role], auditor=a.name, unit=a.unit, prefix=a.prefix, role=role))
+    result = {"run": runs.display(run), "repo": str(repo), "skill": args.skill, "units": parsed["units"],
+              "auditors": auditors, "validator": dict(resolved["roles"][p.validator_role], role=p.validator_role),
+              "cap": parsed["cap"], "git_absent": git_absent, "exclude_added": excluded, "factory": factory_here,
+              "resumed": None if resumed is None else {"entries": count, "numbering": resumed["numbering"],
+                                                       "ids": audit.resumed_ids(resumed)},
+              "project_findings": len(project), "allowed_writes": audit.allowed_writes(args.skill)}
+    if resolved["warnings"]:
+        result["model_warnings"] = resolved["warnings"]
+    emit(result)
+    return 0
+
+
+def cmd_audit_auditor(args: argparse.Namespace) -> int:
+    run, state, p, reg = _audit_ctx(args)
+    measure = _measure(state, args, "auditor:" + args.unit)
+    decision, fields = audit.record_auditor(state, reg, args.unit, read_output(args.output), args.dead)
+    model = _model(args, state, audit.auditor_role(p, args.unit))
+    _log(run, args, "auditor", measure, fields, decision, model, unit=args.unit)
+    runs.save_state(run, state)
+    emit(decision)
+    return 0
+
+
+def cmd_audit_validator(args: argparse.Namespace) -> int:
+    run, state, p, reg = _audit_ctx(args)
+    measure = _measure(state, args, "validator:" + args.finding)
+    decision, fields = audit.record_validator(state, reg, args.finding, read_output(args.output), args.dead)
+    model = _model(args, state, p.validator_role)
+    _log(run, args, "validator", measure, fields, decision, model, finding=args.finding)
+    runs.save_state(run, state)
+    emit(decision)
+    return 0
+
+
+def cmd_audit_next(args: argparse.Namespace) -> int:
+    run, state, p, reg = _audit_ctx(args)
+    emit(audit.next_step(state))
+    return 0
+
+
+def cmd_audit_consolidate(args: argparse.Namespace) -> int:
+    run, state, p, reg = _audit_ctx(args)
+    result = audit.consolidate(state)
+    runs.save_state(run, state)
+    ordered = [state["findings"][fid] for prefix, _ in p.numbering for fid in result["order"][prefix]]
+    keys = ("id", "title", "severity", "size", "axis", "nature", "category", "depends_on", "status")
+    # The resumed ids per section (vibecode-audit: an explicit order lists the
+    # resumed attack lines too) are returned so that the skill need not reread
+    # the deliverable.
+    out = dict(result, findings=[{k: f.get(k) for k in keys} for f in ordered],
+               quick_wins=tshirt.quick_wins(ordered), resumed_ids=audit.resumed_ids(state["resumed"]))
+    if "VIB" in result["order"]:
+        out["raised_criticals"] = tshirt.raised_criticals(ordered)
+    emit(out)
+    return 0
+
+
+def cmd_audit_themes(args: argparse.Namespace) -> int:
+    emit(audit.gate_calls(args.skill, args.count))
+    return 0
+
+
+def cmd_audit_readjust(args: argparse.Namespace) -> int:
+    run, state, p, reg = _audit_ctx(args)
+    result = audit.readjust(state)
+    runs.save_state(run, state)
+    emit(result)
+    return 0
+
+
+def cmd_audit_render(args: argparse.Namespace) -> int:
+    run, state, p, reg = _audit_ctx(args)
+    try:
+        data = _json_file("--data-file", args.data_file)
+    finally:
+        _remove_transit(Path(state["repo"]), args.data_file)
+    if not isinstance(data, dict):
+        raise Usage("--data-file expects a JSON object")
+    text = audit.render(p.skill, audit.document(state, data))
+    result = audit.write_text(p.skill, Path(state["repo"]), Path(state["repo"]) / p.deliverable, text)
+    runs.save_state(run, state)
+    emit(result)
+    return 0
+
+
+def cmd_audit_spec(args: argparse.Namespace) -> int:
+    run, state, p, reg = _audit_ctx(args)
+    try:
+        sections = _json_file("--sections", args.sections)
+    finally:
+        _remove_transit(Path(state["repo"]), args.sections)
+    f = state["findings"].get(args.finding)
+    if f is None or f["status"] != findings.CONFIRMED:
+        raise Usage("finding %s is not a CONFIRMED finding of this run" % args.finding)
+    if not isinstance(sections, dict):
+        raise Usage("--sections expects a JSON object")
+    emit(audit.write_spec(p.skill, Path(state["repo"]), f, sections, args.number, args.slug))
+    return 0
+
+
+def cmd_audit_publish(args: argparse.Namespace) -> int:
+    run, state, p, reg = _audit_ctx(args)
+    emit(audit.publish(state, reg, Path(run).name, args.deliverable))
+    return 0
+
+
 # -------------------------------------------------------------------- parser
 
 def _agent_args(p: argparse.ArgumentParser) -> None:
-    p.add_argument("--run", required=True, help="run journal (.claude/runs/<skill>-<timestamp>.jsonl)")
+    p.add_argument("--run", required=True, help="run journal (.harness/runs/<skill>-<timestamp>.jsonl)")
     p.add_argument("--model", default=None,
                    help="model used; default: the model resolved for the agent's role at start")
     p.add_argument("--duration-ms", default=None, help="duration from the usage block; otherwise 'begin' (absent = null)")
@@ -880,6 +1061,45 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--grouping", default=None, choices=tshirt.GROUPINGS, help="finding -> spec mapping (TS-02)")
     p.add_argument("--load-by", default=None, help="key of the load groups (milestone, ...)")
     p.set_defaults(func=cmd_tshirt)
+    p = sub.add_parser("audit", help="shared audit engine (AU-01 to AU-16)")
+    asub = p.add_subparsers(dest="aucmd", required=True)
+    q = asub.add_parser("start", help="arguments, git probe, resume; opens the run in the audited repository")
+    q.add_argument("--skill", required=True, choices=sorted(audit.PROFILES))
+    q.add_argument("--root", default=".", help="current directory of the session (REPO is relative to it)")
+    q.add_argument("--arguments-file", default=None, help="file holding $ARGUMENTS, written by Write (consumed)")
+    q.set_defaults(func=cmd_audit_start)
+    q = asub.add_parser("auditor", help="return of a lens or family auditor (AU-04, AU-06)")
+    _agent_args(q)
+    q.add_argument("--unit", required=True, help="lens or family of the auditor")
+    q.set_defaults(func=cmd_audit_auditor)
+    q = asub.add_parser("validator", help="return of a validator (AU-05)")
+    _agent_args(q)
+    q.add_argument("--finding", required=True)
+    q.set_defaults(func=cmd_audit_validator)
+    for name, func in (("next", cmd_audit_next), ("consolidate", cmd_audit_consolidate),
+                       ("readjust", cmd_audit_readjust)):
+        q = asub.add_parser(name)
+        q.add_argument("--run", required=True)
+        q.set_defaults(func=func)
+    q = asub.add_parser("themes", help="gate calls for N themes (AU-16)")
+    q.add_argument("--skill", required=True, choices=sorted(audit.PROFILES))
+    q.add_argument("--count", required=True, type=int)
+    q.set_defaults(func=cmd_audit_themes)
+    q = asub.add_parser("render", help="writes the deliverable from the run and the skill's data (AU-11)")
+    q.add_argument("--run", required=True)
+    q.add_argument("--data-file", required=True, help="JSON file of the skill's choices, written by Write (consumed)")
+    q.set_defaults(func=cmd_audit_render)
+    q = asub.add_parser("spec", help="spec of a CONFIRMED finding, never overwritten (AU-14)")
+    q.add_argument("--run", required=True)
+    q.add_argument("--finding", required=True)
+    q.add_argument("--sections", required=True, help="JSON file of the judgment sections, written by Write")
+    q.add_argument("--number", required=True, type=int)
+    q.add_argument("--slug", required=True)
+    q.set_defaults(func=cmd_audit_spec)
+    q = asub.add_parser("publish", help="publishes the run registry to the project (RG-03, AU-12)")
+    q.add_argument("--run", required=True)
+    q.add_argument("--deliverable", action="store_true", help="the deliverable holding the CONFIRMED is written")
+    q.set_defaults(func=cmd_audit_publish)
     p = sub.add_parser("block", help="delimited blocks (D9, BK-01)")
     p.add_argument("action", choices=("get", "upsert", "remove"))
     p.add_argument("--file", required=True)
@@ -898,12 +1118,17 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--root", default=".")
     q.add_argument("--dest", required=True)
     q.add_argument("--source", required=True,
-                   help="content file, '-' = stdin; removed once read when it lies under .claude/runs/")
+                   help="content file, '-' = stdin; removed once read when it lies under .harness/runs/")
     q.add_argument("--model-role", default=None, choices=models.ROLES,
                    help="generated agent: its role's model written in a frontmatter block (X1)")
     q.set_defaults(func=cmd_sf_install)
     q = ssub.add_parser("copy-core", help="copies the core under .claude/harness/ (D1); exit 1 if blocked")
     q.add_argument("--root", default=".")
+    mode = q.add_mutually_exclusive_group()
+    mode.add_argument("--check", action="store_true", help="strict comparison with this core; exit 1 if it differs")
+    mode.add_argument("--refresh", action="store_true",
+                      help="replaces a recognized core copy, never touching a file that is not a core file")
+    q.add_argument("--force", action="store_true", help="with --refresh: replaces a copy declaring a newer CORE_VERSION")
     q.set_defaults(func=cmd_sf_copy_core)
 
     p = sub.add_parser("factory-run", help="factory-run orchestration (FR-01 to FR-04)")
@@ -990,7 +1215,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             return args.func(args)
         with runs.locked(run):
             return args.func(args)
-    except (ghflow.Stop, runs.LockTimeout, gates.GateStop) as exc:
+    except (ghflow.Stop, runs.LockTimeout, gates.GateStop, audit.AuditStop) as exc:
         sys.stderr.write("STOP: %s\n" % exc)
         return 1
     except (Usage, ValueError, factory.RunOver, shippr.LoopError, fusion.FusionError,

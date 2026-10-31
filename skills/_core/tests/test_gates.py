@@ -73,12 +73,12 @@ class PolicyTest(helpers.TempDirCase):
 
     def test_gt05_no_default_and_decision_default_is_stop(self):
         """GT-05: no default and decision default -> stop."""
-        event = gates.decide("factory-run.questions", "auto", auto_as_gate=False)
+        event = gates.decide("factory-run.need", "auto", auto_as_gate=False)
         self.assertEqual(event["decision"], gates.STOP)
         self.assertEqual(gates.decide("factory-run.approval", "auto", auto_as_gate=False)["decision"],
                          gates.DEFAULT)
         with self.assertRaises(GateError):
-            gates.answer("factory-run.questions", event, "user", "x")
+            gates.answer("factory-run.need", event, "user", "x")
 
 
 class CatalogTest(unittest.TestCase):
@@ -103,7 +103,7 @@ class CatalogTest(unittest.TestCase):
         """GT-06: the decision returns the headless fallback of the gate."""
         expected = {"ship-pr.target": "stop", "ship-pr.dirty": "default", "ship-pr.conflict": "default",
                     "ship-pr.merge": "default", "software-factory.code-index": "skip",
-                    "factory-run.questions": "stop", "factory-run.approval": "stop"}
+                    "factory-run.questions": "skip", "factory-run.approval": "default"}
         for gid, fallback in expected.items():
             self.assertEqual(gates.decide(gid, "gate")["headless"], fallback, gid)
 
@@ -128,7 +128,7 @@ class CliTest(helpers.TempDirCase):
         res = self.h("gate", "decide", "--id", "ship-pr.nope")
         self.assertEqual(res.returncode, 2)
         self.assertIn("unknown gate", res.stderr)
-        self.assertFalse((self.tmp / ".claude" / "runs").exists())
+        self.assertFalse((self.tmp / ".harness" / "runs").exists())
 
     def test_gt07_decision_then_answer_logged(self):
         """GT-07, CA-10: both events in the run journal, valid schema (JR-02)."""
@@ -216,7 +216,7 @@ class VerifierDefectsTest(helpers.TempDirCase):
             (self.tmp / ".claude" / "harness.json").write_text(text, encoding="utf-8")
             res = self.h("gate", "decide", "--id", "software-factory.code-index")
             self.assertEqual(res.returncode, 2, text)
-            self.assertFalse((self.tmp / ".claude" / "runs").exists(), text)
+            self.assertFalse((self.tmp / ".harness" / "runs").exists(), text)
 
     def test_gt07_off_option_answer_asks_again_and_never_kills_the_run(self):
         """GT-07, defect 2 (iteration 2): a user answer outside the closed options

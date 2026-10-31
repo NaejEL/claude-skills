@@ -102,7 +102,7 @@ class RunFilesTest(helpers.TempDirCase):
     def test_ca10_run_created_under_claude_runs(self):
         run = runs.create(self.tmp, "factory-run", {}, now=datetime(2026, 10, 16, 12, 0, 0))
         twin = runs.create(self.tmp, "factory-run", {}, now=datetime(2026, 10, 16, 12, 0, 0))
-        self.assertEqual(run.parent, self.tmp / ".claude" / "runs")
+        self.assertEqual(run.parent, self.tmp / ".harness" / "runs")
         self.assertNotEqual(run, twin)
         for path in (run, twin):
             self.assertRegex(path.name, journal.NAME_RE)

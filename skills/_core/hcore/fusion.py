@@ -20,7 +20,7 @@
 # - SF-02: .vscode/tasks.json (version 2.0.0), factorySpec input and three
 #   Factory tasks added only once; existing tasks and inputs preserved.
 # - SF-03: .gitignore completed without duplicating a line (factory-logs/,
-#   .claude/runs/).
+#   .harness/runs/).
 # - SF-04: state of each file: created / merged / identical /
 #   customized-kept (the state values below are the French labels shared by
 #   all the skills and are kept as is). An unchanged file is not rewritten
@@ -62,7 +62,7 @@ STACK_DENY = {
     "rust": ["Read(./target/**)"],
 }
 GENERIC_DENY = ["Read(./factory-logs/**)", "Read(./.git/objects/**)"]
-GITIGNORE_LINES = ["factory-logs/", ".claude/runs/"]
+GITIGNORE_LINES = ["factory-logs/", ".harness/runs/"]
 
 FACTORY_INPUT = {
     "id": "factorySpec",
@@ -497,6 +497,100 @@ def file_state(dest: Path, content: str) -> str:
     if current.replace("\r\n", "\n") == content.replace("\r\n", "\n"):
         return IDENTICAL
     return KEPT
+
+
+CORE_MARKERS = ("harness.py", "hcore/__init__.py")
+# CRLF tolerated: a copy checked out with Windows line endings stays recognized.
+_CORE_VERSION_LINE = re.compile(r'^CORE_VERSION = "([^"]+)"\r?$', re.M)
+
+
+def _tree(folder: Path) -> List[str]:
+    """Relative posix paths of the files of a tree, bytecode excluded (no file is read)."""
+    folder = Path(folder)
+    if not folder.is_dir():
+        return []
+    paths = []
+    for src in sorted(folder.rglob("*")):
+        rel = src.relative_to(folder)
+        if src.is_dir() or "__pycache__" in rel.parts or src.suffix in (".pyc", ".pyo"):
+            continue
+        paths.append(rel.as_posix())
+    return paths
+
+
+def core_version_of(folder: Path) -> Optional[str]:
+    """CORE_VERSION declared by a core tree, or None (absent or unreadable)."""
+    try:
+        text = (Path(folder) / "hcore" / "__init__.py").read_bytes().decode("utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    match = _CORE_VERSION_LINE.search(text)
+    return match.group(1) if match else None
+
+
+def _version_key(version: str) -> Tuple[int, ...]:
+    return tuple(int(x) if x.isdigit() else -1 for x in re.split(r"[.\-]", version))
+
+
+def is_core_copy(dest_dir: Path) -> bool:
+    """A recognized core copy: harness.py and hcore/__init__.py carrying a
+    CORE_VERSION line."""
+    dest_dir = Path(dest_dir)
+    if not all((dest_dir / m).is_file() for m in CORE_MARKERS):
+        return False
+    return core_version_of(dest_dir) is not None
+
+
+def check_core_copy(core_dir: Path, root: Path) -> Dict[str, Any]:
+    """Strict comparison of <root>/.claude/harness/ with the core (on demand:
+    'sf copy-core --check'), byte for byte; a file that is not a core file is
+    listed, never read."""
+    dest_dir = Path(root) / ".claude" / "harness"
+    source, present = _tree(core_dir), set(_tree(dest_dir))
+    differs = sorted(r for r in source if r in present
+                     and (dest_dir / r).read_bytes() != (Path(core_dir) / r).read_bytes())
+    missing = sorted(r for r in source if r not in present)
+    extra = sorted(present - set(source))
+    return {"identical": not (differs or missing or extra), "recognized": is_core_copy(dest_dir),
+            "differs": differs, "missing": missing, "extra": extra}
+
+
+def refresh_core(core_dir: Path, root: Path, force: bool = False) -> Dict[str, Any]:
+    """Replaces a recognized core copy by the current core: every core file is
+    written, byte for byte (created or replaced); a file that is not a core
+    file is never touched nor read (reported in 'foreign'). Left as it is
+    (refreshed False): an existing .claude/harness/ that is not a recognized
+    core copy, and a copy declaring a higher CORE_VERSION than the source
+    (downgrade), unless force."""
+    core_dir, dest_dir = Path(core_dir), Path(root) / ".claude" / "harness"
+    if dest_dir.exists() and not is_core_copy(dest_dir):
+        return {"refreshed": False, "files": {}, "foreign": [],
+                "reason": "%s is not a recognized core copy" % dest_dir.as_posix()}
+    if dest_dir.exists() and not force:
+        have, want = core_version_of(dest_dir), core_version_of(core_dir)
+        if have is not None and want is not None and _version_key(have) > _version_key(want):
+            return {"refreshed": False, "files": {}, "foreign": [],
+                    "reason": "the copy declares CORE_VERSION %s, newer than the core %s (downgrade refused; "
+                              "--force to replace it anyway)" % (have, want)}
+    source, present = _tree(core_dir), set(_tree(dest_dir))
+    states: Dict[str, str] = {}
+    for rel in source:
+        shown = (Path(".claude/harness") / rel).as_posix()
+        content = (core_dir / rel).read_bytes()
+        if rel not in present:
+            states[shown] = CREATED
+        elif (dest_dir / rel).read_bytes() == content:
+            states[shown] = IDENTICAL
+            continue
+        else:
+            states[shown] = MERGED
+        target = dest_dir / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        tmp = target.with_name(target.name + ".hcore-tmp")
+        tmp.write_bytes(content)
+        os.replace(str(tmp), str(target))
+    foreign = sorted((Path(".claude/harness") / r).as_posix() for r in present - set(source))
+    return {"refreshed": True, "files": states, "foreign": foreign}
 
 
 def copy_core(core_dir: Path, root: Path) -> Dict[str, Any]:

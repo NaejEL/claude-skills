@@ -18,13 +18,13 @@ Incrément 1 de la feuille de route `specs/harness-v2/ROADMAP.md`. Les correctio
    - la fusion de `settings.json` et les blocs délimités.
 
    Les prompts ne gardent que le jugement : rôle, périmètre, interdits, format attendu.
-2. **Mesurer avant d'étendre.** Un journal `.claude/runs/<skill>-<horodatage>.jsonl` fait partie de cet incrément.
+2. **Mesurer avant d'étendre.** Un journal `.harness/runs/<skill>-<horodatage>.jsonl` fait partie de cet incrément.
 
 Seuls `software-factory` (et le `factory-run` qu'il génère) et `ship-pr` sont rebranchés. Le comportement observable reste identique, à trois exceptions près, décidées par l'utilisateur :
 
 - le journal apparaît ;
 - le noyau est copié dans les projets équipés par software-factory (D1) ;
-- `.claude/runs/` est exclu de git (D3).
+- `.harness/runs/` est exclu de git (D3).
 
 **État actuel (commit de référence `BASE=7be1afb`).**
 
@@ -105,11 +105,11 @@ Seuls `software-factory` (et le `factory-run` qu'il génère) et `ship-pr` sont 
    - En Phase 4, software-factory **copie** `_core` dans le projet sous `.claude/harness/`, tel quel, avec sa constante de version, sur le modèle de rgkb (D1).
    - Le gabarit `factory-run` qu'il génère appelle le noyau via `.claude/harness/`.
    - La liste blanche des scripts CI générés autorise l'interpréteur.
-   - Le `.gitignore` généré exclut `.claude/runs/` (D3).
+   - Le `.gitignore` généré exclut `.harness/runs/` (D3).
 4. **Rebrancher `skills/ship-pr/SKILL.md`.**
    - ship-pr appelle le noyau via `${CLAUDE_SKILL_DIR}/../_core` (D1).
-   - Il ajoute `.claude/runs/` à `.git/info/exclude` du dépôt cible s'il n'y figure pas déjà (D3).
-5. **Journaliser chaque appel de sous-agent** de `factory-run` et de `ship-pr` dans `.claude/runs/<skill>-<AAAAMMJJ-HHMMSS>.jsonl` du dépôt cible. Une ligne par appel, avec :
+   - Il ajoute `.harness/runs/` à `.git/info/exclude` du dépôt cible s'il n'y figure pas déjà (D3).
+5. **Journaliser chaque appel de sous-agent** de `factory-run` et de `ship-pr` dans `.harness/runs/<skill>-<AAAAMMJJ-HHMMSS>.jsonl` du dépôt cible. Une ligne par appel, avec :
    - `agent` ;
    - `model` ;
    - `duration_ms` ;
@@ -118,18 +118,18 @@ Seuls `software-factory` (et le `factory-run` qu'il génère) et `ship-pr` sont 
    - `findings` : `{produced, validated, rejected}` ;
    - `tokens` (entier ou `null`).
 
-   Le journal ne change aucun autre comportement. Le registre de ship-pr vit à côté : `.claude/runs/ship-pr-<horodatage>.registry.jsonl` (D2).
+   Le journal ne change aucun autre comportement. Le registre de ship-pr vit à côté : `.harness/runs/ship-pr-<horodatage>.registry.jsonl` (D2).
 6. **Fixtures et rejeux.**
    - `tests/fixtures/` contient un projet jouet minimal.
    - Des tests de **rejeu scripté** exécutent la séquence d'appels au noyau prescrite par chaque `SKILL.md`, et produisent un journal (D4).
    - Les dépôts git jetables sont créés dans un dossier temporaire par les tests eux-mêmes.
 7. **`README.md`** : un court paragraphe sur `_core` (D10). Il dit que ce n'est pas un skill, que l'installeur le lie, et que software-factory le copie dans les projets.
-8. **`.gitignore` de ce dépôt** : ajouter `.claude/runs/` (D3) et `__pycache__/`.
+8. **`.gitignore` de ce dépôt** : ajouter `.harness/runs/` (D3) et `__pycache__/`.
 9. **Ne toucher ni aux autres skills, ni à `install_skills.*`, ni à l'usine de ce dépôt** (`.claude/skills/factory-run/`, `.claude/agents/`, `ci/factory.*`) (D7).
 
 **Définition opérationnelle de « comportement observable identique ».**
 
-- **(a) Artefacts de software-factory.** Le noyau produit `settings.json`, `tasks.json` et `.gitignore` à partir des entrées de fixture. Ces fichiers sont égaux à des fichiers attendus versionnés : comparaison sur le JSON parsé, ordre des clés préservé. Une seconde application ne produit aucun changement, octet pour octet. Seuls ajouts admis : `.claude/runs/` dans `.gitignore` et la liste blanche de l'interpréteur.
+- **(a) Artefacts de software-factory.** Le noyau produit `settings.json`, `tasks.json` et `.gitignore` à partir des entrées de fixture. Ces fichiers sont égaux à des fichiers attendus versionnés : comparaison sur le JSON parsé, ordre des clés préservé. Une seconde application ne produit aucun changement, octet pour octet. Seuls ajouts admis : `.harness/runs/` dans `.gitignore` et la liste blanche de l'interpréteur.
 - **(b) Gates et bornes.** Les tests rejouent les séquences suivantes :
   - 3 `CHANGES_REQUESTED` → échec avec les issues ;
   - `APPROVED` avec `tests_passed=false` → pas de succès ;
@@ -176,7 +176,7 @@ Seuls `software-factory` (et le `factory-run` qu'il génère) et `ship-pr` sont 
   - rend exit 0 si chaque ligne est un objet JSON portant `agent`, `model`, `duration_ms`, `iteration`, `verdict`, `findings` (avec `produced`, `validated` et `rejected` entiers ≥ 0) et `tokens` (entier ou `null`) ;
   - rend un exit ≠ 0 sur une ligne sans `verdict` et sur une ligne qui n'est pas du JSON. Ces deux contre-tests sont des tests unitaires.
 - [ ] **CA10 — Nom de fichier du journal.** Les journaux produits par les tests ont un nom conforme à `^(factory-run|ship-pr)-[0-9]{8}-[0-9]{6}\.jsonl$`.
-- [ ] **CA11 — Le journal ne salit pas git.** Dans un dépôt git jetable où le noyau a appliqué l'exclusion de ship-pr (`.git/info/exclude`) puis écrit un journal et un registre, `git status --porcelain` ne liste aucun chemin sous `.claude/runs/`. Il en va de même avec le `.gitignore` produit par la fusion de software-factory. L'exclusion est idempotente : une seconde application n'ajoute pas de ligne.
+- [ ] **CA11 — Le journal ne salit pas git.** Dans un dépôt git jetable où le noyau a appliqué l'exclusion de ship-pr (`.git/info/exclude`) puis écrit un journal et un registre, `git status --porcelain` ne liste aucun chemin sous `.harness/runs/`. Il en va de même avec le `.gitignore` produit par la fusion de software-factory. L'exclusion est idempotente : une seconde application n'ajoute pas de ligne.
 - [ ] **CA12 — Fusions identiques à l'existant (SF-01 à SF-03).** Tests unitaires sur fixtures, inclus dans CA1, couvrant :
   - clé tierce préservée ;
   - `deny` sans doublon ;
@@ -191,7 +191,7 @@ Seuls `software-factory` (et le `factory-run` qu'il génère) et `ship-pr` sont 
   - un candidat qui ne répond pas avant le délai (comme le stub du Store) est écarté sans bloquer ;
   - un candidat en version < 3.9 est écarté ;
   - l'ordre `python` → `python3` → `py -3` est respecté.
-- [ ] **CA15 — Rejeu factory-run.** Un test de rejeu scripté de la séquence factory-run produit un `.claude/runs/factory-run-*.jsonl` dans un dossier temporaire. Le rejeu enchaîne :
+- [ ] **CA15 — Rejeu factory-run.** Un test de rejeu scripté de la séquence factory-run produit un `.harness/runs/factory-run-*.jsonl` dans un dossier temporaire. Le rejeu enchaîne :
   - Builder ;
   - Verifier `CHANGES_REQUESTED` ;
   - Builder ;
@@ -203,7 +203,7 @@ Seuls `software-factory` (et le `factory-run` qu'il génère) et `ship-pr` sont 
   - contient des lignes `agent=factory-builder` et `agent=factory-verifier` ;
   - a toutes ses lignes avec `iteration` ≤ 3 ;
   - montre que le Verifier mort n'a pas consommé d'itération.
-- [ ] **CA16 — Rejeu ship-pr.** Un test de rejeu scripté de la séquence ship-pr (thèmes, validateur, sortie par épuisement) produit un `.claude/runs/ship-pr-*.jsonl` et un `.registry.jsonl`. Le journal passe CA9, contient au moins une ligne par thème lancé, et a `iteration` ≤ 3. Le registre contient un finding REJETÉ, et sa nouvelle soumission en ronde 2 n'atteint pas le validateur.
+- [ ] **CA16 — Rejeu ship-pr.** Un test de rejeu scripté de la séquence ship-pr (thèmes, validateur, sortie par épuisement) produit un `.harness/runs/ship-pr-*.jsonl` et un `.registry.jsonl`. Le journal passe CA9, contient au moins une ligne par thème lancé, et a `iteration` ≤ 3. Le registre contient un finding REJETÉ, et sa nouvelle soumission en ronde 2 n'atteint pas le validateur.
 - [ ] **CA17 — Zéro diff sur ce qui ne bouge pas.**
   - Commande : `git diff --exit-code 7be1afb -- skills/ai-lab skills/ai-lab-audit skills/brainstorm skills/code-index skills/legacy-audit skills/vibecode-audit install_skills.sh install_skills.ps1 .claude/skills .claude/agents ci/factory.sh ci/factory.ps1`.
   - Attendu : exit 0, et `git status --porcelain -- <mêmes chemins>` vide.
@@ -248,9 +248,9 @@ Réponses de l'utilisateur le 2026-10-16.
   - Format : une ligne JSON par finding, clés anglaises `file`/`line`/`title`/`verdict` alignées sur les blocs existants. C'est un sur-ensemble de `{fichier, ligne, résumé, verdict}`.
   - Dédup déterministe sur `file` + titre normalisé.
   - Statuts : `CONFIRMED`, `REJECTED`, `UNVALIDATED`, `FIXED`, `NOT_FIXED`.
-  - Emplacement : `.claude/runs/`, durée de vie du run, non versionné.
+  - Emplacement : `.harness/runs/`, durée de vie du run, non versionné.
 - **D3 — Exclusion git du journal.**
-  - software-factory ajoute `.claude/runs/` au `.gitignore` généré.
+  - software-factory ajoute `.harness/runs/` au `.gitignore` généré.
   - ship-pr l'ajoute à `.git/info/exclude` du dépôt cible.
   - Ce dépôt l'ajoute à son `.gitignore`.
 - **D4 — Exécutions à blanc.**

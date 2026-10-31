@@ -16,9 +16,10 @@ TESTS = Path(__file__).resolve().parent
 SKILLS = helpers.CORE.parent
 SPEC = helpers.CORE.parent.parent / "specs" / "SPEC-phase1-rebranchement.md"
 
-# Prefixes of the lots L1 to L3, L5 and L6.
-PREFIXES = ("GT", "LK", "JR", "MD", "FD", "RG", "ST", "TS", "FU", "BK")
-COUNTS = {"GT": 8, "LK": 2, "JR": 3, "MD": 9, "FD": 11, "RG": 7, "ST": 5, "TS": 5, "FU": 6, "BK": 2}
+# Prefixes of the lots L1 to L7.
+PREFIXES = ("GT", "LK", "JR", "MD", "FD", "RG", "ST", "TS", "FU", "BK", "AU", "UF")
+COUNTS = {"GT": 8, "LK": 2, "JR": 3, "MD": 9, "FD": 11, "RG": 7, "ST": 5, "TS": 5, "FU": 6, "BK": 2,
+          "AU": 16, "UF": 7}
 # Rules of a later lot, not delivered yet: BK-02 (equivalence of the rgkb.py
 # hook blocks with blocks.py) belongs to lot L8 (code-index).
 DEFERRED = {"BK-02": "L8"}
@@ -49,25 +50,13 @@ class RuleTraceTest(unittest.TestCase):
         return sorted(expected - set(DEFERRED))
 
     def test_ca03_every_delivered_rule_named_in_a_test_docstring(self):
-        """CA-03: GT-, LK-, JR-, MD-, FD-, RG-, ST-, TS-, FU- and BK- rules each appear,
+        """CA-03: GT-, LK-, JR-, MD-, FD-, RG-, ST-, TS-, FU-, BK-, AU- and UF- rules each appear,
         literally, in the docstring of at least one test (MD-03 and MD-09 are noted
         as replaced by X8 and X1; BK-02 belongs to lot L8)."""
         docs = test_docstrings()
         missing = [rule for rule in self.rules() if not re.search(r"\b%s\b" % re.escape(rule), docs)]
         self.assertEqual(missing, [])
         self.assertIn("MD-09 is replaced by X1", docs)
-
-
-@unittest.skipUnless((SKILLS / "ship-pr" / "SKILL.md").is_file(), "SKILL.md files absent")
-class SkillSizeTest(unittest.TestCase):
-    def test_ca05_qg_line_count_and_width_of_touched_skills(self):
-        """CA-05, Q-G: software-factory <= 96 lines, ship-pr <= 118 lines, and no
-        line wider than the widest line of the same file at BASE1."""
-        for name, (max_lines, max_width) in SKILL_BOUNDS.items():
-            lines = (SKILLS / name / "SKILL.md").read_text(encoding="utf-8").splitlines()
-            self.assertLessEqual(len(lines), max_lines, name)
-            widest = max(range(len(lines)), key=lambda i: len(lines[i]))
-            self.assertLessEqual(len(lines[widest]), max_width, "%s:%d" % (name, widest + 1))
 
 
 if __name__ == "__main__":

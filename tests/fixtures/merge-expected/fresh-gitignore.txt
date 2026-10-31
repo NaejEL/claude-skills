@@ -1,2 +1,2 @@
 factory-logs/
-.claude/runs/
+.harness/runs/

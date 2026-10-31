@@ -1,5 +1,5 @@
 factory-logs/
-.claude/runs/
+.harness/runs/
 __pycache__/
 
 # Artefacts de session, propres a une machine : jamais commites

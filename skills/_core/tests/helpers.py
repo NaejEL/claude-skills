@@ -105,12 +105,12 @@ TRAP = ("Naïve trap: `date` then $(whoami), $HOME, ${PATH}, $ARGUMENTS and $1; 
 
 def write_output(root: Path, name: str, text: str) -> str:
     """What the Write tool prescribed by the SKILL.md files does: the content, as
-    is, in a file under .claude/runs/; returns the path to pass to the core."""
-    path = Path(root) / ".claude" / "runs" / name
+    is, in a file under .harness/runs/; returns the path to pass to the core."""
+    path = Path(root) / ".harness" / "runs" / name
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8", newline="") as fh:
         fh.write(text)
-    return ".claude/runs/" + name
+    return ".harness/runs/" + name
 
 
 def verifier_block(verdict: str, tests_passed: bool, issues=None) -> str:
