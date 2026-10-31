@@ -52,6 +52,7 @@ log_dir="$repo_dir/factory-logs"
 mkdir -p "$log_dir"
 log_file="$log_dir/factory-$(date +%Y%m%d-%H%M%S).json"
 
+export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0
 cmd=(claude -p "/factory-run '$spec'" --output-format json --max-turns 100)
 
 if [ "$yolo" -eq 1 ]; then

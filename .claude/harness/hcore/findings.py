@@ -60,6 +60,7 @@ NATURES = ("correction", "question")
 RISKS = ("faible", "moyen", "eleve")
 VIB_AXES = ("securite", "maintenabilite", "evolutivite")
 LAB_VERIFIER_KINDS = ("protocol", "leak", "stats", "code", "convention")
+MAX_LISTED_OCCURRENCES = 5
 
 PROPOSED, CONFIRMED, REJECTED, DUPLICATE = "PROPOSED", "CONFIRMED", "REJECTED", "DUPLICATE"
 FIXED, SETTLED, UNVALIDATED, NOT_FIXED = "FIXED", "SETTLED", "UNVALIDATED", "NOT_FIXED"
@@ -371,10 +372,15 @@ def adapt(fmt: str, obj: Dict[str, Any], fid: Optional[str] = None, axis: Option
         occ = obj.get("occurrences")
         if not isinstance(occ, list):
             raise FindingError("%s: occurrences must be a list" % where)
-        f["occurrences"] = [{"file": o.get("file"), "line": _line_of(o.get("line")),
-                             "excerpt": o.get("evidence")} for o in occ if isinstance(o, dict)]
-        f["count"] = obj.get("count", len(occ))
-        f["sampled"] = bool(obj.get("sampled", False))
+        listed = [{"file": o.get("file"), "line": _line_of(o.get("line")),
+                   "excerpt": o.get("evidence")} for o in occ if isinstance(o, dict)]
+        # VA-04: 5 representative occurrences at most, `count` the real total
+        # (never below what was listed), `sampled` as soon as some are left out.
+        f["occurrences"] = listed[:MAX_LISTED_OCCURRENCES]
+        count = obj.get("count", len(occ))
+        f["count"] = max(count, len(listed)) if isinstance(count, int) and not isinstance(count, bool) else count
+        f["sampled"] = bool(obj.get("sampled", False)) or (
+            isinstance(f["count"], int) and f["count"] > len(f["occurrences"]))
         first = f["occurrences"][0] if f["occurrences"] else {}
         f["evidence"] = _code_or_structural(first.get("file"), first.get("line"), first.get("excerpt"))
         family = _family(fid, VIB_FAMILIES)

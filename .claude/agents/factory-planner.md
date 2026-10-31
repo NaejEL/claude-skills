@@ -3,7 +3,7 @@ name: factory-planner
 description: Analyse un besoin et le code existant pour rédiger un brouillon de spécification avec critères d'acceptation testables et questions ouvertes. Lecture seule.
 tools: Read, Glob, Grep
 # >>> harness.model >>>
-model: inherit
+model: sonnet
 # <<< harness.model <<<
 ---
 

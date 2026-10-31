@@ -239,8 +239,8 @@ Spec : `specs/SPEC-phase1-rebranchement.md`, statut APPROUVEE, décisions X1 à 
 | L5 | Finding FD-01 à FD-11, registre projet RG-01 à RG-07 ; `comment_body` par FD-10 ; publication et lecture dans ship-pr (X4) | **fait**, commit `e9da1a4` ; test FD-08 durci avec L7 (texte intégral des deux critères `fuites`) |
 | L6 | Stack ST-01 à ST-05, T-shirt TS-01 à TS-05, fusion générique FU-01 à FU-06, blocs BK-01 ; SF sur FU ; Phase 1 de software-factory sur ST | **fait**, commit `e9da1a4` ; BK-02 reste au lot L8 |
 | L7 | Moteur d'audit AU-01 à AU-16 | **livré, non commité** (arbre de travail), itération 2 du Verifier traitée, voir ci-dessous ; SKILL.md des audits non rebranchés (L10 à L12) |
-| L8 à L13 | Rebranchement de code-index, ai-lab, ai-lab-audit, legacy-audit, vibecode-audit, brainstorm | à faire |
-| L14 | README, BACKLOG, rafraîchissement de `.claude/harness`, passage complet des CA | à faire |
+| L8 à L13 | Rebranchement de code-index, ai-lab, ai-lab-audit, legacy-audit, vibecode-audit, brainstorm | **livré, non commité** (arbre de travail), voir « L8 à L14 » ci-dessous |
+| L14 | README, BACKLOG, rafraîchissement de `.claude/harness`, passage complet des CA | **livré, non commité** (spec `specs/SPEC-phase1-fin-L8-L14.md`) |
 
 ### L2 et L3 : ce qui est en place
 
@@ -305,3 +305,17 @@ Spec : `specs/SPEC-phase1-rebranchement.md`, statut APPROUVEE, décisions X1 à 
 - **Copie du noyau** : `check_core_copy` et `refresh_core` comparent en octets et ne lisent jamais un fichier étranger (un binaire est signalé, intact) ; `--refresh` refuse (exit 1) une copie qui déclare une `CORE_VERSION` supérieure à celle du noyau, sauf `--force` (`--force` sans `--refresh` = exit 2) ; une copie aux fins de ligne CRLF reste reconnue.
 - **D5 en headless** : `<PY>` est le champ `command` de `python .claude/harness/harness.py interp`, à défaut `python3 …`, puis `py -3 …` : trois commandes simples couvertes par `Bash(python *)`, `Bash(python3 *)`, `Bash(py *)` de `ci/factory.*` (la boucle shell, non couverte, a disparu du factory-run, du Builder, du Verifier et du Planner du dépôt). Le gabarit de software-factory n'est pas modifié : il écrit l'interpréteur retenu en clair et le met seul dans la liste blanche, ce qui fonctionne déjà en headless.
 - **Mutations** : 15 mutations de l'itération 3 tuées ; les 26 de l'itération 2 rejouées, toutes tuées.
+
+### L8 à L14 : ce qui est en place (2026-10-31)
+
+Spec : `specs/SPEC-phase1-fin-L8-L14.md` (APPROUVEE), qui renvoie aux sections « Rebranchement, skill par skill » et « Découpage en lots » de `specs/SPEC-phase1-rebranchement.md`.
+
+- **code-index (L8)** : D8 corrigé dans `assets/rgkb.py` (`init` ne réécrit jamais un `config.json` existant ; `hooks install` ne remplace pas un `config.json` illisible ; un marqueur de fin de bloc absent est refusé au lieu de tronquer le hook, comme `blocks.py` ; `TOOL_VERSION` 1.0.1). `hcore/cx.py` porte CX-01 à CX-16 ; CLI `harness.py cx args|rg|survey|install|register|scope|wire`. SKILL.md : 189 → 89 lignes. Tests : `tests/test_cx.py` (équivalence BK-02 comprise).
+- **ai-lab et lab-run (L9)** : `hcore/lab.py` (AL-01 à AL-09, scripts `ci/lab.*` rendus depuis `templates/lab-ci.sh|ps1`), `hcore/labrun.py` (LR-01 à LR-09, machine d'états, C2 : Builder, Verifier et experts morts sont relancés une fois), `verdicts.parse_lab_verifier`. CLI `lab apply|ci` et `lab-run start|record`. SKILL.md : 231 → 99 lignes. Tests : `tests/test_lab.py`, dont les scripts `ci/lab.sh` joués avec un faux `claude`.
+- **Audits (L10 à L12)** : le moteur existait ; ajouts : pré-finding de la famille hygiène si `GIT_ABSENT` (LA-03), `lab` et `subagent_type` par lentille dans `audit start` (AA-05), `audit settle` (AA-10, comparaison de dates), `audit plan` (plafonds `--max-specs`, `--max-questions` et `--max-findings`, mapping finding → spec, charge, gains rapides), `tshirt --cap`, 5 occurrences au plus avec le `count` réel (VA-04), surface non auditable de sévérité au moins `major` (VA-06), ordre de validation partielle (VA-09), liens de spec en `/` (LA-09). SKILL.md : legacy-audit 163 → 85, ai-lab-audit 145 → 91, vibecode-audit 191 → 106. Tests : `tests/test_audit_skills.py` (un test de comportement par règle AA, LA, VA).
+- **brainstorm (L13)** : `hcore/bs.py` (BS-01 à BS-12), CLI `bs args|resume|round|render|finish`. X5 : aucune écriture avant la gate finale — le noyau est sans état, la session lui passe le sien sur l'entrée standard (heredoc à délimiteur quoté) ; `bs finish` écrit le journal et, sur *Écrire la synthèse*, `BRAINSTORM-<slug>.md` (FD-11 vérifié, lignes de l'ancienne section « Angles écartés » conservées). SKILL.md : 103 → 56 lignes. Tests : `tests/test_bs.py`.
+- **L14** : README (paragraphe par skill rebranché, `.claude/models.json`, migration de `lab-models.json`, paragraphe `_core`), `.claude/harness/` rafraîchi par `sf copy-core --refresh`.
+- **À noter** : un cycle `/brainstorm` ne crée un dossier `.harness/runs/` que s'il atteint sa gate finale. Un test de l'usine du dépôt (`test_repo_factory`, UF-01) compare les blocs `harness.model` des agents au `.claude/models.json` local de l'utilisateur (non versionné) : il échoue tant que les agents n'ont pas été régénérés avec ces modèles.
+- **Recettes restantes (utilisateur)** : R4 (`/code-index` deux fois sur une fixture personnalisée), R5 (`/ai-lab` sur un `lab-models.json`), R6 (chaque audit sur fixture), R7 (`/brainstorm` interactif).
+
+- Mineur (relecture L8-L14, 2026-10-31) : `lab-ci.sh` cherche `Statut : PRE-ENREGISTRE` par grep sur n'importe quelle ligne, alors que `labrun.entry` exige la ligne exacte.

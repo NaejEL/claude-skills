@@ -13,6 +13,14 @@
       "L'ordre d'exécution des specs est porté par cette roadmap (jalons puis ordre du tableau)."
     ],
     "factory": {"present": "présente", "absent": "absente (lancer /software-factory)"},
+    "git_absent": {
+      "category": "versioning-absent", "severity": "major", "title": "Aucun versioning git sur le dépôt",
+      "location": {"file": null, "line": null},
+      "evidence": "git rev-parse --git-dir a échoué : le dossier n'est pas un dépôt git",
+      "impact": "aucun historique, aucune revue ni retour arrière possible",
+      "remediation": "mettre le projet sous versioning git avant toute autre correction",
+      "size": "XS", "depends_on": []
+    },
     "not_audited_heading": "## Familles non auditées",
     "not_audited_line": "- $unit : $reason",
     "not_audited_reason": "non auditée (aucun bloc JSON exploitable après une relance)",

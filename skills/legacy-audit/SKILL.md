@@ -8,46 +8,39 @@ argument-hint: "[chemin du repo à auditer] [--categories \"c1;c2\"] [--max-spec
 
 # Legacy audit — diagnostic d'un repo legacy et plan d'assainissement
 
-Auditer un repo existant sans le modifier : cartographier, lancer quatre auditeurs parallèles par familles de smells, valider chaque finding par contestation adversariale, estimer en tailles T-shirt, faire arbitrer les priorités et les jalons par l'utilisateur, puis écrire une roadmap `ROADMAP-legacy.md` et une spec factory par finding retenu — prêtes à être exécutées par `/factory-run`.
+Auditer un repo existant sans le modifier : cartographier, lancer quatre auditeurs parallèles par familles de smells, valider chaque finding par contestation adversariale, estimer en tailles T-shirt, faire arbitrer les priorités et les jalons par l'utilisateur, puis écrire une roadmap `ROADMAP-legacy.md` et une spec factory par finding retenu — prêtes pour `/factory-run`.
 
-Parser `$ARGUMENTS` :
+## Noyau déterministe
 
-- **1er token** (s'il ne commence pas par `--`) = chemin du repo à auditer ; défaut : répertoire courant. S'il n'existe pas → arrêt : « le chemin <chemin> n'existe pas ». Mémoriser `REPO` (chemin absolu, quoté si espaces).
-- **`--categories "a;b"`** : restreint l'audit aux familles listées (`hygiene`, `portabilite`, `qualite`, `filet`, séparateur `;`). Défaut : les quatre.
-- **`--max-specs N`** : plafond de specs générées, borné dur à `min(N, 25)`. Défaut : 15. On borne le livrable, jamais la détection : les findings confirmés au-delà du plafond figurent dans la roadmap (section « non retenus dans ce cycle »).
+Les règles déterministes sont du code Python (bibliothèque standard, ≥ 3.9) dans `${CLAUDE_SKILL_DIR}/../_core/` : ne jamais les réimplémenter, appeler la CLI `harness.py` et suivre sa sortie JSON. Règles propres : **LA-01** à **LA-13** (`hcore/audit.py` et son profil, `findings.py`, `tshirt.py`) ; partagées : **AU-01** à **AU-16** (arguments, relances, dédup, reprise, renumérotation, compteurs), **FD-01** à **FD-11** (schéma de finding, validateur unique, spec, chaînes interdites), **RG-01** à **RG-07** (registre projet `.claude/findings.jsonl`), **TS-01** à **TS-05**, **ST-01** à **ST-04**, **GT-01** à **GT-08**, **MD-01** à **MD-08** (`--models` : rôles `audit.auditor`, `audit.validator`), **JR-01**, **JR-02** (journal sous `.harness/runs/` du repo audité).
+
+**Interpréteur** : `<PY>` = le premier de `python`, `python3`, `py -3` qui répond en moins de 5 s avec une version ≥ 3.9 : `t=; command -v timeout >/dev/null && t="timeout 5"; for c in python python3 "py -3"; do $t $c -c "import sys; print(sys.version_info >= (3, 9))" 2>/dev/null | grep -q True && { echo "$c"; break; }; done`. `K` = `<PY> "${CLAUDE_SKILL_DIR}/../_core/harness.py"`. Toute sortie d'agent et tout JSON se transmettent au noyau par un fichier écrit avec l'outil Write sous `.harness/runs/` (jamais par le shell : backticks, `$`, apostrophes) ; le noyau le supprime après lecture.
 
 ## Règles impératives (toutes les phases)
 
-- **Lecture seule absolue sur le repo audité.** Seules écritures autorisées, en Phase 6 : `ROADMAP-legacy.md` et les specs. Ne jamais « corriger en passant » — même un `.gitignore` manquant est un finding, pas une action. Jamais de `git init`.
+- **Lecture seule absolue sur le repo audité.** Seules écritures autorisées (le noyau refuse toute autre) : `ROADMAP-legacy.md`, `specs/SPEC-leg-*.md`, le journal `.harness/runs/` et le registre projet. Ne jamais « corriger en passant » — même un `.gitignore` manquant est un finding, pas une action. Jamais de `git init`.
 - **« Zéro finding » est une réponse normale et acceptable.** Cette phrase figure telle quelle dans le prompt de chaque auditeur et de chaque validateur — jamais de finding inventé pour remplir un quota.
-- **Une famille muette n'est pas une famille saine.** Corollaire de la règle précédente : un auditeur mort (erreur d'API, connexion coupée) ou dont la sortie est inexploitable rend le même silence qu'un vrai « zéro finding », et ce silence se lit comme un satisfecit. À la fin de la Phase 2, vérifier que **chaque famille lancée a rendu un bloc JSON exploitable** ; pour chaque famille manquante, relancer **une fois**. Si le second essai échoue, ne pas bloquer l'audit et ne pas taire l'amputation : inscrire la famille comme **non auditée** dans la roadmap (section dédiée), la marquer `échec` dans le tableau de la Phase 7, et l'annoncer au rapport. Un audit amputé d'une famille reste utile ; un audit qui tait son amputation est trompeur. Même règle en Phase 3 : un validateur mort laisse son finding **non validé**, jamais `CONFIRMED` par défaut.
-- **Chaîne interdite** : ne jamais écrire la chaîne `Statut :` suivie de `APPROUVEE` où que ce soit (roadmap, specs, rapport) — la CI de la factory la greppe n'importe où dans un fichier. Toute spec générée commence par `Statut : PROPOSEE` en première ligne ; pour parler d'approbation ailleurs, périphraser (« le statut approuvé »).
-- **Frugalité** : auditeurs = agents lecture seule recevant la carte du repo et leur famille de smells (jamais une mission « explore tout ») ; preuve = extrait ≤ 3 lignes ou constat structurel ; validateurs = mini-agents à prompt court et effort faible ; budgets de lecture de la Phase 1 respectés.
-- **Registre cumulatif des findings** : tenir en mémoire `{id, fichier, ligne, catégorie, résumé, verdict}` pour tous les findings, **y compris les REJECTED**, alimenté aussi par une roadmap préexistante : un finding rejeté ou déjà traité ne ressuscite pas.
-- **La priorisation appartient à l'utilisateur** (AskUserQuestion en Phase 5). Si aucune interaction n'est possible (exécution headless), s'arrêter en erreur explicite avant la Phase 5 : un audit sans arbitrage humain ne produit ni roadmap ni specs.
+- **Une famille muette n'est pas une famille saine.** Un auditeur mort ou à la sortie inexploitable rend le même silence qu'un vrai « zéro finding », et ce silence se lit comme un satisfecit. Le noyau relance **une fois** (`relaunch`), puis rend `not-audited` : la famille figure alors comme **non auditée** dans la roadmap, marquée `échec` au rapport. Un audit amputé reste utile ; un audit qui tait son amputation est trompeur. Un validateur mort deux fois laisse son finding **non validé**, jamais `CONFIRMED`.
+- **Chaîne interdite** : ne jamais écrire `Statut :` suivi de `APPROUVEE` où que ce soit (le noyau le vérifie, FD-11) ; toute spec commence par `Statut : PROPOSEE`. Pour parler d'approbation ailleurs, périphraser.
+- **Frugalité** : auditeurs en lecture seule (type Explore) recevant la carte et leur famille ; preuve = extrait ≤ 3 lignes ou constat structurel ; validateurs = mini-agents à prompt court.
+- **La priorisation appartient à l'utilisateur** (AskUserQuestion, Phase 5). Sans interaction possible, s'arrêter en erreur explicite avant la Phase 5 : un audit sans arbitrage ne produit ni roadmap ni specs (`stop`, LA-12).
 
 ## Phase 1 — Reconnaissance et cartographie
 
-Dans la session principale, sans sous-agent :
-
-1. **Git** : `git -C "<REPO>" rev-parse --git-dir`. Si échec → `GIT_ABSENT=true` : pré-finding (versioning absent, famille `hygiene`) et **aucune commande git sur ce repo ensuite**.
-2. **Stack** : chercher les marqueurs (`*.csproj`/`*.sln`, `pyproject.toml`/`requirements.txt`, `package.json`, `go.mod`, `Cargo.toml`, `CMakeLists.txt`/`Makefile`, `Dockerfile`/`docker-compose*`, `*.yml` Ansible) et lire les manifestes trouvés.
-3. **Factory** : présence de `.claude/skills/factory-run/SKILL.md` dans le repo. Si absente, le noter (recommandation `/software-factory` au rapport) — non bloquant.
-4. **Reprise** : si `<REPO>/ROADMAP-legacy.md` existe, la lire et charger toutes ses lignes de findings (retenus, non retenus, rejetés) dans le registre cumulatif.
-5. **Bornes gros repos** : compter les fichiers hors dossiers d'artefacts (`node_modules`, `.venv`, `venv`, `bin`, `obj`, `build`, `dist`, `target`, `__pycache__`, `.git`). Si > 2000 : arborescence limitée à 3 niveaux, budget de 40 fichiers lus par auditeur, échantillonnage par plus gros / plus récemment modifiés / points d'entrée ; marquer l'audit « échantillonné » pour le rapport.
-
-Produire la **carte** : arborescence 2-3 niveaux, stack et commandes de build détectées, nombre de fichiers, top 15 des plus gros fichiers, présence/absence de README, LICENSE, `.gitignore`, CI, dossier de tests, `GIT_ABSENT`/factory/reprise.
+1. **Arguments, git, reprise** : écrire `$ARGUMENTS` tel quel dans `.harness/runs/legacy-audit-arguments.txt`, puis `K audit start --skill legacy-audit --arguments-file …` (AU-01 à AU-03 : `REPO` absolu, `--categories` familles parmi `hygiene`, `portabilite`, `qualite`, `filet` séparées par `;`, `--max-specs` borné à `min(N, 25)` défaut 15 ; chemin inexistant → arrêt, option ou valeur invalide → exit 2). Il ouvre le run dans le repo, sonde git (`git_absent` → LA-03 : pré-finding de la famille hygiène et **aucune commande git ensuite**), lit la factory (LA-04 `factory`) et reprend `ROADMAP-legacy.md` s'il existe (AU-09 : statuts `FAIT`/`EN_COURS` préservés, numérotation poursuivie, `resumed`). Il rend `run`, `auditors` (modèle et `pass_param` du rôle `audit.auditor`), `validator`, `cap`, `allowed_writes`. Passer à chaque sous-agent le paramètre `model` quand `pass_param` est vrai, jamais pour `inherit`.
+2. **Stack et bornes** : `K stack detect --root "<REPO>"` (marqueurs, manifestes, dossiers d'artefacts, `sampled` au-delà de 2000 fichiers : arborescence de 3 niveaux, 40 fichiers lus par auditeur, échantillonnage par plus gros / plus récents / points d'entrée). Lire les manifestes trouvés.
+3. **Carte** : arborescence 2-3 niveaux, stack et commandes de build, nombre de fichiers, 15 plus gros fichiers, README, LICENSE, `.gitignore`, CI, tests, `git_absent`, factory (absente : recommander `/software-factory`, non bloquant), reprise, échantillonnage.
 
 ## Phase 2 — Audit parallèle par familles de smells
 
-Lancer **en un seul message** les auditeurs (type Explore, lecture seule), un par famille retenue par `--categories` :
+Lancer **en un seul message** les auditeurs, un par famille retenue (LA-01) :
 
-- **(a) `hygiene`** (ids `HYG-`) — hygiène du dépôt : versioning absent, `.gitignore` absent ou insuffisant, binaires et artefacts de build trackés, fichiers géants versionnés, **secrets/credentials commités** (clés, mots de passe, `.env` tracké), licence absente, fins de ligne CRLF/LF incohérentes sans `.gitattributes` ;
-- **(b) `portabilite`** (ids `PORT-`) — portabilité et configuration : chemins absolus « marche sur ma machine », config d'environnement en dur (URLs, ports, identifiants), dépendances non épinglées / obsolètes / vulnérables, scripts non portables Windows/Unix, absence de CI, build non reproductible ;
-- **(c) `qualite`** (ids `QUAL-`) — qualité du code : bugs et problèmes de logique manifestes, gestion d'erreurs absente (catch vides, codes retour ignorés), code mort, duplication massive, fonctions ou fichiers démesurés, TODO/FIXME anciens ;
-- **(d) `filet`** (ids `FIL-`) — filet de sécurité : tests absents ou vides, documentation absente (README, installation, usage), logs de debug résiduels, points d'entrée non documentés.
+- **(a) `hygiene`** (ids `HYG-`) — versioning absent, `.gitignore` absent ou insuffisant, binaires et artefacts trackés, fichiers géants versionnés, **secrets/credentials commités** (clés, mots de passe, `.env` tracké), licence absente, fins de ligne incohérentes sans `.gitattributes` ;
+- **(b) `portabilite`** (`PORT-`) — chemins absolus « marche sur ma machine », config d'environnement en dur, dépendances non épinglées / obsolètes / vulnérables, scripts non portables Windows/Unix, CI absente, build non reproductible ;
+- **(c) `qualite`** (`QUAL-`) — bugs manifestes, gestion d'erreurs absente (catch vides, codes retour ignorés), code mort, duplication massive, fonctions ou fichiers démesurés, TODO/FIXME anciens ;
+- **(d) `filet`** (`FIL-`) — tests absents ou vides, documentation absente (README, installation, usage), logs de debug résiduels, points d'entrée non documentés.
 
-Chaque prompt d'auditeur contient : la carte de la Phase 1, sa famille de smells **et rien d'autre à chercher**, le budget de lecture, la phrase « **zéro finding est une réponse normale et acceptable** », l'interdiction d'écrire quoi que ce soit, l'exigence de preuve vérifiable (fichier + ligne + extrait ≤ 3 lignes, ou constat structurel du type « aucun fichier de test dans le repo »), le barème T-shirt (XS < 30 min, S < 2 h, M demi-journée, L 1-2 jours, XL à découper), et le format de sortie exigé — un unique bloc JSON final :
+Chaque prompt contient : la carte, sa famille **et rien d'autre à chercher**, le budget de lecture, la phrase « **zéro finding est une réponse normale et acceptable** », l'interdiction d'écrire, la preuve vérifiable (fichier + ligne + extrait ≤ 3 lignes, ou constat structurel), le barème T-shirt (XS < 30 min, S < 2 h, M demi-journée, L 1-2 jours, XL à découper) et un unique bloc JSON final (LA-05) :
 
 ```json
 {"findings": [{"id": "HYG-01", "category": "gitignore-absent", "severity": "critical|major|minor",
@@ -56,108 +49,37 @@ Chaque prompt d'auditeur contient : la carte de la Phase 1, sa famille de smells
   "remediation": "correction proposée en une phrase", "size": "XS|S|M|L|XL", "depends_on": []}]}
 ```
 
-`severity: critical` est réservé aux secrets commités, aux bugs avérés et aux pertes de données potentielles.
+`critical` est réservé aux secrets commités, aux bugs avérés et aux pertes de données potentielles. Chaque retour : `K audit auditor --run <run> --unit <famille> --output <fichier> [--dead] --duration-ms <ms> --tokens <n>` ; `action` : `relaunch` (relancer cette famille **une fois**), `not-audited`, `validate` (`to_validate` ; `duplicates` écartés **sans validateur**, y compris REJECTED du registre projet, `previous=<statut>@<source>`), `none`.
 
 ## Phase 3 — Validation adversariale
 
-1. **Dédupliquer** chaque finding contre le registre cumulatif (mêmes fichier/ligne/catégorie), verdicts REJECTED et entrées de roadmap préexistante compris — les doublons sont écartés sans validateur.
-2. Pour chaque finding survivant, lancer un **mini-agent validateur** (effort faible, prompt court : le finding + consigne de relire la preuve à la source) chargé de le contester : la preuve existe-t-elle réellement à cet endroit ? est-ce un vrai smell ou un choix délibéré / faux positif (chemin absolu dans un fichier d'exemple, gros fichier qui est une fixture) ? la sévérité et la taille sont-elles plausibles ? Sortie exigée :
+Pour chaque finding de `to_validate`, un **mini-agent validateur** (effort faible, prompt court : le finding + relire la preuve à la source) le conteste : la preuve existe-t-elle à cet endroit ? vrai smell, choix délibéré ou faux positif (chemin absolu d'un fichier d'exemple, gros fichier qui est une fixture) ? sévérité et taille plausibles ? Il termine par (LA-07) :
 
 ```json
 {"verdict": "CONFIRMED|REJECTED", "reason": "justification en une phrase", "size_correction": "XS|S|M|L|XL|null"}
 ```
 
-3. Ajouter chaque finding au registre avec son verdict. **Si zéro CONFIRMED → sauter en Phase 7** avec un rapport « repo sain sur les familles auditées » (réponse normale).
+`K audit validator --run <run> --finding <id> --output <fichier> [--dead]` (relance unique, puis `unvalidated`). `K audit next --run <run>` rend `step` : `audit`, `validate`, `consolidate`, ou `report` (**zéro CONFIRMED → Phase 7** : « repo sain sur les familles auditées », réponse normale) et le tableau `counters` par famille (LA-13 : bruts, confirmés, rejetés ou dédupliqués ; `échec` pour une famille non auditée).
 
 ## Phase 4 — Consolidation et estimation
 
-Dans la session principale, sans sous-agent :
-
-- Renuméroter les CONFIRMED en `LEG-01…LEG-NN` (tri : sévérité décroissante puis taille croissante) ; appliquer les `size_correction` des validateurs.
-- Compléter les **dépendances** structurelles évidentes : mise sous versioning et `.gitignore` avant tout le reste si `GIT_ABSENT` ; purge des secrets avant mise en place d'une CI ; tests avant la CI qui les exécute.
-- Regrouper les findings en **3 à 6 thèmes** (typiquement les familles, fusionnées si peu peuplées) pour la phase interactive.
+`K audit consolidate --run <run>` renumérote les CONFIRMED en `LEG-nn` (LA-08 : sévérité décroissante puis taille croissante, tailles corrigées appliquées, numérotation poursuivie en reprise) et rend l'ordre. Compléter les **dépendances** structurelles évidentes (jugement) : versioning et `.gitignore` avant tout si `git_absent` ; purge des secrets avant une CI ; tests avant la CI qui les exécute. Regrouper les findings en **3 à 6 thèmes** (typiquement les familles, fusionnées si peu peuplées).
 
 ## Phase 5 — Priorisation interactive (gate humaine)
 
-Ne jamais présenter les findings un par un : toujours par thème agrégé. Deux rondes bornées d'AskUserQuestion :
+Jamais un finding à la fois : par thème. `K audit themes --skill legacy-audit --count <n>` découpe en appels de 4 thèmes au plus, 3 appels maximum. Deux rondes d'AskUserQuestion (`K gate decide` / `answer`) : **cadrage** `legacy-audit.framing` (un appel, deux questions : jalons 2 / 3 / 4 ; priorité *risque d'abord* / *quick wins* / *fondations* / *ordre proposé*), puis **affectation** `legacy-audit.assignment` (une question par thème : *Jalon 1* / *Jalon 2* / *Jalon dernier* / *Exclure de la roadmap* ; l'ordre intra-jalon découle du critère et des dépendances). Écrire les choix dans `.harness/runs/legacy-audit-data.json` (`name`, `date`, `factory`, `milestones` `[{number, title}]`, `findings` `{LEG-nn: {milestone, spec}}` ou `{not_retained: "excluded"|"cap"}`), puis `K audit plan --run <run> --data-file …` (LA-10, TS-05, LA-02) rend les specs (1 finding = 1 spec ; XS de même catégorie et même jalon regroupés par 4 ; chaque XL découpé en 2 specs ou plus ≤ L, chaînées), le plafond `--max-specs` appliqué **dans l'ordre des jalons** (`not_retained_cap` : l'excédent part en « non retenus ») et la charge cumulée par jalon. Présenter le récapitulatif, puis `legacy-audit.final` : **Générer roadmap + specs** / **Réajuster** (une seule fois : `K audit readjust --run <run>` rejoue la ronde d'affectation) / **Abandonner** (Phase 7 sans rien écrire). Sans interaction : `--headless` = `stop`.
 
-1. **Cadrage** (un appel, deux questions) : « Combien de jalons ? » (2 / 3 / 4) et « Critère de priorité dominant ? » (risque d'abord — secrets, bugs / quick wins d'abord — XS et S / fondations d'abord — versioning, tests, CI / garder l'ordre proposé).
-2. **Affectation** (un appel par groupe de ≤ 4 thèmes, 3 appels maximum) : une question par thème — « Thème <nom> (<n> findings, tailles <répartition>) : quel jalon ? » avec options Jalon 1 / Jalon 2 / Jalon dernier / Exclure de la roadmap. Les findings d'un thème héritent du jalon du thème ; l'ordre intra-jalon découle du critère de la ronde 1 et des dépendances.
+## Phase 6 — Génération (seule phase qui écrit)
 
-Présenter ensuite le tableau récapitulatif (jalons, findings, tailles, charge cumulée) en texte, puis une dernière question : **Générer roadmap + specs** / **Réajuster** (une seule fois — boucle bornée à 1 réajustement, qui rejoue la ronde 2) / **Abandonner** (sortir en Phase 7 sans rien écrire).
-
-## Phase 6 — Génération roadmap + specs (seule phase qui écrit)
-
-### 6.1 Roadmap
-
-Écrire `<REPO>/ROADMAP-legacy.md`. Liens en chemins relatifs avec `/` (jamais de backslash). Statuts autorisés : `A_FAIRE` / `EN_COURS` / `FAIT` / `REPORTE`. Squelette :
-
-```markdown
-# Roadmap de remise à niveau — <nom du repo>
-
-Générée par /legacy-audit le <date>. Usine logicielle : présente | absente (lancer /software-factory).
-L'ordre d'exécution des specs est porté par cette roadmap (jalons puis ordre du tableau).
-
-## Jalon 1 — <intitulé choisi>
-| ID | Finding | Sévérité | Taille | Dépend de | Spec | Statut |
-|---|---|---|---|---|---|---|
-| LEG-01 | Secrets commités dans config.py | critical | S | — | [specs/SPEC-leg-01-purge-secrets.md](specs/SPEC-leg-01-purge-secrets.md) | A_FAIRE |
-
-## Jalon 2 — …
-
-## Findings non retenus dans ce cycle
-| ID | Finding | Raison (exclu par l'utilisateur / au-delà du plafond de specs) |
-
-## Findings rejetés à la validation
-| ID | Finding | Raison |
-```
-
-**Idempotence / reprise** : si une roadmap existait en Phase 1, préserver les statuts `FAIT`/`EN_COURS` existants, ne pas régénérer leurs specs, poursuivre la numérotation `LEG-` existante pour les nouveaux findings, et signaler « roadmap reprise » au rapport. Ne jamais écraser une spec existante : si `specs/SPEC-leg-<nn>-*.md` existe déjà, la conserver telle quelle et le signaler.
-
-### 6.2 Mapping finding → spec
-
-- Défaut : **1 finding retenu = 1 spec** `specs/SPEC-leg-<nn>-<slug>.md` (slug court en minuscules-avec-tirets).
-- **Regroupement** : findings **XS de même catégorie et même jalon** → une spec commune (4 findings maximum), un critère d'acceptation numéroté par finding, ids cités dans `## Contexte`.
-- **Découpage** : tout **XL** → 2 specs ou plus de taille ≤ L, chaînées par la colonne « Dépend de » de la roadmap ; la spec aval rappelle son prérequis dans `## Contexte` et `## Risques` (la factory n'a pas de notion de backlog : l'ordre reste porté par la roadmap).
-- Plafond `--max-specs` appliqué dans l'ordre des jalons ; l'excédent part en « non retenus dans ce cycle ».
-
-### 6.3 Format de spec (contrat factory exact)
-
-Première ligne = le statut proposé, sections dans cet ordre, chaque critère d'acceptation objectivement testable (entrée → sortie ou exception attendue) — c'est la matière première du Builder et du Verifier. Pour les secrets, la réécriture d'historique est **toujours** en Hors-périmètre. Exemple complet :
-
-```markdown
-Statut : PROPOSEE
-
-# SPEC-leg-03 — Ajouter un .gitignore adapté à la stack Python
-
-## Contexte
-Finding LEG-03 (major, XS) : aucun .gitignore ; __pycache__/ et .venv/ apparaissent dans git status.
-
-## Périmètre
-Créer un fichier .gitignore à la racine couvrant les artefacts Python et l'IDE.
-
-## Critères d'acceptation
-1. Un fichier `.gitignore` existe à la racine et contient au minimum `__pycache__/`, `*.pyc`, `.venv/`.
-2. Après `git status --porcelain`, aucun chemin sous `__pycache__/` ni `.venv/` n'apparaît.
-3. Les fichiers déjà trackés correspondant à ces motifs sont retirés de l'index (`git rm -r --cached`), sans suppression du disque.
-
-## Hors-périmètre
-Réécriture d'historique ; .gitignore par sous-dossier.
-
-## Risques
-Un motif trop large pourrait ignorer des fichiers légitimes ; vérifier `git status` après application.
-
-## Questions ouvertes
-Aucune
-```
+1. **Roadmap** (LA-09) : compléter le fichier de données (spec, `not_retained`) puis `K audit render --run <run> --data-file …` écrit `ROADMAP-legacy.md` depuis le gabarit du noyau : jalons et tableaux, liens relatifs en `/`, statuts `A_FAIRE` / `EN_COURS` / `FAIT` / `REPORTE`, sections « non retenus » et « rejetés », familles non auditées. Reprise : lignes existantes conservées, statuts préservés, « roadmap reprise » au rapport.
+2. **Specs** (LA-11) : pour chaque spec de `plan`, écrire avec Write le JSON des sections de **jugement** `{context, scope, criteria[], out_of_scope, risks}` (critères objectivement testables, entrée → sortie ou exception attendue ; spec regroupée : un critère par finding et les ids dans `context` ; spec aval d'un XL : prérequis rappelé dans `context` et `risks`), puis `K audit spec --run <run> --finding <LEG-nn> --sections … --number <n> --slug <slug-court>`. Le noyau écrit le contrat factory exact (première ligne `Statut : PROPOSEE`, sections Contexte, Périmètre, Critères d'acceptation, Hors-périmètre, Risques, Questions ouvertes), **ajoute toujours la réécriture d'historique en Hors-périmètre pour un secret**, et **ne remplace jamais une spec existante** (`personnalisé-conservé`, signalé).
+3. `K audit publish --run <run> --deliverable` publie les verdicts au registre projet (RG-03).
 
 ## Phase 7 — Rapport final
 
-Émettre un rapport structuré :
-
-- **Carte** : repo, stack, taille, git présent/absent, audit complet ou échantillonné, roadmap créée ou reprise ;
-- **Findings** : tableau `| Famille | Findings bruts | Confirmés | Rejetés/dédupliqués |` ;
-- **Jalons** : intitulés retenus, nombre de findings et charge cumulée (répartition des tailles T-shirt) par jalon ;
-- **Fichiers écrits** : roadmap + liste des specs (créées / préservées / regroupées / découpées) ;
-- **Prochaine action** : factory présente → `/factory-run "specs/SPEC-leg-01-<slug>.md"` (factory-run porte lui-même la gate d'approbation de la spec) ; factory absente → lancer d'abord `/software-factory` ;
-- **Reste à faire** : findings non retenus, XL découpés, et le cas échéant l'avertissement secrets — la purge d'historique n'est jamais faite par le skill ni par une spec générée.
+- **Carte** : repo, stack, taille, git présent/absent, complet ou échantillonné, roadmap créée ou reprise ;
+- **Findings** : tableau `| Famille | Findings bruts | Confirmés | Rejetés/dédupliqués |` (LA-13, depuis `counters`) ;
+- **Jalons** : intitulés, nombre de findings et charge cumulée (répartition des tailles) par jalon ;
+- **Fichiers écrits** : roadmap + specs (créées / préservées / regroupées / découpées), avec l'état rendu par le noyau ;
+- **Prochaine action** : factory présente → `/factory-run "specs/SPEC-leg-01-<slug>.md"` (il porte lui-même la gate d'approbation) ; absente → d'abord `/software-factory` ;
+- **Reste à faire** : findings non retenus, XL découpés, et l'avertissement secrets — la purge d'historique n'est jamais faite par le skill ni par une spec générée.

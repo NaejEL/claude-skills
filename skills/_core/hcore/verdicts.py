@@ -83,6 +83,26 @@ def parse_verifier(text: Optional[str]) -> Dict[str, Any]:
     return {"verdict": verdict, "tests_passed": tests, "issues": clean}
 
 
+LAB_KINDS = ("protocol", "leak", "stats", "code", "convention")
+
+
+def parse_lab_verifier(text: Optional[str]) -> Dict[str, Any]:
+    """LR-09: lab Verifier {"verdict", "tests_passed", "protocol_followed",
+    "rerun_consistent", "issues": [{file, severity, kind, description}]}."""
+    obj = extract_terminal_json(text)
+    parsed = parse_verifier(text)
+    for key in ("protocol_followed", "rerun_consistent"):
+        if not isinstance(obj.get(key), bool):
+            raise UnusableOutput("%s must be a boolean" % key)
+    for i, issue in enumerate(obj.get("issues", [])):
+        if issue.get("kind") not in LAB_KINDS:
+            raise UnusableOutput("issue %d: kind must be one of %s" % (i, ", ".join(LAB_KINDS)))
+        parsed["issues"][i]["kind"] = issue["kind"]
+    parsed["protocol_followed"] = obj["protocol_followed"]
+    parsed["rerun_consistent"] = obj["rerun_consistent"]
+    return parsed
+
+
 def parse_reviewer(text: Optional[str]) -> List[Dict[str, Any]]:
     obj = extract_terminal_json(text)
     findings = obj.get("findings")

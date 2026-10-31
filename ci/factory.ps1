@@ -48,6 +48,8 @@ Write-Host "Spec      : $Spec"
 Write-Host "Mode      : $mode"
 Write-Host "Journal   : $logFile"
 
+$env:CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = '1'
+$env:CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS = '0'
 & claude @claudeArgs | Tee-Object -FilePath $logFile
 $status = $LASTEXITCODE
 

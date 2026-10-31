@@ -97,6 +97,8 @@ Audite un **repo legacy en lecture seule** et en tire un plan d'assainissement e
 
 Garde-fous : lecture seule stricte hors livrables (même un `.gitignore` manquant est un finding, pas une action), « zéro finding » est une réponse acceptable, estimation T-shirt (XS→XL, les XL sont découpés en specs chaînées), idempotent (reprise d'une roadmap existante, statuts FAIT préservés, specs jamais écrasées).
 
+Rebranché sur le noyau `_core` : arguments et plafonds (`--max-specs` borné à 25), dédoublonnage avant tout validateur (y compris contre le registre `.claude/findings.jsonl`), relance unique d'une famille muette, renumérotation `LEG-nn`, regroupement des XS par 4, découpage des XL, rendu de la roadmap et des specs et chaînes interdites sont du code testé ; le skill ne garde que le jugement (taxonomies, questions du validateur, regroupement en thèmes). Le journal est écrit dans `.harness/runs/` du repo audité, et `--models` accepte les rôles `audit.auditor` et `audit.validator`.
+
 ### `vibecode-audit`
 
 Diagnostique un **projet vibecodé** (généré par IA) repris par quelqu'un qui n'en est pas l'auteur, et répond à une seule question : par où attaquer avant la mise en production.
@@ -114,6 +116,8 @@ Diagnostique un **projet vibecodé** (généré par IA) repris par quelqu'un qui
 Ce qui le distingue de `legacy-audit` : deux distributions de défauts. `legacy-audit` vise la dette d'**accumulation** (code humain, dérive sur des années) ; `vibecode-audit` vise la dette de **génération** (chaque session régénère sans connaître la précédente, le modèle écrit le chemin nominal). Les enchaîner est le mode d'emploi normal — le diagnostic prémâche le travail, `/legacy-audit` en tire roadmap et specs.
 
 Garde-fous : **une seule écriture**, le rapport — ni spec, ni hook, ni correctif ; le finding est un **motif à N occurrences**, jamais une occurrence isolée ; **la gravité prime sur l'axe** — un `critical` trouvé par la lentille évolutivité n'est jamais relégué derrière tout l'axe sécurité ; la difficulté (T-shirt XS→XL) est un **ordre de grandeur**, pas une estimation — elle varie d'un audit à l'autre sur le même code, contrairement à la gravité ; le **risque de régression informe seulement** (il sature à « élevé » sur un projet sans tests et ne discriminerait rien) ; **aucune adhérence à une pile technique** — la taxonomie décrit des classes de défaut, jamais un écosystème ; **ce qui ne peut pas être audité est un finding**, jamais un silence rassurant ; les motifs non passés par la validation adversariale sont **marqués comme tels** (sur un échantillon, la moitié se sont révélés matériellement inexacts).
+
+Rebranché sur le noyau `_core` : plafonds (`--max-findings` borné à 30), motifs plafonnés à 5 occurrences avec le `count` réel, famille morte → surface non auditable `major`, fusion des doublons entre auditeurs, ordre de validation partielle (critical d'abord), tri `VIB-nn` (les critical en tête, tous axes confondus), gains rapides et rendu du rapport sont du code testé ; le skill ne garde que la taxonomie et les consignes du validateur.
 
 ### `ai-lab`
 
@@ -134,7 +138,8 @@ Le skill détecte la stack (framework, venv, GPU réel), le **corpus scientifiqu
 | `.claude/agents/lab-builder.md` | Implémente le protocole comme flag de config ablatable + tests + script d'éval, exécute l'expérience complète, rend les résultats bruts **sans interpréter** |
 | `.claude/agents/lab-verifier.md` | Adversarial : conformité au protocole, fuites/confondants dans le code, ré-exécution d'au moins un run, recalcul, verdict JSON (jamais d'édition) |
 | `.claude/skills/lab-run/SKILL.md` | Orchestrateur de la boucle scientifique |
-| `.claude/lab-models.json` | Affectation d'un modèle par rôle, choisie à l'installation (gate humaine) |
+| `.claude/models.json` | Affectation d'un modèle par rôle (clés `lab.*`), choisie à l'installation (gate humaine) ; un `lab-models.json` hérité est migré sans être modifié |
+| `.claude/harness/` | Copie du noyau `_core`, appelée par le `/lab-run` généré et par `ci/lab.*` |
 | `ci/lab.sh` + `ci/lab.ps1` | Entrée headless : `claude -p "/lab-run 'experiments/EXP-x.md'"` |
 | `.claude/settings.json` | `permissions.deny` : venv, caches, données, poids, résultats bruts (fusionné) |
 | `.vscode/tasks.json` | Tâches VS Code Lab (fusionné) |
@@ -155,7 +160,9 @@ Cycle d'une expérience :
 
 Un résultat négatif est un résultat : le cycle réussit quand la question a une réponse honnête, pas quand le code « marche ».
 
-**Un modèle par rôle.** À l'installation, une gate humaine choisit quel modèle tient quel rôle (profils prêts : tout hérité / le plus capable sur les deux experts / le plus capable seulement sur l'interprétation / sur-mesure par rôle). Le choix est écrit dans `.claude/lab-models.json` et relu à chaque cycle ; `inherit` = le rôle suit le modèle de la session. Override ponctuel sans toucher au fichier :
+Rebranché sur le noyau `_core` (`hcore/lab.py`, `hcore/labrun.py`) : fusions de `settings.json`, `tasks.json` et `.gitignore`, scripts `ci/lab.*` rendus depuis un gabarit, entrée du cycle, verdict du Verifier (`APPROVED` et trois indicateurs vrais), 3 itérations, relance d'un agent mort sans consommer d'itération (Builder, Verifier, experts — un expert muet deux fois est nommé « expertise non recueillie »), interprétation croisée une seule fois. Le journal du cycle est écrit dans `.harness/runs/`.
+
+**Un modèle par rôle.** À l'installation, une gate humaine choisit quel modèle tient quel rôle (profils prêts : tout hérité / le plus capable sur les deux experts / le plus capable seulement sur l'interprétation / sur-mesure par rôle). Le choix est écrit dans `.claude/models.json` (clés `lab.*` ; un ancien `.claude/lab-models.json` est migré une fois, jamais modifié) et relu à chaque cycle ; `inherit` = le rôle suit le modèle de la session. Override ponctuel sans toucher au fichier :
 
 ```text
 /lab-run "ma question" --models "math=fable;director.interpretation=fable;builder=sonnet"
@@ -177,7 +184,7 @@ Revue externe d'un **projet de recherche IA en lecture seule** — le pendant sc
 3. **Arbitrage humain** : sort des corrections (specs factory ou simple liste) et critère de priorité des questions (fiabiliser d'abord / le moins cher / ordre de la feuille de route) ;
 4. **Livrable** `AUDIT-lab.md` : **corrections** `COR-*` (avec specs `specs/SPEC-lab-*.md` si la factory est présente) et **questions de recherche** `Q-*` — une phrase falsifiable, sa motivation chiffrée, ce qu'elle trancherait, son coût, sa dépendance éventuelle à une correction, et la commande `/lab-run "<question>"` exacte.
 
-Garde-fous : « zéro finding » est une réponse acceptable, une question dont dépend un banc d'éval fuyant attend la correction du banc, idempotent (reprise, questions tranchées par une entrée de journal postérieure marquées `TRANCHEE`). L'audit lit la même affectation de modèles que `/lab-run` (`.claude/lab-models.json`) : les mini-validateurs restent sur un modèle économique, contester un extrait de trois lignes ne justifie pas le modèle le plus cher.
+Garde-fous : « zéro finding » est une réponse acceptable, une question dont dépend un banc d'éval fuyant attend la correction du banc, idempotent (reprise, questions tranchées par une entrée de journal postérieure marquées `TRANCHEE`). L'audit lit la même affectation de modèles que `/lab-run` (`.claude/models.json`, clés `lab.*`) et son moteur est le noyau `_core` (plafond `--max-questions` borné à 12, `COR-nn` et `Q-nn`, `TRANCHEE (journal <date>)` par comparaison de dates, lentille → agent `lab-*` ou `Explore`, deux critères imposés aux specs `fuites`) : les mini-validateurs restent sur un modèle économique, contester un extrait de trois lignes ne justifie pas le modèle le plus cher.
 
 ### `brainstorm`
 
@@ -194,6 +201,8 @@ Co-réfléchit à une idée en la **challengeant** au lieu de la valider, et **s
 4. **Convergence** : synthèse en conversation (idée après confrontation, angles retenus, angles écartés avec leur raison), puis gate finale proposant de l'écrire dans `BRAINSTORM-<slug>.md` — en cas de refus, rien n'est écrit.
 
 **Condition de terminaison** : plafond dur de **3 tours** (`--rounds N` borné à `min(N, 3)`), passage forcé à la convergence au plafond, sortie anticipée observable dès qu'un tour ne produit plus aucun angle hors énoncé nouveau, et **5 pistes retenues au maximum** dans la synthèse. Le rapport final suggère `/factory-run` ou `/lab-run` quand un angle retenu est implémentable, sans jamais lancer la commande. Arrêt en erreur explicite en exécution headless : le skill est intrinsèquement dialogué.
+
+Rebranché sur le noyau `_core` (`hcore/bs.py`) : arguments et plafond de tours, validation du JSON des lentilles, relance unique d'une lentille muette (qui désactive la sortie anticipée du tour), sortie anticipée, plafond de 5 pistes retenues, slug, reprise et rendu de la synthèse sont du code testé. **Aucune écriture avant la gate finale** : le noyau est sans état et la session lui passe le sien sur l'entrée standard ; le journal est écrit avec la synthèse.
 
 ### `code-index`
 
@@ -228,15 +237,17 @@ python .claude/rgkb/rgkb.py hooks status
 python .claude/rgkb/rgkb.py hooks remove
 ```
 
-`post-merge` (donc `git pull`) et `post-rewrite` (rebase) réindexent après coup ; `--with-commit` ajoute `pre-commit`, qui réindexe et met `.knowledge/` à l'index, de sorte que **tout commit porte un index cohérent avec son code**. Les hooks n'écrivent que si le contenu a changé et ne font jamais échouer une opération git ; `RGKB_NO_HOOK=1 git pull` les neutralise ponctuellement. Un hook existant est complété par un bloc délimité, jamais écrasé. `.git/hooks/` n'est pas versionné, mais l'**intention** l'est : `hooks install` écrit `"hooks": "commit"` dans `.knowledge/config.json`, et tout `status` ou `index` réconcilie les hooks locaux avec elle. Un utilisateur qui clone les obtient donc au premier cycle, sans rien lancer.
+`post-merge` (donc `git pull`) et `post-rewrite` (rebase) réindexent après coup ; `--with-commit` ajoute `pre-commit`, qui réindexe et met `.knowledge/` à l'index, de sorte que **tout commit porte un index cohérent avec son code**. Les hooks n'écrivent que si le contenu a changé et ne font jamais échouer une opération git ; `RGKB_NO_HOOK=1 git pull` les neutralise ponctuellement. Un hook existant est complété par un bloc délimité, jamais écrasé. `.git/hooks/` n'est pas versionné, mais l'**intention** l'est : `hooks install` écrit `"hooks": "commit"` dans `.knowledge/config.json`, et tout `status` ou `index` réconcilie les hooks locaux avec elle. Un utilisateur qui clone les obtient donc au premier cycle, sans rien lancer. `rgkb.py init` ne réécrit jamais un `config.json` existant, et `hooks install` ne remplace jamais un `config.json` illisible.
 
 `post-checkout` est **volontairement absent** : réindexer après un changement de branche salit l'arbre à chaque fois et git refuse le checkout suivant. Avec `pre-commit`, il n'a de toute façon rien à faire.
 
 Le câblage (sauf `--no-wire`) ajoute aux agents existants un bloc délimité `<!-- rgkb:debut -->` / `<!-- rgkb:fin -->`, réentrant, sans jamais réécrire leur prompt : fiche de fichier avant de lire un fichier entier, lecture des notes avant de formuler un avis, réindexation après modification pour le Builder, et à la consignation finale d'un cycle une proposition de note (1 à 3 par cycle, jamais ce que l'index retrouve seul). `/software-factory` et `/ai-lab` proposent son installation en fin de parcours (Phase 6b), toujours avec accord explicite.
 
+Le skill s'appuie sur le noyau `_core` (`hcore/cx.py`) pour tout ce qui est déterministe : arguments, commande d'installation de `rg`, état du dépôt, copie versionnée du serveur, fusion de `.mcp.json`, `settings.json`, `tasks.json` et de l'exclusion de `config.json`, blocs réentrants, `tools` et `--allowedTools` complétés sans rien retirer. Il exige Python ≥ 3.9.
+
 ## Noyau `skills/_core/`
 
-`skills/_core/` n'est pas un skill (il n'a pas de `SKILL.md`) : c'est le noyau déterministe partagé, en Python de bibliothèque standard (≥ 3.9), exposé par une CLI unique `harness.py` et testé par `py -3 -B -m unittest discover -s skills/_core/tests` (ou `python3`). Il porte ce qui ne relève pas du jugement — parsing des blocs JSON de verdict, compteurs d'itérations et de rondes, registre des findings, relance d'un agent mort, fusions de fichiers, séquences `gh`/`git` de `ship-pr` — et écrit le journal de cycle `.harness/runs/<skill>-<horodatage>.jsonl`, exclu de git. Le script d'installation le lie comme les skills, en `~/.claude/skills/_core`, où `ship-pr` l'appelle par `${CLAUDE_SKILL_DIR}/../_core` ; `software-factory` le copie dans chaque projet équipé sous `.claude/harness/`, que le `/factory-run` généré et la CI appellent.
+`skills/_core/` n'est pas un skill (il n'a pas de `SKILL.md`) : c'est le noyau déterministe partagé, en Python de bibliothèque standard (≥ 3.9), exposé par une CLI unique `harness.py` et testé par `py -3 -B -m unittest discover -s skills/_core/tests` (ou `python3`). Il porte ce qui ne relève pas du jugement — parsing des blocs JSON de verdict, compteurs d'itérations et de rondes, relance d'un agent mort, fusions de fichiers, séquences `gh`/`git` de `ship-pr`, et pour tous les skills : la primitive de **gate** (politique d'autonomie, catalogue des gates, repli headless), le schéma unique de **finding** (adaptateurs, validateur, conversions en spec, note ou commentaire) avec son registre projet local **`.claude/findings.jsonl`** (exclu de git, une ligne par finding), la détection de **stack** et ses bornes, les tailles et tris **tshirt**, les modèles par rôle (`.claude/models.json`, avec migration de `lab-models.json`), le moteur commun des audits — et écrit le journal de cycle `.harness/runs/<skill>-<horodatage>.jsonl`, exclu de git. Le script d'installation le lie comme les skills, en `~/.claude/skills/_core`, où `ship-pr` l'appelle par `${CLAUDE_SKILL_DIR}/../_core` ; `software-factory` le copie dans chaque projet équipé sous `.claude/harness/`, que le `/factory-run` généré et la CI appellent.
 
 ## Ajouter un skill
 

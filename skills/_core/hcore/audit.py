@@ -403,6 +403,45 @@ def _assign_id(state: Dict[str, Any], prefix: str, wanted: Any, reserved: Iterab
     return "%s-%02d" % (prefix, n)
 
 
+def git_pre_finding(p: Profile, state: Dict[str, Any], a: Auditor, items: List[Dict[str, Any]]
+                    ) -> Optional[Dict[str, Any]]:
+    """LA-03: GIT_ABSENT -> a pre-finding of the hygiene family (versioning
+    absent), added to what the hygiene auditor returned; it is validated and
+    deduplicated like any other finding."""
+    if p.skill != "legacy-audit" or a.name != "hygiene" or not state.get("git_absent"):
+        return None
+    fid = _assign_id(state, a.prefix, None, [i["id"] for i in items])
+    return findings.adapt(p.auditor_format, dict(texts()[p.skill]["git_absent"], id=fid), fid, a.unit, p.skill)
+
+
+LAB_AGENTS = ("lab-director", "lab-neuro", "lab-math")
+LAB_SKILL = ".claude/skills/lab-run/SKILL.md"
+ROLE_AGENTS = {"lab.math": "lab-math", "lab.neuro": "lab-neuro", "lab.director.cadrage": "lab-director"}
+
+
+def lab_present(repo: Path) -> bool:
+    """AA-05: LAB is true when the lab agents and the lab-run skill are installed."""
+    repo = Path(repo)
+    return all((repo / ".claude" / "agents" / ("%s.md" % n)).is_file() for n in LAB_AGENTS) \
+        and (repo / LAB_SKILL).is_file()
+
+
+def subagent_type(p: Profile, auditor: str, lab: bool) -> str:
+    """AA-05: the lab agent of the lens' role when LAB, otherwise Explore (every
+    audit launches Explore agents when it has no specialist)."""
+    role = p.auditor_roles.get(auditor)
+    return ROLE_AGENTS[role] if lab and role in ROLE_AGENTS else "Explore"
+
+
+def settle_status(audit_date: str, entry_date: str) -> Optional[str]:
+    """AA-10: 'TRANCHEE (journal <date>)' when the journal entry is later than
+    the audit date (a deterministic date comparison), otherwise None."""
+    for value in (audit_date, entry_date):
+        if not _valid_date(value):
+            raise AuditUsage("not a calendar date (YYYY-MM-DD): %r" % (value,))
+    return "TRANCHEE (journal %s)" % entry_date if entry_date > audit_date else None
+
+
 def _auditor(p: Profile, name: str) -> Auditor:
     for a in p.auditors:
         if a.name == name:
@@ -468,6 +507,9 @@ def record_auditor(state: Dict[str, Any], reg: registry.Registry, name: str, out
         return {"action": "not-audited", "auditor": name,
                 "reason": "%s not audited after one relaunch (%s)" % (name, reason)}, log
     slot["status"] = "ok"
+    pre = git_pre_finding(p, state, a, items)
+    if pre is not None:
+        items.insert(0, pre)
     slot["raw"] = len(items)
     seen: Dict[str, str] = {}
     for fid, f in state["findings"].items():
@@ -656,6 +698,11 @@ def next_step(state: Dict[str, Any]) -> Dict[str, Any]:
     p = profile(state["audit_skill"])
     pending_auditors = [a for a, s in state["auditors"].items() if s["status"] == "pending"]
     pending = [fid for fid, f in state["findings"].items() if f["status"] == findings.PROPOSED]
+    if p.dedup == "pattern":
+        # VA-09: a partial validation starts with the critical patterns, then
+        # the ones with the most occurrences (stable for equal ones).
+        pending.sort(key=lambda fid: (state["findings"][fid]["severity"] != "critical",
+                                      -int(state["findings"][fid].get("count") or 0)))
     confirmed = [fid for fid, f in state["findings"].items() if f["status"] == findings.CONFIRMED]
     if state["consolidated"] is not None:
         step = "render"
@@ -717,6 +764,55 @@ def consolidate(state: Dict[str, Any]) -> Dict[str, Any]:
     state["findings"], state["origin"] = renamed, origin
     state["consolidated"] = {"renamed": mapping, "order": order}
     return state["consolidated"]
+
+
+# ------------------------------------------------------ plan (LA-10, AA-02, VA-02, TS-05)
+
+def plan(state: Dict[str, Any], data: Dict[str, Any]) -> Dict[str, Any]:
+    """What the ceiling and the arbitration leave of the delivered findings.
+    `data` is the render data of the skill (findings -> milestone / not_retained /
+    omit / detail; optional `order`: the ids in the arbitrated order).
+    legacy-audit: finding -> spec mapping (TS-02) in the order of the
+    milestones, the --max-specs ceiling applied to the specs, load per
+    milestone (TS-05). ai-lab-audit: specs of the corrections by lens, the
+    --max-questions ceiling applied to the questions in the arbitrated order.
+    vibecode-audit: the --max-findings ceiling applied to the detailed
+    patterns, quick wins and raised criticals."""
+    p = profile(state["audit_skill"])
+    done = consolidate(state)
+    entries = data.get("findings") or {}
+    ids = [fid for prefix, _ in p.numbering for fid in done["order"].get(prefix, [])]
+    if data.get("order"):
+        if sorted(data["order"]) != sorted(ids):
+            raise AuditUsage("data: order must list every delivered finding once")
+        ids = list(data["order"])
+    items = [state["findings"][fid] for fid in ids
+             if not (entries.get(fid) or {}).get("omit") and not (entries.get(fid) or {}).get("not_retained")]
+    cap = state["cap"]
+    if p.skill == "legacy-audit":
+        work = []
+        for f in items:
+            number = (entries.get(f["id"]) or {}).get("milestone")
+            if number is None:
+                raise AuditUsage("data: finding %s needs a milestone, or not_retained" % f["id"])
+            work.append(dict(f, milestone=int(number)))
+        work.sort(key=lambda f: f["milestone"])
+        capped = tshirt.apply_cap(tshirt.plan_specs(work, "category-milestone"), cap)
+        kept_ids = {i for s in capped["kept"] for i in s["findings"]}
+        return {"specs": capped["kept"], "excess_specs": capped["excess"],
+                "not_retained_cap": [f["id"] for f in work if f["id"] not in kept_ids],
+                "load": tshirt.load([f for f in work if f["id"] in kept_ids], "milestone")}
+    if p.skill == "ai-lab-audit":
+        questions = [f for f in items if f.get("nature") != "correction"]
+        capped = tshirt.apply_cap(questions, cap) if questions else {"kept": [], "excess": []}
+        return {"specs": tshirt.plan_specs([f for f in items if f.get("nature") == "correction"], "lens"),
+                "questions": [f["id"] for f in capped["kept"]], "not_retained_cap": [f["id"] for f in capped["excess"]],
+                "load": tshirt.load(capped["kept"], "axis")}
+    pool = [f for f in items if (entries.get(f["id"]) or {}).get("detail", True)]
+    capped = tshirt.apply_cap(pool, cap) if pool else {"kept": [], "excess": []}
+    return {"detailed": [f["id"] for f in capped["kept"]], "short_cap": [f["id"] for f in capped["excess"]],
+            "quick_wins": tshirt.quick_wins(items), "raised_criticals": tshirt.raised_criticals(items),
+            "load": tshirt.load(items, "axis")}
 
 
 # ---------------------------------------------------- gates (AU-15, AU-16)
@@ -1098,7 +1194,8 @@ def _not_audited(lines: List[str], t: Dict[str, Any], doc: Dict[str, Any]) -> No
 
 
 def _spec_cell(c: Dict[str, Any], entry: Dict[str, Any]) -> str:
-    return _t(c["spec_link"], path=entry["spec"]) if entry.get("spec") else c["none"]
+    # Relative links with "/" (LA-09), whatever the separator the skill passed.
+    return _t(c["spec_link"], path=entry["spec"].replace("\\", "/")) if entry.get("spec") else c["none"]
 
 
 def _render_legacy(doc: Dict[str, Any]) -> List[str]:
@@ -1299,6 +1396,11 @@ def _render_vibecode(doc: Dict[str, Any]) -> List[str]:
     lines.extend(_t(x, validated=total - unvalidated, total=total) for x in t["limits"])
     surfaces = [dict(surface=_t(t["dead_family"]["surface"], unit=s), why=t["dead_family"]["why"],
                      needs=t["dead_family"]["needs"]) for s in doc.get("surfaces_dead", [])]
+    for s in data.get("surfaces", []):
+        # VA-06: an unauditable surface is never below major.
+        if s.get("severity", "major") not in ("major", "critical"):
+            raise AuditUsage("data: an unauditable surface is of severity major or critical, not %r (%s)"
+                             % (s.get("severity"), s.get("surface")))
     surfaces += list(data.get("surfaces", []))
     _table(lines, t["surfaces_heading"], t["surfaces_table"],
            [_row(t["surfaces_row"], surface=s["surface"], why=s["why"], needs=s["needs"]) for s in surfaces])

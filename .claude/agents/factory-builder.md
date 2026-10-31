@@ -2,7 +2,7 @@
 name: factory-builder
 description: Implémente strictement une spécification approuvée — architecture, code et tests dans un même contexte — puis exécute build et tests avant de rendre la main.
 # >>> harness.model >>>
-model: inherit
+model: sonnet
 # <<< harness.model <<<
 ---
 

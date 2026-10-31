@@ -142,6 +142,15 @@ def plan_specs(findings: Sequence[Dict[str, Any]], grouping: str,
     return specs
 
 
+def apply_cap(units: Sequence[Any], cap: int) -> Dict[str, List[Any]]:
+    """The ceiling of a deliverable (--max-specs, --max-questions,
+    --max-findings): the first `cap` units in the given order are kept, the
+    excess goes to the 'not retained' list (LA-10, AA-02, VA-02)."""
+    if isinstance(cap, bool) or not isinstance(cap, int) or cap < 1:
+        raise SizeError("the cap must be an integer >= 1, got %r" % (cap,))
+    return {"kept": list(units[:cap]), "excess": list(units[cap:])}
+
+
 def distribution(sizes: Iterable[Optional[str]]) -> Dict[str, int]:
     """TS-05: number of findings of each size, in the XS..XL order."""
     counts = {s: 0 for s in SIZES}

@@ -23,8 +23,8 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from hcore import CORE_VERSION  # noqa: E402
-from hcore import (audit, blocks, counters, factory, findings, fusion, gates, ghflow, interp,  # noqa: E402
-                   journal, models, registry, runs, shippr, stack, tshirt, verdicts)
+from hcore import (audit, blocks, bs, counters, cx, factory, findings, fusion, gates, ghflow,  # noqa: E402
+                   interp, journal, lab, labrun, models, registry, runs, shippr, stack, tshirt, verdicts)
 from hcore import proc  # noqa: E402
 from hcore.proc import Runner  # noqa: E402
 
@@ -775,6 +775,8 @@ def cmd_tshirt(args: argparse.Namespace) -> int:
         result["raised_criticals"] = tshirt.raised_criticals(items)
     if args.grouping:
         result["specs"] = tshirt.plan_specs(items, args.grouping)
+    if args.cap is not None:
+        result["cap"] = tshirt.apply_cap(result.get("specs") or result["order"], args.cap)
     if args.load_by:
         result["load"] = tshirt.load(items, args.load_by)
     emit(result)
@@ -831,13 +833,16 @@ def cmd_audit_start(args: argparse.Namespace) -> int:
     reg = registry.Registry(runs.registry_path(run))
     count = audit.register_resumed(resumed, reg) if resumed else 0
     auditors = []
+    lab_here = audit.lab_present(repo) if args.skill == "ai-lab-audit" else False
     for a in p.auditors:
         if a.name in parsed["auditors"]:
             role = audit.auditor_role(p, a.name)
-            auditors.append(dict(resolved["roles"][role], auditor=a.name, unit=a.unit, prefix=a.prefix, role=role))
+            auditors.append(dict(resolved["roles"][role], auditor=a.name, unit=a.unit, prefix=a.prefix, role=role,
+                                 subagent_type=audit.subagent_type(p, a.name, lab_here)))
     result = {"run": runs.display(run), "repo": str(repo), "skill": args.skill, "units": parsed["units"],
               "auditors": auditors, "validator": dict(resolved["roles"][p.validator_role], role=p.validator_role),
               "cap": parsed["cap"], "git_absent": git_absent, "exclude_added": excluded, "factory": factory_here,
+              "lab": lab_here,
               "resumed": None if resumed is None else {"entries": count, "numbering": resumed["numbering"],
                                                        "ids": audit.resumed_ids(resumed)},
               "project_findings": len(project), "allowed_writes": audit.allowed_writes(args.skill)}
@@ -892,6 +897,21 @@ def cmd_audit_consolidate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_audit_plan(args: argparse.Namespace) -> int:
+    run, state, p, reg = _audit_ctx(args)
+    data = _json_file("--data-file", args.data_file)     # read, not consumed: 'render' takes it later
+    if not isinstance(data, dict):
+        raise Usage("--data-file expects a JSON object")
+    emit(audit.plan(state, data))
+    runs.save_state(run, state)
+    return 0
+
+
+def cmd_audit_settle(args: argparse.Namespace) -> int:
+    emit({"status": audit.settle_status(args.audit_date, args.entry_date)})
+    return 0
+
+
 def cmd_audit_themes(args: argparse.Namespace) -> int:
     emit(audit.gate_calls(args.skill, args.count))
     return 0
@@ -938,6 +958,147 @@ def cmd_audit_spec(args: argparse.Namespace) -> int:
 def cmd_audit_publish(args: argparse.Namespace) -> int:
     run, state, p, reg = _audit_ctx(args)
     emit(audit.publish(state, reg, Path(run).name, args.deliverable))
+    return 0
+
+
+# ---------------------------------------------------------------- code-index
+
+def _json_text(option: str, text: str) -> Any:
+    try:
+        return json.loads(text)
+    except ValueError as exc:
+        raise Usage("%s is not valid JSON: %s" % (option, exc))
+
+
+def cmd_cx_args(args: argparse.Namespace) -> int:
+    try:
+        text = read_file(args.arguments_file) if args.arguments_file else ""
+    finally:
+        _remove_transit(Path(args.root), args.arguments_file)
+    emit(cx.parse_arguments(text))
+    return 0
+
+
+def cmd_cx_rg(args: argparse.Namespace) -> int:
+    emit(cx.probe_rg())
+    return 0
+
+
+def cmd_cx_survey(args: argparse.Namespace) -> int:
+    emit(cx.survey(Path(args.root)))
+    return 0
+
+
+def cmd_cx_install(args: argparse.Namespace) -> int:
+    emit(cx.install_server(Path(args.asset), Path(args.root)))
+    return 0
+
+
+def cmd_cx_register(args: argparse.Namespace) -> int:
+    emit(cx.register(Path(args.root), args.interp.split()))
+    return 0
+
+
+def cmd_cx_scope(args: argparse.Namespace) -> int:
+    emit(cx.scope(Path(args.root)))
+    return 0
+
+
+def cmd_cx_wire(args: argparse.Namespace) -> int:
+    try:
+        contents = _json_text("--blocks-file", read_file(args.blocks_file))
+    finally:
+        _remove_transit(Path(args.root), args.blocks_file)
+    if not isinstance(contents, dict):
+        raise Usage("--blocks-file expects a JSON object {name: block text}")
+    emit(cx.wire(Path(args.root), contents, args.interp.split()))
+    return 0
+
+
+# ------------------------------------------------------------------- ai-lab
+
+def cmd_lab_apply(args: argparse.Namespace) -> int:
+    emit(lab.apply(Path(args.root), args.test_command, args.test_windows))
+    return 0
+
+
+def cmd_lab_ci(args: argparse.Namespace) -> int:
+    emit(lab.install_ci(Path(args.root), args.allow or []))
+    return 0
+
+
+def cmd_lr_start(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    arguments = ""
+    try:
+        if args.arguments_file:
+            arguments = read_file(args.arguments_file)
+    finally:
+        _remove_transit(root, args.arguments_file)
+    try:
+        rest, override = models.extract_option(arguments)
+        resolved = models.resolve_root(root, models.LAB_ROLES, override, "lab")
+    except models.ModelsError as exc:
+        raise Usage(str(exc))
+    choice = labrun.entry(rest, root)
+    state = labrun.new_state({r: e["model"] for r, e in resolved["roles"].items()}, choice["mode"])
+    run = runs.create(root, "lab-run", state)
+    result = dict(choice, run=runs.display(run), models=resolved["roles"])
+    if choice["mode"] == "cadrage":
+        result["question"] = rest
+    if resolved["warnings"]:
+        result["model_warnings"] = resolved["warnings"]
+    emit(result)
+    return 0
+
+
+def cmd_lr_record(args: argparse.Namespace) -> int:
+    run = _run_path(args.run)
+    state = runs.load_state(run)
+    slot = args.agent + (":" + args.mode if args.mode else "")
+    measure = _measure(state, args, slot)
+    decision, fields = labrun.record(state, args.agent, args.mode, read_output(args.output), args.dead)
+    model = _model(args, state, labrun.role_of(args.agent, args.mode))
+    _log(run, args, args.agent, measure, fields, decision, model)
+    runs.save_state(run, state)
+    emit(decision)
+    return 0
+
+
+# --------------------------------------------------------------- brainstorm
+# Nothing is written before the final gate (X5): the session state travels
+# on stdin ('-'), and 'finish' writes the journal with the synthesis.
+
+def _stdin_json(option: str, value: str) -> Any:
+    return _json_text(option, read_output(value) or "")
+
+
+def cmd_bs_args(args: argparse.Namespace) -> int:
+    emit(bs.parse_arguments(read_output(args.arguments) or ""))
+    return 0
+
+
+def cmd_bs_resume(args: argparse.Namespace) -> int:
+    emit(bs.resume(Path(args.root), args.path))
+    return 0
+
+
+def cmd_bs_round(args: argparse.Namespace) -> int:
+    data = _stdin_json("--data", args.data)
+    emit(bs.round_step(int(data["round"]), int(data["rounds"]), data["lenses"], data.get("discarded") or [],
+                       data.get("relaunched") or []))
+    return 0
+
+
+def cmd_bs_render(args: argparse.Namespace) -> int:
+    data = _stdin_json("--data", args.data)
+    previous = bs.resume(Path(args.root), bs.synthesis_path(data["subject"]))["rows"]
+    sys.stdout.write(bs.render(data, previous))
+    return 0
+
+
+def cmd_bs_finish(args: argparse.Namespace) -> int:
+    emit(bs.finish(Path(args.root), _stdin_json("--data", args.data)))
     return 0
 
 
@@ -1060,6 +1221,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--order", required=True, choices=tshirt.ORDERS)
     p.add_argument("--grouping", default=None, choices=tshirt.GROUPINGS, help="finding -> spec mapping (TS-02)")
     p.add_argument("--load-by", default=None, help="key of the load groups (milestone, ...)")
+    p.add_argument("--cap", type=int, default=None, help="ceiling: first N specs (or findings) kept, excess listed")
     p.set_defaults(func=cmd_tshirt)
     p = sub.add_parser("audit", help="shared audit engine (AU-01 to AU-16)")
     asub = p.add_subparsers(dest="aucmd", required=True)
@@ -1081,6 +1243,14 @@ def build_parser() -> argparse.ArgumentParser:
         q = asub.add_parser(name)
         q.add_argument("--run", required=True)
         q.set_defaults(func=func)
+    q = asub.add_parser("plan", help="ceiling, spec mapping, load and quick wins of the arbitrated findings (LA-10)")
+    q.add_argument("--run", required=True)
+    q.add_argument("--data-file", required=True, help="the render data of the skill (not consumed)")
+    q.set_defaults(func=cmd_audit_plan)
+    q = asub.add_parser("settle", help="TRANCHEE (journal <date>) when the entry is later than the audit (AA-10)")
+    q.add_argument("--audit-date", required=True)
+    q.add_argument("--entry-date", required=True)
+    q.set_defaults(func=cmd_audit_settle)
     q = asub.add_parser("themes", help="gate calls for N themes (AU-16)")
     q.add_argument("--skill", required=True, choices=sorted(audit.PROFILES))
     q.add_argument("--count", required=True, type=int)
@@ -1142,6 +1312,75 @@ def build_parser() -> argparse.ArgumentParser:
     _agent_args(q)
     q.add_argument("--agent", required=True, choices=factory.AGENTS)
     q.set_defaults(func=cmd_fr_record)
+
+    p = sub.add_parser("cx", help="code-index rules (CX-01 to CX-16)")
+    csub = p.add_subparsers(dest="cxcmd", required=True)
+    q = csub.add_parser("args", help="--reindex, --no-wire; the rest handed back (CX-01)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--arguments-file", default=None, help="file holding $ARGUMENTS, written by Write (consumed)")
+    q.set_defaults(func=cmd_cx_args)
+    csub.add_parser("rg", help="ripgrep probe and install command (CX-02)").set_defaults(func=cmd_cx_rg)
+    q = csub.add_parser("survey", help="repository state (CX-04)")
+    q.add_argument("--root", default=".")
+    q.set_defaults(func=cmd_cx_survey)
+    q = csub.add_parser("install", help="copies rgkb.py (CX-05)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--asset", required=True, help="assets/rgkb.py of the skill")
+    q.set_defaults(func=cmd_cx_install)
+    q = csub.add_parser("register", help=".mcp.json, settings.json, tasks.json (CX-06, CX-07, CX-15)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--interp", required=True, help="interpreter command, e.g. 'py -3'")
+    q.set_defaults(func=cmd_cx_register)
+    q = csub.add_parser("scope", help="config.json exclusions and .gitignore counter-rule (CX-08, CX-10)")
+    q.add_argument("--root", default=".")
+    q.set_defaults(func=cmd_cx_scope)
+    q = csub.add_parser("wire", help="blocks, tools and CI allow lists (CX-12 to CX-14)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--interp", required=True)
+    q.add_argument("--blocks-file", required=True, help="JSON {target: block text}, written by Write (consumed)")
+    q.set_defaults(func=cmd_cx_wire)
+
+    p = sub.add_parser("lab", help="ai-lab installation rules (AL-01 to AL-09)")
+    lsub = p.add_subparsers(dest="labcmd", required=True)
+    q = lsub.add_parser("apply", help="settings.json deny rules, tasks.json, .gitignore (AL-01 to AL-03)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--test-command", default=None, help="detected test command (task 'Lab: tests unitaires')")
+    q.add_argument("--test-windows", default=None, help="its windows variant when different")
+    q.set_defaults(func=cmd_lab_apply)
+    q = lsub.add_parser("ci", help="ci/lab.sh and ci/lab.ps1 (AL-07)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--allow", action="append", help="allow-list entry added to the base list (repeatable)")
+    q.set_defaults(func=cmd_lab_ci)
+
+    p = sub.add_parser("lab-run", help="lab-run orchestration (LR-01 to LR-09)")
+    lrsub = p.add_subparsers(dest="lrcmd", required=True)
+    q = lrsub.add_parser("start")
+    q.add_argument("--root", default=".")
+    q.add_argument("--arguments-file", default=None, help="file holding $ARGUMENTS, written by Write (consumed)")
+    q.set_defaults(func=cmd_lr_start)
+    q = lrsub.add_parser("record")
+    _agent_args(q)
+    q.add_argument("--agent", required=True, choices=labrun.AGENTS)
+    q.add_argument("--mode", default=None, choices=labrun.MODES, help="Director only")
+    q.set_defaults(func=cmd_lr_record)
+
+    p = sub.add_parser("bs", help="brainstorm rules (BS-01 to BS-12); state on stdin, nothing written before 'finish'")
+    bsub = p.add_subparsers(dest="bscmd", required=True)
+    q = bsub.add_parser("args")
+    q.add_argument("--arguments", default="-", help="'-' = $ARGUMENTS on stdin")
+    q.set_defaults(func=cmd_bs_args)
+    q = bsub.add_parser("resume")
+    q.add_argument("--root", default=".")
+    q.add_argument("--path", required=True)
+    q.set_defaults(func=cmd_bs_resume)
+    q = bsub.add_parser("round")
+    q.add_argument("--data", default="-")
+    q.set_defaults(func=cmd_bs_round)
+    for name, func in (("render", cmd_bs_render), ("finish", cmd_bs_finish)):
+        q = bsub.add_parser(name)
+        q.add_argument("--root", default=".")
+        q.add_argument("--data", default="-")
+        q.set_defaults(func=func)
 
     p = sub.add_parser("ship-pr", help="ship-pr orchestration (SP-01 to SP-19)")
     psub = p.add_subparsers(dest="spcmd", required=True)
@@ -1218,8 +1457,8 @@ def main(argv: Optional[List[str]] = None) -> int:
     except (ghflow.Stop, runs.LockTimeout, gates.GateStop, audit.AuditStop) as exc:
         sys.stderr.write("STOP: %s\n" % exc)
         return 1
-    except (Usage, ValueError, factory.RunOver, shippr.LoopError, fusion.FusionError,
-            blocks.BlockError, FileNotFoundError) as exc:
+    except (Usage, ValueError, factory.RunOver, labrun.RunOver, shippr.LoopError, fusion.FusionError,
+            blocks.BlockError, FileNotFoundError, KeyError) as exc:
         sys.stderr.write("ERROR: %s\n" % exc)
         return 2
 
