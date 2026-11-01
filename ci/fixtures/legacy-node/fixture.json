@@ -1,0 +1,47 @@
+{
+  "description": "project installed before the v2 core: no block, no stamp",
+  "sources": [
+    {
+      "path": "tests/fixtures/toy-project",
+      "note": "project sources, referenced not copied"
+    }
+  ],
+  "origin_commit": "7be1afb",
+  "renames": {
+    "claude": ".claude",
+    "vscode": ".vscode",
+    "gitignore.txt": ".gitignore"
+  },
+  "files": {
+    "claude/agents/factory-builder.md": {
+      "from": "7be1afb:.claude/agents/factory-builder.md"
+    },
+    "claude/agents/factory-planner.md": {
+      "from": "7be1afb:.claude/agents/factory-planner.md"
+    },
+    "claude/agents/factory-verifier.md": {
+      "from": "7be1afb:.claude/agents/factory-verifier.md"
+    },
+    "claude/skills/factory-run/SKILL.md": {
+      "from": "7be1afb:.claude/skills/factory-run/SKILL.md"
+    },
+    "ci/factory.sh": {
+      "from": "7be1afb:ci/factory.sh"
+    },
+    "ci/factory.ps1": {
+      "from": "7be1afb:ci/factory.ps1"
+    },
+    "claude/settings.json": {
+      "from": "7be1afb:.claude/settings.json"
+    },
+    "vscode/tasks.json": {
+      "from": "7be1afb:.vscode/tasks.json"
+    },
+    "gitignore.txt": {
+      "from": "7be1afb:.gitignore"
+    },
+    "claude/lab-models.json": {
+      "note": "ai-lab format written for this fixture (no origin commit)"
+    }
+  }
+}

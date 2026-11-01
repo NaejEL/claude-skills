@@ -71,6 +71,46 @@
     {
       "phrase": "ne pas commiter à sa place).",
       "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "Créer le skill projet qui pilote un cycle complet",
+      "roadmap": "Phase 6 fix: the installer-directed wording of orchestrator.md is replaced by the rendered body bodies/orchestrator.md (single source of the factory-run procedure; same rules, rule identifiers dropped from the prose)"
+    },
+    {
+      "phrase": "Le corps (rédigé intégralement, voix impérative, adapté à la stack)",
+      "roadmap": "Phase 6 fix: the installer-directed wording of orchestrator.md is replaced by the rendered body bodies/orchestrator.md (single source of the factory-run procedure; same rules, rule identifiers dropped from the prose)"
+    },
+    {
+      "phrase": "connue seulement après l'appel, elle complète la dernière entrée du slot",
+      "roadmap": "Phase 6 fix: the installer-directed wording of orchestrator.md is replaced by the rendered body bodies/orchestrator.md (single source of the factory-run procedure; same rules, rule identifiers dropped from the prose)"
+    },
+    {
+      "phrase": "`--output .harness/runs/verifier-<n>.md`, fichier où",
+      "roadmap": "Phase 6 fix: the installer-directed wording of orchestrator.md is replaced by the rendered body bodies/orchestrator.md (single source of the factory-run procedure; same rules, rule identifiers dropped from the prose)"
+    },
+    {
+      "phrase": "Le champ `action` du JSON rendu dicte la suite",
+      "roadmap": "Phase 6 fix: the installer-directed wording of orchestrator.md is replaced by the rendered body bodies/orchestrator.md (single source of the factory-run procedure; same rules, rule identifiers dropped from the prose)"
+    },
+    {
+      "phrase": "Déroulé pour la session principale",
+      "roadmap": "Phase 6 fix: the installer-directed wording of orchestrator.md is replaced by the rendered body bodies/orchestrator.md (single source of the factory-run procedure; same rules, rule identifiers dropped from the prose)"
+    },
+    {
+      "phrase": "approuvée, passer le statut à `APPROUVEE`",
+      "roadmap": "Phase 6 fix: the installer-directed wording of orchestrator.md is replaced by the rendered body bodies/orchestrator.md (single source of the factory-run procedure; same rules, rule identifiers dropped from the prose)"
+    },
+    {
+      "phrase": "**Phase Verify — boucle de correction, 3 itérations maximum** : lancer un sous-agent",
+      "roadmap": "Phase 6 fix: the installer-directed wording of orchestrator.md is replaced by the rendered body bodies/orchestrator.md (single source of the factory-run procedure; same rules, rule identifiers dropped from the prose)"
+    },
+    {
+      "phrase": "- `relaunch` (FR-04)",
+      "roadmap": "Phase 6 fix: the installer-directed wording of orchestrator.md is replaced by the rendered body bodies/orchestrator.md (single source of the factory-run procedure; same rules, rule identifiers dropped from the prose)"
+    },
+    {
+      "phrase": "- `fail` : **échouer explicitement**",
+      "roadmap": "Phase 6 fix: the installer-directed wording of orchestrator.md is replaced by the rendered body bodies/orchestrator.md (single source of the factory-run procedure; same rules, rule identifiers dropped from the prose)"
     }
   ]
 }

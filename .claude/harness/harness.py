@@ -869,7 +869,8 @@ def cmd_sp_start(args: argparse.Namespace) -> int:
     info.update(ghflow.worktree_and_repo(run_cmd))
     assignment = {r: e["model"] for r, e in resolved["roles"].items()}
     state = shippr.new_state(args.target, rounds, themes, assignment)
-    state.update(branch=info["branch"], owner_repo=info["owner_repo"], spec=args.spec)
+    # HK-05: the scope hooks only apply to a run whose state says `running`.
+    state.update(branch=info["branch"], owner_repo=info["owner_repo"], spec=args.spec, status="running")
     # RG-04: the project registry is read once, when the run starts.
     state["project"] = {k: {"status": e["status"], "source": e["source"]}
                         for k, e in registry.ProjectRegistry(root).read().items()}

@@ -137,5 +137,20 @@ class LayoutTest(helpers.TempDirCase):
         self.assertEqual(uf.plan_and_apply(self.root, upgrade.SF, self.info, profs)["changes"], [])
 
 
+    def test_rd02_the_generated_orchestrator_is_the_single_source_fragment(self):
+        """RD-02, AP-03, HK-05: the factory-run body of a fresh install is bodies/orchestrator.md, rendered, and it
+        carries the commands the orchestrator must run (binding, settling, scope hooks)."""
+        text = uf.read(self.root, ".claude/skills/factory-run/SKILL.md")
+        start, end = blocks.markers("harness.profile.software", "md")
+        body = text.split(start + "\n", 1)[1].split("\n" + end, 1)[0]
+        source = (uf.PROFILES / "software" / "bodies" / "orchestrator.md").read_text(encoding="utf-8")
+        rendered = render.substitute(source, {"interpreter": uf.INTERPRETER})
+        self.assertEqual(body.strip("\n"), rendered.strip("\n"))
+        for command in ("factory-run bind", "spec settle", "activate --run", "deactivate --run",
+                        "factory-run start", "spec set-status", "factory-run deliver"):
+            self.assertIn(command, body)
+        self.assertNotIn("{{", body)
+
+
 if __name__ == "__main__":
     unittest.main()

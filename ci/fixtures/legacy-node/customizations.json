@@ -1,0 +1,47 @@
+[
+  {
+    "file": "claude/agents/factory-builder.md",
+    "project_path": ".claude/agents/factory-builder.md",
+    "excerpt": "Toujours citer la spec dans le message de commit.",
+    "reason": "instruction added to the Builder prompt, outside any block",
+    "suffix": "\n## Règles maison\n\nToujours citer la spec dans le message de commit.\n"
+  },
+  {
+    "file": "claude/skills/factory-run/SKILL.md",
+    "project_path": ".claude/skills/factory-run/SKILL.md",
+    "excerpt": "## Notes de l'équipe",
+    "reason": "section added to the orchestrator skill, outside any block",
+    "suffix": "\n## Notes de l'équipe\n\nPrévenir l'équipe avant tout cycle lancé en production.\n"
+  },
+  {
+    "file": "claude/settings.json",
+    "project_path": ".claude/settings.json",
+    "excerpt": "\"Read(./secrets/**)\"",
+    "reason": "user deny rule"
+  },
+  {
+    "file": "claude/settings.json",
+    "project_path": ".claude/settings.json",
+    "excerpt": "\"TEAM_MODE\": \"strict\"",
+    "reason": "third-party key unknown to the harness"
+  },
+  {
+    "file": "vscode/tasks.json",
+    "project_path": ".vscode/tasks.json",
+    "excerpt": "\"label\": \"Équipe: lancer les tests\"",
+    "reason": "user task"
+  },
+  {
+    "file": "gitignore.txt",
+    "project_path": ".gitignore",
+    "excerpt": "notes-perso.txt",
+    "reason": "user line",
+    "suffix": "notes-perso.txt\n"
+  },
+  {
+    "file": "claude/lab-models.json",
+    "project_path": ".claude/lab-models.json",
+    "excerpt": "\"neuro\": \"fable\"",
+    "reason": "non-default model choice of ai-lab"
+  }
+]

@@ -181,7 +181,7 @@
     "name": "factory-run",
     "alias_of": null,
     "description": "Lance un cycle de l'usine logicielle (Planner → gate humaine sur la spec → Builder → Verifier avec boucle de correction) sur un besoin ou une spec approuvée.",
-    "argument_hint": "<besoin | chemin d'une spec approuvée> [--models \"role=modele;...\"]"
+    "argument_hint": "<besoin | chemin d'une spec> [--models \"role=modele;...\"] [--autonomy gate|auto] [--ship <cible> | --no-ship] [--worktree]"
   },
   "gate_namespaces": [],
   "gates": [

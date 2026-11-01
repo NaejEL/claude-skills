@@ -244,6 +244,30 @@ Chaque projet équipé porte un tampon **versionné** `.claude/harness.json` : v
 
 `skills/_core/` n'est pas un skill (il n'a pas de `SKILL.md`) : c'est le noyau déterministe partagé, en Python de bibliothèque standard (≥ 3.9), exposé par une CLI unique `harness.py` et testé par `py -3 -B -m unittest discover -s skills/_core/tests` (ou `python3`). Il porte ce qui ne relève pas du jugement — parsing des blocs JSON de verdict, compteurs d'itérations et de rondes, relance d'un agent mort, fusions de fichiers, séquences `gh`/`git` de `ship-pr`, et pour tous les skills : la primitive de **gate** (politique d'autonomie, catalogue des gates, repli headless), le schéma unique de **finding** (adaptateurs, validateur, conversions en spec, note ou commentaire) avec son registre projet local **`.claude/findings.jsonl`** (exclu de git, une ligne par finding), la détection de **stack** et ses bornes, les tailles et tris **tshirt**, les modèles par rôle (`.claude/models.json`, avec migration de `lab-models.json`), le moteur commun des audits — et écrit le journal de cycle `.harness/runs/<skill>-<horodatage>.jsonl`, exclu de git. Le script d'installation le lie comme les skills, en `~/.claude/skills/_core`, où `ship-pr` l'appelle par `${CLAUDE_SKILL_DIR}/../_core` ; `software-factory` le copie dans chaque projet équipé sous `.claude/harness/` (avec un `MANIFEST.json`, et `history.json` qui reconnaît ses états successifs : `harness.py core history --check`), que le `/factory-run` généré et la CI appellent.
 
+## Tester le harnais
+
+Deux niveaux de tests :
+
+- **Tests unitaires** du noyau : `cd skills/_core/tests && py -3 -B -m unittest discover -s . -t .` (règles isolées, fixtures de `tests/fixtures/`).
+- **Scénarios de bout en bout** : `bash ci/test-harness.sh` ou `pwsh ci/test-harness.ps1`. Un runner Python commun (`ci/scenarios/`, bibliothèque standard seule) rejoue, dans des dossiers temporaires, la séquence d'appels au noyau que prescrivent les SKILL.md et l'orchestrateur généré, sur les projets jouets de `ci/fixtures/`. Les agents sont simulés (sorties figées, le Verifier lance les vrais tests du projet), `gh` est le faux `skills/_core/tests/fake_gh.py` au-dessus d'un dépôt nu local, et `claude` n'est jamais appelé : des cales en tête du PATH comptent tout appel au vrai `gh` ou `claude` (`real_gh_calls`, `real_claude_calls` du rapport).
+
+| Scénario | Ce qu'il vérifie |
+| --- | --- |
+| `install-fresh` | installation à neuf de `/software-factory` sur un projet Python |
+| `install-skills` | `install_skills.sh` / `.ps1` vers un `HOME` temporaire (liens, idempotence, conflit) |
+| `upgrade-legacy` | `--upgrade` d'un projet installé à l'ancienne, personnalisations hors bloc conservées |
+| `factory-auto` | cycle `factory-run` complet en `auto` jusqu'au Verifier, et contre-épreuve d'une question bloquante |
+| `stop-iteration3` | arrêt propre à la 3e itération (`STOP-*.md`) |
+| `shippr-automerge` | `ship-pr` sans finding : merge automatique, et les refus (CI rouge, branche protégée, thème muet) |
+| `hook-diff` | le hook PreToolUse de `ship-pr` bloque hors du diff, exécuté par la ligne de `settings.json` |
+| `models-absent`, `models-legacy` | `models.json` absent, migration de `lab-models.json` |
+
+Options : `--list [--verbose]`, `--scenario <id>` (répétable), `--live`, `--keep`, `--fixtures <dossier>`, `--report <fichier>` (PowerShell : `-List`, `-Details`, `-Scenario`, `-Live`, `-Keep`, `-Fixtures`, `-Report`). Une ligne `PASS|FAIL|SKIP <id> <durée>` par scénario ; code de sortie 0 (tout `PASS` ou `SKIP` motivé), 1 (un `FAIL`, ou `--live` sans `claude`), 2 (option ou scénario inconnu). Sous Git Bash sans liens symboliques natifs, `install-skills` est `SKIP` (la couverture Windows passe par le lanceur PowerShell).
+
+`--live` ajoute `live-install`, `live-factory` et `live-hook` : le vrai `claude -p` (`--max-turns`, liste blanche d'outils, jamais le contournement des permissions), avec des assertions structurelles seulement. Il consomme l'abonnement et n'est jamais lancé par défaut. `ship-pr` réel reste une recette manuelle sur un dépôt GitHub jetable.
+
+**`claude plugin eval` ne porte pas ces scénarios** (BACKLOG §5) : il sait préparer une fixture, mais aucun grader n'exécute de commande shell, alors que chaque résultat attendu ici est un état observable par commande (code de sortie, octets d'un fichier, état git, état du faux `gh`, journal). Il suppose en outre un plugin, ce que la Phase 7 n'a pas décidé. Il reste réexaminable pour des évaluations jugées par un LLM (qualité d'une spec).
+
 ## Ajouter un skill
 
 Créer `skills/<nom>/SKILL.md` (frontmatter `name` + `description` minimum), relancer le script d'installation, commiter.

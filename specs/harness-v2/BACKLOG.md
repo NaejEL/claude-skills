@@ -54,7 +54,7 @@ Ordre repris de l'annexe de `specs/SPEC-noyau-core-journal.md`, qui fait foi.
 | Q9 | Schéma de finding unique, avec `occurrences[]` | ouverte, incréments 1 et 4 |
 | Q10 | Format des profils : JSON, car la stdlib n'a pas de YAML | **tranchée en Phase 2** : `profile.json` plus fragments Markdown (PF-01) |
 | Q11 | Corriger D8, C1, C2, C3 à part ? | ouverte, D8 = incrément 3 |
-| Q13 | Emplacement des tests | **tranchée** : tests unitaires dans `skills/_core/tests/`, fixtures dans `tests/fixtures/` |
+| Q13 | Emplacement des tests | **tranchée** : tests unitaires dans `skills/_core/tests/`, fixtures dans `tests/fixtures/` ; Phase 6 : scénarios de bout en bout dans `ci/scenarios/`, leurs projets jouets et sorties d'agents figées dans `ci/fixtures/` (voir §11) |
 | Q14 | ship-pr et brainstorm consomment le noyau sans devenir des profils | ouverte |
 
 Autres décisions de la spec 0 (2026-10-16) : interpréteur détecté à l'exécution avec délai d'expiration ; `models.json` et blocs délimités sous forme de modules seuls, non branchés ; usine du dépôt inchangée ; bornes invalides = erreur explicite ; cible −⅓ ferme, quitte à sortir aussi les séquences `gh`/`git` de ship-pr.
@@ -366,4 +366,19 @@ Points d'attention pour la suite :
 - `harness-doctor` : en `auto`, `K doctor auto-upgrade --plan` lit le plan écrit par `K upgrade plan` (les types `header`, `merge`, `copy`, `local`, `stamp`, `block` sont sûrs ; `create`, `convert`, `migrate`, ou un fichier de la gate `upgrade.convert` font proposer au lieu de lancer). Les anciennes gates `harness-doctor.upgrade-blocks` et `-other` restent au catalogue.
 - Gates de dialogue (`brainstorm.*`) : pas de défaut `auto`, donc pas de ligne « Défauts en politique `auto` » dans `skills/brainstorm/` (intouché).
 - Le moteur de chaînage lance `claude` détaché via un wrapper (`chain exec`) qui tue l'arbre au timeout ; la détection « en cours » d'une spec repose sur `updated_at` du fichier d'état (risque I5).
+- Mineurs du Verifier à consigner ici.
+
+## 11. Phase 6 — état (2026-11-01)
+
+Spec : `specs/SPEC-phase6-tests-harnais.md` (détail) et `specs/SPEC-phase6-run.md` (périmètre du run). Livré dans l'arbre de travail, non commité : lanceurs `ci/test-harness.sh` et `ci/test-harness.ps1`, runner `ci/scenarios/` (un module par scénario), fixtures `ci/fixtures/` (`toy-py`, `legacy-node`, `agents`, `expected`), faux `gh` complété (`pr checks`, protection de branche, `--body-file`, `--delete-branch`), README « Tester le harnais ».
+
+Statut des scénarios : `install-fresh`, `upgrade-legacy`, `factory-auto`, `stop-iteration3`, `shippr-automerge`, `models-absent`, `models-legacy` passent ; `install-skills` passe sous PowerShell et est `SKIP` sous Git Bash (Q7) ; `hook-diff` passe (défaut révélé corrigé, voir ci-dessous) ; `live-*` n'ont pas été lancés (coût).
+
+Points d'attention pour la suite :
+- **Défaut révélé par `hook-diff.0` — corrigé** : `ship-pr start` pose maintenant `"status": "running"` dans l'état du run, et `skills/ship-pr/SKILL.md` prescrit `activate` après `start` et `deactivate` en fin de cycle ; le hook de diff s'applique donc à un vrai cycle `ship-pr` et `hook-diff.0` passe.
+- **Écarts de la spec Phase 6 retenus** : `install_skills.sh|.ps1` sont inchangés (consigne du run) ; ils sont donc lancés avec un `HOME`/`USERPROFILE` temporaire plutôt qu'avec `--target`/`-TargetRoot` (IN-01 non réalisé, `$HOME` d'un nouveau processus `pwsh` suit l'environnement). Le hook signale une erreur interne par un `systemMessage` sur stdout et `hook-errors.jsonl` (décision HK-04 de la Phase 5), pas sur stderr. `copy-core` ajoute `MANIFEST.json`, seul écart toléré de `install-fresh.3`. Les assertions de `install-fresh` suivent le plan unique de la Phase 3 (`upgrade plan` puis `apply`) et non `sf install` fichier par fichier.
+- **Dérive du corps généré de `factory-run` — corrigée** : `profiles/software/bodies/orchestrator.md` est désormais l'unique source de la procédure (`factory-run bind`, `spec settle`, `activate`/`deactivate`, politique `auto`, livraison) ; `profiles/software/orchestrator.md` ne porte plus que le frontmatter et renvoie à ce fragment. Le corps du Planner a aussi reçu les champs de la Phase 4 (`Questions bloquantes`, `Défaut :`, `Périmètre fichiers`). Le test de rendu `test_render` vérifie que le corps d'une installation neuve égale le fragment ; `factory-auto` contrôle que le skill installé prescrit les commandes qu'il rejoue. Le profil `research` n'avait pas de dérive (corps tiré de son seul `orchestrator.md`).
+- `history.json` a été régénéré (`core history --rebuild`) parce que `skills/_core/tests/fake_gh.py` fait partie du noyau ; `.claude/harness/` rafraîchi par `sf copy-core --refresh`.
+- La suite unitaire complète dure plus de 10 minutes sur cette machine (754 tests) : à lancer par tranches de modules sous un délai d'outil de 10 minutes.
+- Recettes R12 (`--live`) et R13 (`ship-pr` réel sur un dépôt jetable) restent à faire par l'utilisateur.
 - Mineurs du Verifier à consigner ici.

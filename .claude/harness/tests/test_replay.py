@@ -140,6 +140,9 @@ class ShipPrReplayTest(helpers.TempDirCase):
         run, themes = start["run"], start["themes"]
         self.assertEqual((start["rounds"], start["dirty"], start["owner_repo"]), (3, False, "acme/toy"))
         self.assertTrue(start["exclude_added"])
+        # HK-05: start leaves the run `running`, so that `activate` makes the scope hooks apply to it.
+        state = json.loads((self.work / (run[: -len(".jsonl")] + ".state.json")).read_text(encoding="utf-8"))
+        self.assertEqual(state["status"], "running")
         self.assertTrue(check_ok(self, self.h("ship-pr", "sync", "--run", run))["pushed"])
         material = check_ok(self, self.h("ship-pr", "pr", "--run", run))
         self.assertIsNone(material["number"])

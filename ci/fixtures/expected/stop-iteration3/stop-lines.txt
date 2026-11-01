@@ -1,0 +1,9 @@
+# STOP — factory-run — iterations
+## Where
+- skill: factory-run
+- spec: specs/SPEC-stop.md
+## Why
+- major: total() must ignore None values
+## To resume
+## Command
+/factory-run specs/SPEC-stop.md

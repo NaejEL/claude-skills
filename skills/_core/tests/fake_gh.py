@@ -52,10 +52,31 @@ def main(argv):
     elif argv[:2] == ["pr", "diff"]:
         out = git("diff", "origin/%s...HEAD" % state["prs"][-1]["base"])
     elif argv[:2] == ["pr", "comment"]:
-        state["comments"].append({"id": None, "body": opt(argv, "--body")})
+        body = opt(argv, "--body")
+        if body is None and opt(argv, "--body-file"):
+            with open(opt(argv, "--body-file"), encoding="utf-8") as fh:
+                body = fh.read()
+        state["comments"].append({"id": None, "body": body})
+    elif argv[:2] == ["pr", "checks"]:
+        # SM-03: `checks` of the state file is a list of {name, bucket}; absent = no CI on the repository.
+        checks = state.get("checks")
+        if checks is None:
+            sys.stderr.write("no checks reported on the branch\n")
+            code = 1
+        else:
+            out = json.dumps(checks)
+            code = 0 if all(c.get("bucket") == "pass" for c in checks) else 1
+    elif argv[0] == "api" and "/branches/" in argv[1]:
+        # SM-03: branch protection API; `protected` of the state file (default false).
+        out = json.dumps({"protected": bool(state.get("protected", False))})
     elif argv[:2] == ["pr", "merge"]:
         pr = state["prs"][-1]
         subprocess.run(["git", "push", "-q", "origin", "HEAD:" + pr["base"]], capture_output=True)
+        if state.get("emulate_delete_branch") and "--delete-branch" in argv:
+            # What gh does with --delete-branch: remote branch deleted, switch to the target, local branch deleted.
+            subprocess.run(["git", "checkout", "-q", pr["base"]], capture_output=True)
+            subprocess.run(["git", "branch", "-q", "-D", pr["head"]], capture_output=True)
+            subprocess.run(["git", "push", "-q", "origin", "--delete", pr["head"]], capture_output=True)
         state["merged"] = True
     elif argv[:2] == ["api", "graphql"]:
         f = fields(argv)

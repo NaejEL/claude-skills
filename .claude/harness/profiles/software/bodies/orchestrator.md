@@ -1,35 +1,52 @@
-Piloter un cycle complet de l'usine logicielle de ce dépôt sur l'entrée `$ARGUMENTS`. Toi, session principale, tu es l'orchestrateur : tu ne rédiges ni code ni spec toi-même, tu délègues aux sous-agents `factory-planner`, `factory-builder` et `factory-verifier`, et tu tiens la gate humaine.
+Piloter un cycle complet de l'usine logicielle de ce dépôt sur l'entrée `$ARGUMENTS`. Toi, session principale, tu es l'orchestrateur : tu ne rédiges ni code ni spec toi-même, tu délègues aux sous-agents `factory-planner`, `factory-builder` et `factory-verifier`, et tu tiens les gates.
 
 ## Noyau
 
 Les règles déterministes du cycle sont portées par la copie du noyau sous `.claude/harness/` : ne jamais les réimplémenter à la main. Ci-dessous, `H` désigne `{{interpreter}} .claude/harness/harness.py`. Chaque commande rend un objet JSON ; son champ `action` dicte la suite : ne jamais sauter un appel ni décider à la place du noyau.
 
-**Chaque sous-agent lancé est consigné** par `H factory-run record --run <run> --agent <nom> --duration-ms <ms> --tokens <n>`. Sans durée : `H begin --run <run> --slot <nom>` juste avant l'agent ; une mesure manquante est journalisée `null`, jamais bloquante ; connue après l'appel, elle complète l'entrée par `H journal amend`. La sortie du Verifier est écrite telle quelle avec l'outil Write dans `.harness/runs/verifier-<n>.md`, puis passée par `--output` (jamais par stdin ni via le shell). `--dead` si l'agent est mort.
+**Chaque sous-agent lancé est consigné** par `H factory-run record --run <run> --agent <nom> --duration-ms <ms> --tokens <n>` (valeurs du bloc d'usage de l'outil Agent). Sans durée : `H begin --run <run> --slot <nom>` juste avant l'agent ; sans tokens : omettre l'option ; une mesure manquante est journalisée `null` et signalée, jamais bloquante ; connue seulement après l'appel, elle complète la dernière entrée du slot par `H journal amend --run <run> --slot <nom> --duration-ms <ms> --tokens <n>`. La sortie du Verifier est écrite telle quelle avec l'outil Write dans `.harness/runs/verifier-<n>.md`, puis passée par `--output` (jamais par stdin ni via le shell : backticks, `$`, apostrophes). `--dead` si l'agent est mort.
 
-**Gates** : `H gate decide --run <run> --id <id>`, puis AskUserQuestion, puis `H gate answer --run <run> --id <id> --answer-file .harness/runs/gate-answer.txt` (réponse écrite par Write ; `reask` rendu : reposer la question). Sans interaction possible (headless), `H gate answer --run <run> --id <id> --headless`.
+**Gates** : `H gate decide --run <run> --id <id>`, puis AskUserQuestion si la décision est `ask`, puis `H gate answer --run <run> --id <id> --answer-file .harness/runs/gate-answer.txt` (réponse écrite par Write ; `reask` rendu : reposer la question). Avec `--default`, la réponse par défaut du catalogue est appliquée ; sans interaction possible (headless), `H gate answer --run <run> --id <id> --headless`.
 
 ## 1. Qualifier l'entrée
 
-Écrire `$ARGUMENTS` tel quel avec l'outil Write dans `.harness/runs/factory-run-arguments.txt`, puis `H factory-run start --arguments-file .harness/runs/factory-run-arguments.txt`. La commande ouvre le journal et rend `mode` : `build` (spec existante sous `specs/` avec `Statut : APPROUVEE`) → étape 3 ; `plan` → traiter `need` comme le besoin → étape 2. Elle retire l'option `--models "role=modele;…"` et rend `models` : passer à chaque sous-agent le paramètre `model` de l'outil Agent quand `pass_param` est vrai.
+Écrire `$ARGUMENTS` tel quel avec l'outil Write dans `.harness/runs/factory-run-arguments.txt` (jamais dans une ligne de commande shell : un besoin peut contenir guillemets, `$` ou backticks), puis `H factory-run start --arguments-file .harness/runs/factory-run-arguments.txt`. La commande ouvre le journal `.harness/runs/factory-run-<horodatage>.jsonl` et rend `mode` :
 
-## 2. Phase Plan — gate humaine obligatoire
+- `build` (spec `APPROUVEE`) → étape 3 ;
+- `approve` (spec `PROPOSEE`, ou `BLOQUEE` entièrement répondue : intégrer les réponses) → gate d'approbation de l'étape 2, puis étape 3 ;
+- `plan` → traiter `need` comme le besoin → étape 2.
 
-1. Lancer `factory-planner` avec le besoin intégral. Le consigner.
-2. Poser les *Questions ouvertes* du brouillon (gate `factory-run.questions`).
-3. Écrire `specs/SPEC-<slug>.md` avec en tête `Statut : PROPOSEE`.
-4. Demander l'approbation explicite (gate `factory-run.approval`) ; itérer tant qu'elle manque ; approuvée, passer le statut à `APPROUVEE`.
+Exit 1 : spec `BLOQUEE` avec des questions sans réponse, ou spec `LIVREE` ; afficher le message de stderr (il cite le fichier `STOP-*.md`) et s'arrêter.
+
+La commande retire de `$ARGUMENTS` `--models "role=modele;…"` (rôles `factory.planner`, `factory.builder`, `factory.verifier`, ce cycle seulement ; rôle ou valeur inconnus → exit 2) et rend `models` : passer à chaque sous-agent le paramètre `model` du rôle quand `pass_param` est vrai, jamais pour `inherit`. Elle retire aussi `--autonomy gate|auto` (cette exécution seulement), `--ship <cible>`, `--no-ship`, `--deliver-only`, `--worktree` et les options internes `--chained-from`, `--chain-id` ; la politique effective est rendue (`autonomy`) et transmise à tout skill enchaîné. Avec `--worktree`, un besoin passe d'abord par la phase Plan dans cette session, puis `H worktree create` et `H worktree transfer`, l'enfant `factory-run <spec> --ship <cible>` s'exécute dans le worktree, l'attente se fait par `H chain wait`, et `H worktree remove --merged` nettoie si la PR est mergée.
+
+## 2. Phase Plan et approbation
+
+1. Lancer le sous-agent `factory-planner` avec le besoin intégral. Le consigner.
+2. Écrire `specs/SPEC-<slug-du-besoin>.md` avec en tête `Statut : PROPOSEE` suivi, sur des lignes contiguës, de `Questions bloquantes : Q<n>, … | aucune`, `Périmètre fichiers : <globs>` (si la spec peut le borner), `Dépend de :`, `Priorité :`. Chaque question ouverte est `- Q<n> — <texte>` avec une ligne `Défaut :` (obligatoire hors question bloquante).
+3. `H factory-run bind --run <run> --spec <spec>` puis `H spec settle --run <run> --file <spec>`. En `auto`, une question bloquante sans réponse passe la spec à `BLOQUEE` et arrête le cycle (exit 1, STOP `blocked`) ; sinon chaque question non bloquante reçoit son `Défaut :` (`Réponse : … (défaut appliqué automatiquement)`, une seule décision `factory-run.questions` journalisée). En `gate`, poser les questions (gate `factory-run.questions`, options du brouillon).
+4. Approbation (gate `factory-run.approval` : approbation / itérer) : `H gate decide --run <run> --id factory-run.approval`, AskUserQuestion si `ask`, puis `H gate answer --run <run> --id factory-run.approval --answer "<option>"` (ou `--default`, ou `--headless` sans interaction possible → arrêt, exit 1). Approuvée : `H spec set-status <spec> APPROUVEE` ; sinon itérer.
 5. Ne jamais construire sans spec approuvée.
+
+Défauts en politique `auto` : `factory-run.profile` → premier profil du tampon (le premier retenu à l'installation) ; `factory-run.questions` → le `Défaut :` déclaré par le Planner (rien n'est inventé, une question bloquante bloque la spec) ; `factory-run.approval` → approuver (sans attente, une question bloquante ayant déjà bloqué la spec) ; `factory-run.ship` → livrer et lancer ship-pr (un build vert est livré quand CH-02 tient).
 
 ## 3. Phase Build
 
-Lancer `factory-builder` dans un contexte frais avec le chemin de la spec approuvée.
+`H activate --run <run> --skill factory-run --session "${CLAUDE_SESSION_ID}" --spec <spec>` active les hooks de périmètre. Lancer ensuite le sous-agent `factory-builder` (contexte frais) avec le chemin de la spec approuvée. En fin de cycle — succès, échec ou arrêt — `H deactivate --run <run> --session "${CLAUDE_SESSION_ID}"`. Tout arrêt (exit 1, message `STOP: … (see <fichier>)`) est final : afficher le message et s'arrêter, aucune commande de plus sur ce run.
 
 ## 4. Phase Verify — boucle de correction, 3 itérations maximum
 
-Lancer un `factory-verifier` neuf avec le chemin de la spec, consigner sa sortie, puis selon `action` : `success` (sortir) ; `fix` (relancer le Builder avec les issues complètes, puis un nouveau Verifier) ; `relaunch` (une fois, sans consommer d'itération) ; `fail` (échouer explicitement avec `reason` et les issues restantes). Ne jamais approuver par épuisement.
+Lancer un sous-agent `factory-verifier` (contexte vierge, indépendant du Builder) avec le chemin de la spec, consigner son bloc JSON, puis selon `action` :
 
-**Un Verifier muet n'est pas un Verifier satisfait.**
+- `success` (`APPROVED` **et** `tests_passed` vrai) : sortir de la boucle ;
+- `fix` : relancer `factory-builder` avec la spec **et la liste complète des `issues` rendues** (fichier, sévérité, description) et la consigne de corriger sans régresser ; puis un nouveau Verifier ;
+- `relaunch` : relancer **une fois** l'agent mort ou à la sortie inexploitable, sans consommer d'itération ;
+- `fail` : **échouer explicitement** en publiant `reason` et les issues restantes (3e itération non approuvée, ou second échec d'un agent). Ne jamais approuver par épuisement.
+
+**Un Verifier muet n'est pas un Verifier satisfait** : ne jamais traiter l'absence de verdict comme une approbation, ne jamais passer à la suite sur un verdict absent. Un cycle qui livre du code non vérifié parce que son vérificateur est tombé est pire qu'un cycle qui échoue.
 
 ## 5. Rapport final
 
-Spec et statut ; fichiers touchés (`git status --porcelain`) ; tests exécutés et exit codes ; verdict ; itérations ; chemin du journal ; prochaine action : relire le diff puis commiter soi-même. **Ne jamais commiter à sa place.**
+Fichiers modifiés (`git status`), résultat des tests, verdict, nombre d'itérations, chemin du journal, prochaine action. Sur `success` la spec est passée à `LIVREE` par le noyau.
+
+Livraison (gate `factory-run.ship`, sauf `--no-ship`) : `H factory-run deliver --run <run> [--trailer "<ligne d'attribution>"]` crée au besoin la branche `factory/<slug>`, commite `feat(factory): <titre>` (jamais de push) et rend `ship_args` ; sans `--deliver-only`, invoquer par l'outil Skill `ship-pr <ship_args>` ; condition fausse → rien n'est commité, la raison est journalisée, suggérer `/ship-pr <cible>`. Hors livraison, ne pas commiter à la place de l'utilisateur.

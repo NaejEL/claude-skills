@@ -51,6 +51,8 @@ Parser `$ARGUMENTS` :
 
 `K start --target <cible> [--rounds N] [--themes "…"]` (SP-11) vérifie dans l'ordre l'authentification `gh`, le remote GitHub, la branche courante ≠ cible et l'existence de `origin/<cible>`, et s'arrête au premier échec avec son message : ne jamais continuer sur un préflight rouge. Il ajoute `.harness/runs/` à `.git/info/exclude` s'il n'y figure pas, ouvre le journal et le registre, et rend `run`, `themes`, `dirty` et `owner_repo`.
 
+Puis `H activate --run <run> --skill ship-pr --session "${CLAUDE_SESSION_ID}" --phase review` active les hooks de périmètre (HK-05 : les éditions restent dans le diff de la PR). En fin de cycle — merge, PR laissée ouverte, arrêt ou échec — `H deactivate --run <run> --session "${CLAUDE_SESSION_ID}"`.
+
 1. Si `dirty` est vrai → gate `--id ship-pr.dirty` : **commiter maintenant** (proposer un message) / **stash** (le noter pour le rappeler au rapport final) / **abandonner**.
 2. `K sync --run <run>` (SP-12) : pousse la branche (`git push -u origin HEAD`) si l'upstream manque ou si des commits ne sont pas poussés.
 
