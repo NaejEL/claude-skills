@@ -4,10 +4,14 @@
 # - GT-01: the policy is read from .claude/harness.json, key "autonomy" in
 #   {gate, auto}. Missing file or key -> gate. Invalid value or unreadable
 #   JSON -> usage error (exit 2).
-# - GT-02: decision table. gate: ask for kinds a, b and c. auto: default for
-#   b and c, ask for a.
-# - GT-03: Phase 1 guard. "auto" is applied as "gate", with a logged warning
-#   (no partial autonomy without BLOQUEE nor STOP files, Phase 4).
+# - AP-01 (replaces GT-02 and the Phase 1 guard GT-03): decision table. gate: ask
+#   for kinds a, b and c. auto: default for b and c (stop when the gate has no
+#   default); for a, the core evaluates the declared `stop_when` on the inputs
+#   given by the skill: true -> stop, false -> default. The guard "auto applied
+#   as gate" and the Phase 2 exemption mark are gone: AR-02 is the general case.
+# - AP-10: every gate carries a one-line `justification` and, for kind a, a
+#   `stop_when`: "always", "never" or "input:<name>" (true when the skill passes
+#   <name>=true).
 # - GT-04: a dialogue gate (brainstorm.*) always returns ask.
 # - GT-05: a gate without a default whose decision would be "default" ->
 #   stop (exit 1, message).
@@ -18,11 +22,9 @@
 #   kind, policy, decision, default, answer, source in user|default|headless.
 # - GT-08: single catalog (core gates, plus the gates the profiles declare: PF-05);
 #   an unknown id -> exit 2.
-# - AR-02: the gates marked phase2_auto apply `auto` from Phase 2 on: a clear
-#   proposal takes the default, an ambiguous one stops (GT-05); every other gate
-#   keeps the GT-03 guard.
-# - GT-09: the gates marked phase3_auto (harness-doctor.upgrade-blocks) are exempted
-#   from GT-03 as well; upgrade.* gates are journaled with software-factory.
+# - AR-02: a gate declared `proposal` (scout verdict) takes its default under auto
+#   when the proposal is clear; an ambiguous one stops (GT-05).
+# - GT-09: upgrade.* gates are journaled with software-factory.
 # - Closed options: a user answer to a gate with closed options must be one of
 #   its options. A gate asking several questions in one call ("questions",
 #   separated by " ; " in the catalog) takes exactly one valid option per
@@ -53,10 +55,7 @@ SKIP = "skip"
 HEADLESS = (STOP, DEFAULT, SKIP)
 SOURCES = ("user", "default", "headless")
 PHASES = ("decision", "answer")
-# GT-03: Phase 4 (BLOQUEE state, STOP-*.md files) is not delivered yet.
-AUTO_APPLIED_AS_GATE = True
-AUTO_WARNING = ("autonomy 'auto' read from .claude/harness.json is applied as 'gate' "
-                "until Phase 4 is delivered")
+AUTONOMY_SOURCES = ("flag", "stamp", "absent")
 
 
 class GateError(ValueError):
@@ -77,14 +76,18 @@ class Gate(NamedTuple):
     kind: str
     options: Tuple[str, ...]
     default: Optional[str]
-    rationale: str
+    justification: str
     headless: str
     dialogue: bool = False
     free: bool = False
     questions: Tuple[Tuple[str, ...], ...] = ()
     repeat: int = 1
-    phase2_auto: bool = False
-    phase3_auto: bool = False
+    proposal: bool = False
+    stop_when: Optional[str] = None
+
+    @property
+    def rationale(self) -> str:
+        return self.justification
 
     @property
     def skill(self) -> str:
@@ -100,33 +103,38 @@ class Gate(NamedTuple):
 SKILL_OF = {"upgrade": "software-factory"}
 
 
-def _g(gid: str, source: str, kind: str, options: str, default: Optional[str], rationale: str,
+def _g(gid: str, source: str, kind: str, options: str, default: Optional[str], justification: str,
        headless: str, dialogue: bool = False, free: bool = False, repeat: int = 1,
-       phase2_auto: bool = False, phase3_auto: bool = False) -> Gate:
+       proposal: bool = False, stop_when: Optional[str] = None) -> Gate:
     questions = tuple(tuple(o.strip() for o in q.split(" / ")) for q in options.split(" ; "))
     flat = tuple(o for q in questions for o in q)
-    return Gate(gid, source, kind, flat, default, rationale, headless, dialogue, free, questions, repeat,
-                phase2_auto, phase3_auto)
+    return Gate(gid, source, kind, flat, default, justification, headless, dialogue, free, questions, repeat,
+                proposal, stop_when)
 
 
 CATALOG: Dict[str, Gate] = {g.id: g for g in (
     _g("software-factory.code-index", "software-factory:92", "b", "installer / refus", "refus",
-       "the knowledge base adds a versioned folder: that is decided, never assumed", SKIP),
-    _g("factory-run.questions", "software-factory:54", "b", "options du brouillon", None,
-       "headless keeps the planner's defaults; only a blocking question stops", SKIP, free=True),
+       "the knowledge base adds a versioned folder; installation stays possible at any time", SKIP),
+    _g("factory-run.questions", "software-factory:54", "b", "options du brouillon", "défaut du Planner",
+       "the planner's declared default for each non-blocking question; nothing is invented, a blocking "
+       "question blocks the spec", STOP, free=True),
     _g("factory-run.approval", "software-factory:54", "c", "approbation / itérer", "approbation",
-       "roadmap 4.2: approved unless a blocking question remains", DEFAULT),
+       "roadmap 4.2: approved without waiting, a blocking question having blocked the spec before", STOP),
     _g("factory-run.need", ".claude/skills/factory-run/SKILL.md:16", "c", "saisie libre", None,
        "a need cannot be guessed", STOP, free=True),
+    _g("factory-run.ship", "SPEC-phase4-5 CH-02", "c", "livrer et lancer ship-pr / ne pas livrer",
+       "livrer et lancer ship-pr", "roadmap 4.2: a green build is delivered when CH-02 holds", SKIP),
     _g("ship-pr.target", "ship-pr:29", "c", "saisie", None,
-       "the target branch cannot be guessed", STOP, free=True),
+       "the target comes from ship_pr.target of the stamp, else it cannot be guessed", STOP, free=True),
     _g("ship-pr.dirty", "ship-pr:46", "a", "commiter maintenant / stash / abandonner", "abandonner",
-       "the only option that writes nothing", DEFAULT),
+       "committing or stashing changes the cycle did not make is outside the accepted scope: abandon, "
+       "the only option that acts on nothing unknown", DEFAULT, stop_when="always"),
     _g("ship-pr.conflict", "ship-pr:53", "b",
        "résoudre maintenant / continuer la revue quand même / abandonner", "continuer la revue quand même",
-       "non destructive, the merge keeps its own gate", DEFAULT),
+       "non destructive, condition C5 then leaves the PR open", DEFAULT),
     _g("ship-pr.merge", "ship-pr:98", "a", "Merger / Laisser la PR ouverte", "Laisser la PR ouverte",
-       "a merge is irreversible", DEFAULT),
+       "decided by SM-01: merge if and only if the five conditions hold, never a stop", DEFAULT,
+       stop_when="never"),
     _g("code-index.rg-install", "code-index:38", "c", "commande retenue / repli local", "repli local",
        "a system dependency is not installed unasked; local fallback reported", SKIP),
     _g("code-index.hooks", "code-index:113", "b", "hooks install / --with-commit / refus", "hooks install",
@@ -137,8 +145,9 @@ CATALOG: Dict[str, Gate] = {g.id: g for g in (
        "the knowledge base adds a versioned folder", SKIP),
     _g("lab-run.pi-questions", "ai-lab:180", "b", "Questions pour le PI", None,
        "nothing to invent in the PI's place", STOP, free=True),
-    _g("lab-run.preregistration", "ai-lab:180", "a", "approbation / itérer", None,
-       "no measurement without an approved protocol", STOP),
+    _g("lab-run.preregistration", "ai-lab:180", "a", "approbation / itérer", "approbation",
+       "roadmap 4.2 applied to the research artefact: pre-registered unless the protocol declares an "
+       "unanswered blocking question", STOP, stop_when="input:blocking_unanswered"),
     _g("lab-run.consignation", "ai-lab:188", "c", "approbation", "approbation",
        "logged, marked 'to be reviewed' (ai-lab:188)", DEFAULT),
     _g("legacy-audit.framing", "legacy-audit:84", "b",
@@ -168,24 +177,28 @@ CATALOG: Dict[str, Gate] = {g.id: g for g in (
     # Phase 2: profiles, entry point and unified audit (AR-01, LP-05, AD-08).
     _g("software-factory.profiles", "SPEC-phase2 AR-01", "b", "profils proposés / Abandonner", "proposition",
        "a clear scout proposal is taken; an ambiguous one is never guessed", DEFAULT, free=True,
-       phase2_auto=True),
+       proposal=True),
     _g("factory-run.profile", "SPEC-phase2 LP-05", "b", "profil du besoin", "premier profil du tampon",
        "the first profile of the stamp is the first one retained at installation", STOP, free=True),
     _g("audit.profiles", "SPEC-phase2 AD-02", "b", "profils proposés / Abandonner", "proposition",
        "read-only scout verdict, used for this audit and never written to the stamp", DEFAULT, free=True,
-       phase2_auto=True),
+       proposal=True),
     _g("audit.drop-security", "SPEC-phase2 AD-08", "b", "confirmer le retrait / garder", "garder",
        "security is the priority axis", DEFAULT),
     _g("audit.final", "SPEC-phase2 AD-08", "c", "Écrire AUDIT.md (+ specs) / Réajuster / Abandonner",
        "Écrire AUDIT.md (+ specs)", "the deliverable the audit was run for", STOP),
+    _g("audit.chain", "SPEC-phase4-5 CH-04", "c", "lancer la file / ne pas lancer", "lancer la file",
+       "roadmap 4.2: the specs written are queued when a software factory is present", SKIP),
     # Phase 3: upgrade and doctor (CV-04, PR-02, PR-03, GT-09).
     _g("upgrade.convert", "SPEC-phase3 CV-04", "b", "Conserver tel quel / Convertir (sauvegarde)",
        "Conserver tel quel", "a file with local changes is converted to blocks only when asked", DEFAULT),
     _g("harness-doctor.upgrade-blocks", "SPEC-phase3 PR-02", "b", "Lancer l'upgrade / Ne rien faire",
-       "Lancer l'upgrade", "roadmap 4.2: a diff that only touches harness blocks is applied", DEFAULT,
-       phase3_auto=True),
+       "Lancer l'upgrade", "roadmap 4.2: a diff that only touches harness blocks is applied", DEFAULT),
     _g("harness-doctor.upgrade-other", "SPEC-phase3 PR-03", "b", "Lancer l'upgrade / Ne rien faire",
        "Ne rien faire", "roadmap 4.2 reserves the automatic launch to diffs of blocks", DEFAULT),
+    _g("harness-doctor.upgrade", "SPEC-phase4-5 UA-01", "b", "Lancer l'upgrade / Ne rien faire",
+       "Lancer l'upgrade", "applied when UA-01 holds (blocks, stamp or untouched core only), otherwise proposed",
+       SKIP),
     _g("brainstorm.subject", "brainstorm:16", "c", "saisie libre", None,
        "a subject cannot be guessed", STOP, dialogue=True, free=True),
     _g("brainstorm.round", "brainstorm:67", "b", "Creuser / Écarter / Amender / continuer / converger", None,
@@ -201,9 +214,9 @@ def profile_gates(profiles_dir=None) -> Dict[str, Gate]:
     for prof in profiles.discover(profiles_dir).values():
         for g in prof.get("gates", []):
             found[g["id"]] = _g(g["id"], g.get("source", prof["name"]), g["kind"], g["options"],
-                                 g.get("default"), g.get("rationale", ""), g["headless"],
-                                 bool(g.get("dialogue")), bool(g.get("free")), int(g.get("repeat", 1)),
-                                 bool(g.get("phase2_auto")))
+                                 g.get("default"), g.get("justification") or g.get("rationale", ""),
+                                 g["headless"], bool(g.get("dialogue")), bool(g.get("free")),
+                                 int(g.get("repeat", 1)), bool(g.get("proposal")), g.get("stop_when"))
     return found
 
 
@@ -221,26 +234,54 @@ def get(gate_id: str) -> Gate:
     return gate
 
 
-def read_policy(root: Path) -> str:
-    """GT-01: autonomy policy of the project (missing file or key -> gate)."""
+def read_stamp_policy(root: Path) -> Tuple[str, str]:
+    """GT-01: (policy, source) of the project: source `stamp` when the key is
+    written, `absent` otherwise (missing file or key -> gate)."""
     path = Path(root) / POLICY_FILE
     if not path.exists():
-        return "gate"
+        return "gate", "absent"
     try:
         data = json.loads(path.read_text(encoding="utf-8-sig"))
     except (OSError, UnicodeDecodeError, ValueError) as exc:
         raise GateError("%s is not readable JSON: %s" % (POLICY_FILE.as_posix(), exc))
     if not isinstance(data, dict):
         raise GateError("%s must contain a JSON object" % POLICY_FILE.as_posix())
-    value = data.get(POLICY_KEY, "gate")
+    if POLICY_KEY not in data:
+        return "gate", "absent"
+    value = data[POLICY_KEY]
     if value not in POLICIES:
         raise GateError("%s: %s must be one of %s, got %r"
                         % (POLICY_FILE.as_posix(), POLICY_KEY, ", ".join(POLICIES), value))
-    return value
+    return value, "stamp"
+
+
+def read_policy(root: Path) -> str:
+    """GT-01: autonomy policy of the project (missing file or key -> gate)."""
+    return read_stamp_policy(root)[0]
+
+
+def effective_policy(root: Path, flag: Optional[str] = None) -> Tuple[str, str]:
+    """AP-03: (value, source): the option wins over the stamp, which wins over
+    the absent default. The flag never writes the stamp."""
+    if flag is not None:
+        if flag not in POLICIES:
+            raise GateError("--autonomy must be one of %s, got %r" % ("|".join(POLICIES), flag))
+        return flag, "flag"
+    return read_stamp_policy(root)
+
+
+def stamp_ship_target(root: Path) -> Optional[str]:
+    """`ship_pr.target` of the stamp, when written."""
+    try:
+        data = json.loads((Path(root) / POLICY_FILE).read_text(encoding="utf-8-sig"))
+        target = data["ship_pr"]["target"]
+    except (OSError, UnicodeDecodeError, ValueError, KeyError, TypeError):
+        return None
+    return target if isinstance(target, str) and target.strip() else None
 
 
 def decision(kind: str, policy: str) -> str:
-    """GT-02: decision table, before the Phase 1 guard."""
+    """AP-01, kinds b and c (and a under gate): the table without stop_when."""
     if kind not in KINDS:
         raise GateError("unknown gate kind: %r" % (kind,))
     if policy not in POLICIES:
@@ -250,28 +291,47 @@ def decision(kind: str, policy: str) -> str:
     return ASK
 
 
-def decide(gate_id: str, policy: str, auto_as_gate: bool = AUTO_APPLIED_AS_GATE,
-           ambiguous: bool = False) -> Dict[str, Any]:
-    """Decision for a gate under a policy: GT-02 to GT-06. Returns the
-    'decision' journal event, plus the options and the headless fallback."""
+def stop_condition(gate: Gate, inputs: Dict[str, Any]) -> bool:
+    """AP-01: evaluation of the `stop_when` of a kind a gate on the skill's inputs."""
+    rule = gate.stop_when or "never"
+    if rule == "always":
+        return True
+    if rule == "never":
+        return False
+    if rule.startswith("input:"):
+        return bool(inputs.get(rule[len("input:"):]))
+    raise GateError("gate %s: unknown stop_when %r" % (gate.id, rule))
+
+
+def decide(gate_id: str, policy: str, ambiguous: bool = False, inputs: Optional[Dict[str, Any]] = None,
+           default: Optional[str] = None) -> Dict[str, Any]:
+    """Decision for a gate under a policy: AP-01, GT-04 to GT-06 and AP-06.
+    Returns the 'decision' journal event (policy, decision, default,
+    justification, and for a kind a gate stop_when and its result)."""
     gate = get(gate_id)
-    warnings: List[str] = []
-    applied = policy
-    if policy == "auto" and auto_as_gate and not (gate.phase2_auto or gate.phase3_auto):
-        applied = "gate"
-        warnings.append(AUTO_WARNING)
-    choice = ASK if gate.dialogue else decision(gate.kind, applied)
-    if choice == DEFAULT and (gate.default is None or (ambiguous and gate.phase2_auto)):
+    chosen = default if default is not None else gate.default
+    if policy not in POLICIES:
+        raise GateError("unknown policy: %r" % (policy,))
+    result = None
+    if gate.dialogue:
+        choice = ASK
+    elif gate.kind == "a" and policy == "auto":
+        result = stop_condition(gate, inputs or {})
+        choice = STOP if result else DEFAULT
+    else:
+        choice = decision(gate.kind, policy)
+    if choice == DEFAULT and (chosen is None or (ambiguous and gate.proposal)):
         choice = STOP
     event: Dict[str, Any] = {
-        "event": "gate", "phase": "decision", "id": gate.id, "kind": gate.kind, "policy": applied,
-        "decision": choice, "default": gate.default, "answer": None, "source": None,
-        "headless": gate.headless,
+        "event": "gate", "phase": "decision", "id": gate.id, "kind": gate.kind, "policy": policy,
+        "decision": choice, "default": chosen, "answer": None, "source": None,
+        "headless": gate.headless, "justification": gate.justification,
     }
-    if ambiguous and gate.phase2_auto:
+    if gate.kind == "a" and policy == "auto":
+        event["stop_when"] = gate.stop_when
+        event["stop_result"] = result
+    if ambiguous and gate.proposal:
         event["ambiguous"] = True
-    if warnings:
-        event["warning"] = "; ".join(warnings)
     return event
 
 
@@ -314,7 +374,7 @@ def answer(gate_id: str, last_decision: Optional[Dict[str, Any]], source: str,
     if source == "default":
         if choice != DEFAULT:
             raise GateError("gate %s: decision is %s, a default answer is not allowed" % (gate.id, choice))
-        value: Optional[str] = gate.default
+        value: Optional[str] = last_decision.get("default") or gate.default
     elif choice != ASK:
         raise GateError("gate %s: decision is %s, apply the default (--default)" % (gate.id, choice))
     elif source == "headless":
@@ -326,9 +386,7 @@ def answer(gate_id: str, last_decision: Optional[Dict[str, Any]], source: str,
         if not value:
             raise GateError("gate %s: empty answer" % gate.id)
         check_option(gate, value)
-    event = dict(last_decision, phase="answer", answer=value, source=source)
-    event.pop("warning", None)
-    return event
+    return dict(last_decision, phase="answer", answer=value, source=source)
 
 
 def applied(gate_id: str, event: Dict[str, Any]) -> str:

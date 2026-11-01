@@ -3,7 +3,7 @@ name: code-index
 description: Installe dans le projet courant un serveur de connaissance local adossé à ripgrep — index de code (symboles, graphe, notes, cache sqlite) versionné sous .knowledge/ pour se transmettre d'un utilisateur à l'autre par git — exposé aux agents par un serveur MCP stdio et par une CLI équivalente. Détecte une usine logicielle (/factory-run) ou un laboratoire IA (/lab-run) déjà installé et branche leurs agents dessus sans les réécrire. À utiliser quand l'utilisateur veut ajouter la recherche indexée et la base de connaissance partagée à un dépôt, neuf ou déjà équipé.
 context: fork
 user-invocable: true
-argument-hint: "[--reindex] [--no-wire] [--upgrade]"
+argument-hint: "[--reindex] [--no-wire] [--upgrade] [--autonomy gate|auto]"
 ---
 
 # Code Index — serveur de connaissance local adossé à ripgrep
@@ -95,3 +95,10 @@ Sautée si `--no-wire`. Le contenu des blocs vient des **gabarits** `assets/bloc
 - **mode d'emploi** : les agents utilisent `mcp__rgkb__*` sans rien taper ; en session `R search "motif"`, `R neighbors <symbole>` ; sans hooks, `R index` à la main.
 
 Rappeler qu'un redémarrage de Claude Code est nécessaire pour charger le serveur MCP de `.mcp.json`, la CLI fonctionnant immédiatement.
+
+## Défauts en politique `auto` (AP-09)
+
+L'option `--autonomy gate|auto` (AP-03) vaut pour cette exécution seulement et n'écrit jamais `.claude/harness.json` ; elle est transmise à `K gate decide --autonomy` et aux skills enchaînés (AP-04). Défaut de chaque gate de ce skill en `auto`, avec sa justification d'une ligne (celle du catalogue `K gate list`) :
+
+- `code-index.rg-install` → repli local — a system dependency is not installed unasked; local fallback reported
+- `code-index.hooks` → hooks install — the default stated by code-index:113

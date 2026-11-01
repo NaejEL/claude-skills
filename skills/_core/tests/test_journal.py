@@ -25,10 +25,12 @@ class NameTest(unittest.TestCase):
         """JR-01 (PF-05): the skill names admitted in journal names: the core ones plus
         the ones the profiles declare."""
         names = ("software-factory", "factory-run", "ship-pr", "code-index", "ai-lab", "lab-run",
-                 "ai-lab-audit", "legacy-audit", "vibecode-audit", "brainstorm", "audit", "harness-doctor")   # JR-04
+                 "ai-lab-audit", "legacy-audit", "vibecode-audit", "brainstorm", "audit", "harness-doctor",   # JR-04
+                 "factory-queue", "factory-batch")   # SX, FQ-10
         self.assertEqual(sorted(journal.SKILLS), sorted(names))
         ca09 = (r"^(software-factory|factory-run|ship-pr|code-index|ai-lab|lab-run|ai-lab-audit|"
-                r"legacy-audit|vibecode-audit|brainstorm|audit|harness-doctor)-[0-9]{8}-[0-9]{6}\.jsonl$")
+                r"legacy-audit|vibecode-audit|brainstorm|audit|harness-doctor|factory-queue|factory-batch)"
+                r"-[0-9]{8}-[0-9]{6}\.jsonl$")
         for skill in names:
             name = journal.journal_name(skill, datetime(2026, 10, 17, 9, 5, 7))
             self.assertRegex(name, journal.NAME_RE)
@@ -139,7 +141,7 @@ class RunFilesTest(helpers.TempDirCase):
             self.assertEqual(res.returncode, 0, "%s %r: %s" % (option, value, res.stderr))
             warnings = " ".join(json.loads(res.stdout)["journal_warnings"])
             self.assertIn(option.lstrip("-"), warnings, (option, value))
-        lines = journal.read(self.tmp / run)
+        lines = [x for x in journal.read(self.tmp / run) if "event" not in x]   # agent lines (AP-03: + autonomy event)
         self.assertEqual(len(lines), len(cases))
         self.assertEqual([x["model"] for x in lines[:2]], [journal.FALLBACK_TEXT] * 2)
         self.assertEqual([x["duration_ms"] for x in lines[2:4]], [None, None])
@@ -192,7 +194,7 @@ class RunFilesTest(helpers.TempDirCase):
         res = helpers.harness(["journal", "amend", "--run", start["run"], "--slot", "factory-planner",
                                "--duration-ms", "77", "--tokens", "5"], self.tmp)
         self.assertEqual(json.loads(res.stdout)["amended"], ["duration_ms", "tokens"])
-        self.assertEqual(journal.read(self.tmp / start["run"])[0]["duration_ms"], 77)
+        self.assertEqual([x for x in journal.read(self.tmp / start["run"]) if "event" not in x][0]["duration_ms"], 77)
 
     def test_duration_from_core_timestamps(self):
         state = {}

@@ -70,9 +70,16 @@ def translate(skill: str, arguments: str, profiles_dir=None) -> Dict[str, Any]:
     if tokens and not tokens[0].startswith("--"):
         repo, tokens = tokens[0], tokens[1:]
     values: Dict[str, str] = {}
+    autonomy: Optional[str] = None
     i = 0
     while i < len(tokens):
         token = tokens[i]
+        if token == "--autonomy":                       # AP-03: passed through to /audit
+            if i + 1 >= len(tokens) or tokens[i + 1] not in ("gate", "auto"):
+                raise AliasError("--autonomy expects gate or auto")
+            autonomy = tokens[i + 1]
+            i += 2
+            continue
         if token not in (alias.units_option, alias.cap_option):
             raise AliasError("unknown option or argument %r (expected %s, %s or --models)"
                              % (token, alias.units_option, alias.cap_option))
@@ -110,5 +117,7 @@ def translate(skill: str, arguments: str, profiles_dir=None) -> Dict[str, Any]:
         out += [alias.cap_option, str(min(int(raw), lset["cap"]))]
     if override:
         out += ["--models", _quote(override)]
+    if autonomy:
+        out += ["--autonomy", autonomy]
     out += ["--via", skill]
     return {"alias": skill, "arguments": " ".join(out), "profile": alias.profile, "lenses": lenses}

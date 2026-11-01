@@ -599,7 +599,20 @@ def to_spec(f: Dict[str, Any], sections: Dict[str, Any], prefix: str, number: in
     clause = texts["secrets_out_of_scope"]
     if secrets and clause.lower() not in out_of_scope.lower():
         out_of_scope = "%s ; %s" % (clause, out_of_scope)
+    # BQ-11: `Dépend de` (spec names) and `Priorité` (rank in the PZ order) follow `Questions bloquantes`.
+    extra = ""
+    depends = sections.get("depends_on")
+    if depends:
+        if not isinstance(depends, list) or not all(isinstance(d, str) and d.strip() for d in depends):
+            raise FindingError("spec section depends_on must be a list of spec names")
+        extra += "\nDépend de : " + ", ".join(d.strip() for d in depends)
+    priority = sections.get("priority")
+    if priority is not None:
+        if not isinstance(priority, int) or isinstance(priority, bool) or priority < 1:
+            raise FindingError("spec section priority must be an integer >= 1")
+        extra += "\nPriorité : %d" % priority
     text = Template(SPEC_TEMPLATE.read_text(encoding="utf-8")).substitute(
+        extra_header=extra,
         prefix=prefix, number="%02d" % number, title=(sections.get("title") or f["title"]).strip(),
         finding_id=f["id"], severity=f["severity"], size=f.get("size") or "?",
         context=sections["context"].strip(), scope=sections["scope"].strip(), criteria=_criteria(criteria),

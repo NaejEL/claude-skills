@@ -1,0 +1,15 @@
+{
+  "changes": [
+    {
+      "path": ".claude/skills/factory-run/SKILL.md",
+      "kind": "block",
+      "block": "harness.body"
+    },
+    {
+      "path": ".claude/agents/factory-builder.md",
+      "kind": "block",
+      "block": "harness.frontmatter"
+    }
+  ],
+  "divergent_blocks": []
+}

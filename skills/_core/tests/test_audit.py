@@ -572,7 +572,7 @@ class ReplayTest(helpers.TempDirCase):
         self.assertEqual(rows["qualite"]["raw"], "échec")
         self.assertEqual((rows["filet"]["raw"], rows["filet"]["rejected"], rows["filet"]["unvalidated"]), (2, 1, 1))
         spec = (out["repo"] / "specs" / "SPEC-leg-01-purge-secrets.md").read_text(encoding="utf-8")
-        self.assertTrue(spec.startswith("Statut : PROPOSEE\n\n# SPEC-leg-01 — Secret commité dans config.py\n"))
+        self.assertTrue(spec.startswith("Statut : PROPOSEE\nQuestions bloquantes : aucune\n\n# SPEC-leg-01 — Secret commité dans config.py\n"))
         self.assertIn("## Hors-périmètre\nRéécriture d'historique ; Rotation", spec)
         self.assertEqual(out["publish"]["published"], 4)
         lines = (out["repo"] / ".claude" / "findings.jsonl").read_text(encoding="utf-8").splitlines()

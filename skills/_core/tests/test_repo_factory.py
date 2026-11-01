@@ -100,10 +100,10 @@ class RepoFactoryTest(unittest.TestCase):
             'argument-hint: "<besoin | chemin d\'une spec approuvée> [--models \\"role=modele;...\\"]"'])
 
     def test_uf02_ca31_planner_lists_the_eight_skills_and_core_is_not_one(self):
-        """UF-02, CA-31: the Planner names every skill of skills/ (ten since Phase 3) and says that _core is not a skill (C1)."""
+        """UF-02, CA-31: the Planner names every skill of skills/ (twelve since Phase 4) and says that _core is not a skill (C1)."""
         planner = text(AGENTS / "factory-planner.md")
         names = sorted(p.name for p in SKILLS_DIR.iterdir() if (p / "SKILL.md").is_file())
-        self.assertEqual(len(names), 10)
+        self.assertEqual(len(names), 12)
         for name in names:
             self.assertIn("`%s`" % name, planner)
         self.assertRegex(planner, r"`skills/_core/` : \*\*[^*]*qui n'est pas un skill\*\*")

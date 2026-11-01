@@ -31,12 +31,12 @@ Ordre repris de l'annexe de `specs/SPEC-noyau-core-journal.md`, qui fait foi.
 | 4 | Rebranchement de legacy-audit, vibecode-audit et brainstorm | à faire | 0 |
 | 5 | Analyse des journaux sur au moins 10 cycles réels | à faire | 0, plus 10 cycles |
 | 6 | Versioning / upgrade / doctor du noyau distribué | à faire | 0, 2 |
-| 7 | Politique d'autonomie | **gelé** jusqu'à la fin du 5 | 5 |
-| 8 | Hooks Claude Code | gelé | 5, 7 |
+| 7 | Politique d'autonomie | **livré en Phase 4** (gel levé par l'utilisateur, lot L12) : `specs/SPEC-phase4-5-autonomie-hooks.md` | 5 |
+| 8 | Hooks Claude Code | **livré en Phase 5** (gel levé) : `specs/SPEC-phase4-5-autonomie-hooks.md` | 5, 7 |
 | 9 | Profils | **livré en Phase 2** (gel levé par l'utilisateur) : `specs/SPEC-phase2-profils-audit.md` | 5 |
 | 10 | Scout | **livré en Phase 2** (gel levé) | 9 |
 | 11 | `/audit` unifié | **livré en Phase 2** (gel levé) | 3, 4, 5, 9 |
-| 12 | File et worktrees | gelé | 5, 7 |
+| 12 | File et worktrees | **livré en Phase 4** (gel levé) : `specs/SPEC-phase4-5-autonomie-hooks.md` | 5, 7 |
 | 13 | Étude du packaging en plugin | à faire, document seul | 6 |
 
 ## 3. Questions ouvertes
@@ -47,8 +47,8 @@ Ordre repris de l'annexe de `specs/SPEC-noyau-core-journal.md`, qui fait foi.
 | Q-registre | Format JSONL du registre | **tranchée le 2026-10-16** : clés anglaises `file`/`line`/`title`/`verdict`, dédoublonnage sur fichier + titre normalisé, fichier dans `.harness/runs/` non versionné (D2 de la spec 0) |
 | Q2 | Modèle par rôle : le paramètre `model` de l'outil Agent seul, ou aussi `model:` en frontmatter ? Contredit `ai-lab:135` (D1). | ouverte |
 | Q3 | Sort de `/lab-run` : alias, orchestrateur distinct, ou orchestrateur générique ? | **tranchée en Phase 2** : seconde instance du gabarit commun, profil `research` imposé (LP-06) |
-| Q4 | Enchaînements malgré `disable-model-invocation` (D3) | ouverte, incrément 5 |
-| Q5 | Gate de pré-enregistrement du labo : reste-t-elle (a) ? | ouverte, incrément 5 |
+| Q4 | Enchaînements malgré `disable-model-invocation` (D3) | **tranchée** : processus enfant headless `claude -p` lancé par le noyau (CH-01), `disable-model-invocation` conservé sur factory-run ; recette R12 à faire |
+| Q5 | Gate de pré-enregistrement du labo : reste-t-elle (a) ? | **tranchée** : reste (a), `stop_when` = le protocole déclare des questions bloquantes sans réponse ; défaut approuver |
 | Q6 | Premier `--upgrade` d'un projet sans blocs (D5) | **tranchée** (Phase 3, CV) : conversion automatique si le fichier est `pristine` ou `suffix` par rapport à sa base git, sinon gate `upgrade.convert` (défaut : conserver) ; `--convert` pour forcer |
 | Q8 | Registre versionné ou local : ce dépôt ignore déjà `AUDIT-*.md` | fusionnée dans Q-registre |
 | Q9 | Schéma de finding unique, avec `occurrences[]` | ouverte, incréments 1 et 4 |
@@ -336,6 +336,14 @@ Spec : `specs/SPEC-phase1-fin-L8-L14.md` (APPROUVEE), qui renvoie aux sections �
 - Un fichier `*.upgrade-tmp` peut rester après une exception (`upgrade.py:666`).
 - `migrate` réécrit tout `findings.jsonl` (`migrate.py:61-65`).
 - `_set_header` reconnaît une ligne d'en-tête hors de la zone d'en-tête (`render.py:200-211`).
+- Reprise d'un lot (`--resume`) : le statut `ineligible` est conservé tel quel.
+- `hook.py` post-edit : le budget de 5 s est plus court que `timeout_s` (30 s) du lint, ce qui peut laisser un lint orphelin.
+- `.claude/settings.json` : le hook code en dur `py -3` ; le filet de sécurité est silencieusement inactif sous Linux/macOS sans le lanceur `py`.
+- `eval` n'est pas analysé par la garde (hors périmètre par conception, risque I3).
+- `chain` : un enfant sorti en 0 sans aucun run n'est pas compté comme un échec (seuls `is_error` et un wrapper mort le sont).
+- `test_fb04_a_spec_whose_dependency_is_in_the_batch_waits_for_its_merge` : un échec isolé sous charge (`git worktree add failed`), qui ne se reproduit pas seul.
+- Essai réel de `/audit` (hello world) : le chemin `_core/harness.py` cité par le skill n'existe pas dans le projet, et l'agent s'est rabattu sur `.claude/harness/harness.py`.
+- Essai réel de `/audit` : après une erreur de nommage de champ (`difficulty` au lieu de la taille), un run `vibecode-audit` est resté orphelin dans `.harness/runs/`.
 
 ## 9. Phase 3 — état (2026-11-01)
 
@@ -346,4 +354,16 @@ Points d'attention pour la suite :
 - **Recettes** R12 à R16 restent à faire par l'utilisateur (lien installé, commentaires YAML dans le frontmatter, invocation de skill par le doctor, upgrade d'un vrai projet, scan de la machine).
 - **Contributions** : `code-index --upgrade` pose `contributes` au tampon ; la liste `tools:` des agents dans la mise en page du harnais n'est mise à jour que par le `--upgrade` suivant de `software-factory` (UP-12).
 - **`history.json`** doit être régénéré (`harness.py core history --rebuild`) après chaque commit qui touche `skills/_core/` ; `core history --check` est une porte du Builder.
+- Mineurs du Verifier à consigner ici.
+
+## 10. Phases 4 et 5 — état (2026-11-01)
+
+Spec : `specs/SPEC-phase4-5-autonomie-hooks.md` (détail) et `specs/SPEC-phase4-5-run.md` (périmètre du run). Livré dans l'arbre de travail, non commité : politique `autonomy` (AP), fichiers `STOP-*.md` (SX), spec `BLOQUEE` et statuts (BQ), merge automatique de ship-pr (SM), enchaînements par processus enfant headless (CH), priorisation calculée des audits (PZ), upgrade automatique du doctor (UA), `/factory-queue` (FQ), worktrees (WT), `/factory-batch` (FB), hooks Claude Code (HK, HG, HP, HD, HR, HL).
+
+Points d'attention pour la suite :
+- **Recettes** de la spec Phases 4-5 (R12 à R18, à ne pas confondre avec R12 à R16 de la Phase 3) restent à faire par l'utilisateur : `claude -p` imbriqué, `${CLAUDE_SESSION_ID}`, shell des hooks sous Windows, `additionalContext` / `systemMessage` / `continue: false`, prise en compte des hooks en cours de session, `/factory-queue run` et `/factory-batch` réels sur un dépôt jetable.
+- Les statuts de spec ne sont pas écrits dans le code : ils viennent des artefacts des profils (`status_proposed`, `status_blocked`, `status_ready`, `status_delivered`).
+- `harness-doctor` : en `auto`, `K doctor auto-upgrade --plan` lit le plan écrit par `K upgrade plan` (les types `header`, `merge`, `copy`, `local`, `stamp`, `block` sont sûrs ; `create`, `convert`, `migrate`, ou un fichier de la gate `upgrade.convert` font proposer au lieu de lancer). Les anciennes gates `harness-doctor.upgrade-blocks` et `-other` restent au catalogue.
+- Gates de dialogue (`brainstorm.*`) : pas de défaut `auto`, donc pas de ligne « Défauts en politique `auto` » dans `skills/brainstorm/` (intouché).
+- Le moteur de chaînage lance `claude` détaché via un wrapper (`chain exec`) qui tue l'arbre au timeout ; la détection « en cours » d'une spec repose sur `updated_at` du fichier d'état (risque I5).
 - Mineurs du Verifier à consigner ici.

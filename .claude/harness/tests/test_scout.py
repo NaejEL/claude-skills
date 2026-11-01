@@ -141,7 +141,7 @@ class ArbitrationTest(helpers.TempDirCase):
         """AR-01, CA-23: software-factory.profiles is kind b, default = the proposal, headless fallback
         default; with autonomy absent the decision is ask."""
         gate = gates.get("software-factory.profiles")
-        self.assertEqual((gate.kind, gate.headless, gate.phase2_auto), ("b", "default", True))
+        self.assertEqual((gate.kind, gate.headless, gate.proposal), ("b", "default", True))
         res = self.decide("software-factory.profiles")
         self.assertEqual(json.loads(res.stdout)["decision"], "ask")
 
@@ -155,6 +155,7 @@ class ArbitrationTest(helpers.TempDirCase):
                 "software-factory.profiles", "--default")
         self.assertEqual(ans.returncode, 0, ans.stderr)
         events = [json.loads(l) for l in (self.tmp / out["run"]).read_text(encoding="utf-8").splitlines()]
+        events = [e for e in events if e.get("event") == "gate"]
         self.assertEqual([(e["phase"], e["source"]) for e in events], [("decision", None), ("answer", "default")])
 
     def test_ar02_auto_with_an_ambiguous_proposal_stops_with_the_resume_command(self):
@@ -177,14 +178,14 @@ class ArbitrationTest(helpers.TempDirCase):
                 "software-factory.profiles", "--headless")
         self.assertEqual((ans.returncode, json.loads(ans.stdout)["answer"]), (0, "proposition"))
 
-    def test_ar03_every_other_gate_keeps_the_phase1_guard_under_auto(self):
-        """AR-03, CA-10: an audit prioritisation gate under auto is applied as `gate` (ask) with the
-        warning; only software-factory.profiles and audit.profiles carry phase2_auto."""
+    def test_ar03_ap02_the_audit_prioritisation_gates_take_their_default_under_auto(self):
+        """AR-03 replaced by AP-02: the phase 1 guard is gone, an audit prioritisation gate under auto takes
+        its default; only the scout proposal gates stop on an ambiguous proposal."""
         res = self.decide("audit.software.framing", "auto")
         out = json.loads(res.stdout)
-        self.assertEqual((out["decision"], out["policy"]), ("ask", "gate"))
-        self.assertIn("applied as 'gate'", out["warning"])
-        self.assertEqual(sorted(g.id for g in gates.all_gates().values() if g.phase2_auto),
+        self.assertEqual((out["decision"], out["policy"]), ("default", "auto"))
+        self.assertNotIn("warning", out)
+        self.assertEqual(sorted(g.id for g in gates.all_gates().values() if g.proposal),
                          ["audit.profiles", "software-factory.profiles"])
 
     def test_ca23_the_phase2_gates_have_a_default_and_a_headless_fallback(self):

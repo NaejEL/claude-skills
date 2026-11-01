@@ -1,0 +1,36 @@
+{
+  "findings": [
+    {
+      "id": "A",
+      "severity": "major",
+      "size": "M",
+      "depends_on": []
+    },
+    {
+      "id": "B",
+      "severity": "major",
+      "size": "S",
+      "depends_on": [
+        "A"
+      ]
+    }
+  ],
+  "milestones": [
+    {
+      "number": 1,
+      "title": "Majeurs",
+      "ids": [
+        "A",
+        "B"
+      ]
+    }
+  ],
+  "assignment": {
+    "A": 1,
+    "B": 1
+  },
+  "ranks": {
+    "A": 1,
+    "B": 2
+  }
+}

@@ -1,7 +1,7 @@
 # Execution of external commands (gh, git) behind an injectable interface,
 # so that the tests can simulate gh and git.
 #
-# Test injection point: HCORE_GH / HCORE_GIT (JSON array replacing the
+# Test injection point: HCORE_GH / HCORE_GIT / HCORE_CLAUDE (JSON array replacing the
 # executable) are honoured only if HCORE_TEST_MODE=1 is also set. Outside
 # that mode they are ignored (warning on stderr); in that mode, the CLI
 # reports it in every JSON output ("hcore_test_mode" key).
@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 
 TEST_MODE_VAR = "HCORE_TEST_MODE"
-TOOLS = ("gh", "git")
+TOOLS = ("gh", "git", "claude")
 
 
 @dataclass

@@ -84,6 +84,8 @@
       "glob": "SPEC-*.md",
       "status_proposed": "Statut : PROPOSEE",
       "status_ready": "Statut : APPROUVEE",
+      "status_blocked": "Statut : BLOQUEE",
+      "status_delivered": "Statut : LIVREE",
       "status_done": null
     }
   ],
@@ -189,7 +191,7 @@
       "kind": "b",
       "options": "2 / 3 / 4 ; risque d'abord / quick wins / fondations / ordre proposé",
       "default": "3 / risque d'abord",
-      "rationale": "close to 'make it reliable first' (roadmap 4.2)",
+      "rationale": "computed by PZ-01 and PZ-02: make it reliable first, milestones computed (roadmap 4.2)",
       "headless": "stop"
     },
     {
@@ -206,9 +208,10 @@
       "source": "audit:assignment",
       "kind": "b",
       "options": "Jalon 1 / Jalon 2 / Jalon dernier / Exclure de la roadmap",
-      "default": null,
-      "rationale": "the computation belongs to Phase 4",
+      "default": "calcul PZ-02",
+      "rationale": "milestones computed by PZ-02 from the severity, nothing is excluded",
       "headless": "stop",
+      "free": true,
       "repeat": 4
     }
   ],

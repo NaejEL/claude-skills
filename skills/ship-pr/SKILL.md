@@ -1,9 +1,9 @@
 ---
 name: ship-pr
-description: Pilote le cycle complet d'une pull request GitHub depuis la branche courante — création ou reprise de la PR, rondes de revue par 3 agents relecteurs parallèles avec validation adversariale des findings, commentaires inline, correctifs commités et threads résolus, puis merge (commit de merge) après validation utilisateur. À utiliser quand l'utilisateur veut faire relire, corriger et merger sa branche courante vers une branche cible.
+description: Pilote le cycle complet d'une pull request GitHub depuis la branche courante — création ou reprise de la PR, rondes de revue par 3 agents relecteurs parallèles avec validation adversariale des findings, commentaires inline, correctifs commités et threads résolus, puis merge (commit de merge) après validation utilisateur en politique `gate`, ou sous cinq conditions vérifiées en politique `auto`. À utiliser quand l'utilisateur veut faire relire, corriger et merger sa branche courante vers une branche cible.
 context: fork
 user-invocable: true
-argument-hint: "<branche-cible> [--rounds N] [--themes \"t1;t2;t3\"] [--models \"role=modele;...\"]"
+argument-hint: "<branche-cible> [--rounds N] [--themes \"t1;t2;t3\"] [--models \"role=modele;...\"] [--spec <chemin>] [--autonomy gate|auto]"
 ---
 
 # Ship PR — revue itérative et merge d'une pull request
@@ -32,6 +32,7 @@ Parser `$ARGUMENTS` :
 
 - **1er token** = branche cible (`main`, `develop`…). S'il est absent, avant toute chose : `H gate decide --id ship-pr.target` (sans `--run` : ouvre le run), saisie libre de la branche cible, puis `K start --run <run> --target <cible> …`, qui poursuit ce run.
 - **`--rounds N`** (SP-01) et **`--themes "a;b;c"`** (SP-02) : transmis tels quels à `start`, qui borne les rondes à `min(N, 3)` (défaut 3) et accepte de 1 à 4 thèmes séparés par `;` (un thème = un agent relecteur ; défaut : les trois thèmes de 3.2). Une valeur hors bornes est une erreur explicite.
+- **`--spec <chemin>`** (SM-07) et **`--autonomy gate|auto`** (AP-03, pour cette exécution seulement) : transmis tels quels à `start`, qui journalise la politique effective (`autonomy`).
 - **`--models "role=modele;…"`** (X6, MD-01 à MD-08) : transmis tel quel à `start`, qui lit `.claude/models.json` (absent → `inherit`) puis applique ces paires pour ce cycle seulement, sans jamais réécrire le fichier ; rôles `shippr.reviewer` et `shippr.validator`, valeurs `inherit`, `opus`, `fable`, `sonnet`, `haiku` ou un identifiant `claude-*` ; rôle ou valeur inconnus → exit 2. `start` rend `models` : lancer chaque relecteur et chaque validateur avec le paramètre `model` de l'outil Agent valant le `model` de son rôle quand `pass_param` est vrai, jamais pour `inherit`.
 
 ## Règles impératives (toutes les phases)
@@ -41,8 +42,10 @@ Parser `$ARGUMENTS` :
 - **Frugalité** : relecteurs = agents lecture seule recevant uniquement les hunks du diff et un contexte minimal (jamais une mission « explore le repo ») ; validateurs = mini-agents à prompt court et effort faible ; 3 rondes maximum ; sortie anticipée dès qu'une ronde ne produit aucun finding confirmé ; à partir de la ronde 2, seuls les commits de correctif et les zones déjà signalées sont revus — jamais de re-revue des fichiers inchangés.
 - **Un thème muet n'est pas un thème relu — et bloque le merge** (SP-05). Un relecteur mort (erreur d'API, connexion coupée) ou dont la sortie est inexploitable (SP-03) rend le même silence qu'un vrai « zéro finding », et la sortie anticipée le transformerait en feu vert. `reviewer` rend `relaunch` : relancer **une fois** ; au second échec il rend `uncovered` : le thème est **non couvert**, à signaler dans le commentaire de synthèse de la PR et au rapport. Le noyau ne compte jamais ce silence comme une ronde sans finding et **refuse le merge** : la gate humaine n'est même pas proposée, le skill s'arrête en expliquant quel angle n'a pas été relu et invite à relancer. Ce skill agit sur le dépôt distant : contrairement à un audit, il ne peut pas se contenter de déclarer son amputation. Même règle pour les validateurs (SP-06) : un validateur mort deux fois laisse son finding **non validé** (`unvalidated`) — ni posté en commentaire inline, ni corrigé d'office, il figure au rapport comme restant à trancher.
 - **Un commit par ronde** (SP-17), message `fix(review): round N fixes — <résumé>`. Jamais d'amend, jamais de force-push.
-- **Jamais de merge sans validation explicite de l'utilisateur** (gate `ship-pr.merge` en Phase 4 ; son repli headless laisse la PR ouverte).
+- **Jamais de merge sans validation explicite de l'utilisateur en politique `gate`, ni sans les cinq conditions de SM-01 en `auto`** (SM-08 ; en `gate`, le repli headless de `ship-pr.merge` laisse la PR ouverte).
 - **Registre cumulatif des findings** (SP-07) : `.harness/runs/ship-pr-<horodatage>.registry.jsonl`, tenu par le noyau pour tous les findings, **y compris les REJETÉS**. `reviewer` dédoublonne chaque nouveau finding contre lui (même fichier, titre normalisé) avant validation : un finding rejeté ne ressuscite pas d'une ronde à l'autre. Écarter aussi, au jugement, un finding `to_validate` qui double un finding connu (même sujet, autre titre), avant tout validateur : `K drop --run <run> --finding <id> --of <id> [--reason-file .harness/runs/drop.txt]` (raison écrite avec l'outil Write) le consigne en doublon, et `end-round` ne l'attend plus. Le **registre projet** `.claude/findings.jsonl` (RG-01 à RG-07 : local, exclu par `.git/info/exclude`) est lu par `start` : un finding REJETÉ ou tranché dans un run antérieur, de n'importe quel skill, revient dans `duplicates` avec `previous` = `<statut>@<skill>`, sans validateur ; un finding déjà corrigé ou laissé non corrigé repasse en validation, avec son `history`.
+
+**Défauts en politique `auto`** (AP-09, une ligne chacun, mot pour mot celle du catalogue) : `ship-pr.target` → `ship_pr.target` du tampon, sinon arrêt — the target comes from ship_pr.target of the stamp, else it cannot be guessed ; `ship-pr.dirty` → abandonner — committing or stashing changes the cycle did not make is outside the accepted scope: abandon, the only option that acts on nothing unknown ; `ship-pr.conflict` → continuer la revue quand même — non destructive, condition C5 then leaves the PR open ; `ship-pr.merge` → décision par SM-01 — decided by SM-01: merge if and only if the five conditions hold, never a stop.
 
 ## Phase 1 — Préflight
 
@@ -100,19 +103,10 @@ Passer en `--trailer` la ligne d'attribution des commits demandée par l'environ
 
 ## Phase 4 — Merge (gate humaine)
 
-1. `K merge --run <run> --check` (SP-05, SP-19) refuse — et le skill s'arrête là, sans gate — si un thème n'a pas été couvert. Sinon il rend le résumé (SP-10 : findings bruts/confirmés/rejetés/dédoublonnés par ronde, commits de correctif avec leurs hashes, threads résolus et restés ouverts, findings non validés) et l'état de merge à jour : le présenter. Si `conflicting`, le signaler et proposer de résoudre avant la question de merge.
-2. Gate `--id ship-pr.merge` : « Merger la PR #<n> vers <cible> ? » — options : **Merger** / **Laisser la PR ouverte**.
+1. `K merge --run <run> --check --conditions` (SP-05, SP-19, SM-05) refuse — et le skill s'arrête là, sans gate — si un thème n'a pas été couvert. Sinon il rend le résumé (SP-10 : findings bruts/confirmés/rejetés/dédoublonnés par ronde, commits de correctif avec leurs hashes, threads résolus et restés ouverts, findings non validés) et l'état de merge à jour : le présenter. Il rend aussi `conditions` (SM-01 : C1 zéro finding validé restant, C2 threads résolus, C3 CI verte, C4 cible non protégée, C5 pas de conflit), à titre d'information en `gate`. Si `conflicting`, le signaler et proposer de résoudre avant la question de merge.
+2. Politique `gate` : gate `--id ship-pr.merge` : « Merger la PR #<n> vers <cible> ? » — options : **Merger** / **Laisser la PR ouverte**. Politique `auto` (SM-02, SM-03) : aucune question ; `K merge --run <run> --auto` évalue les cinq conditions, poste sur la PR le commentaire de décision (anglais, une seule fois), puis merge si toutes sont vraies (dans un worktree enregistré : `--merge` sans checkout ni pull, SM-06), sinon laisse la PR ouverte (exit 0) et le rapport le dit ; le refus SP-05 vaut condition fausse.
 3. Si l'utilisateur valide : `K merge --run <run>` (SP-19) — commit de merge explicite (`gh pr merge --merge --delete-branch`, jamais `--squash` ni `--rebase`) qui supprime la branche distante et la branche locale, puis `git checkout <cible> && git pull`. Si un stash a été fait en Phase 1, rappeler à l'utilisateur de faire `git stash pop` — sans le faire d'office.
 
 ## Phase 5 — Rapport final
 
-Émettre un rapport structuré :
-
-- **PR** : numéro, URL, branche → cible, créée ou reprise ;
-- **Rondes** : tableau `| Ronde | Findings bruts | Confirmés | Rejetés/dédupliqués |` ;
-- **Correctifs** : un hash de commit par ronde, avec résumé ;
-- **Threads** : résolus (avec hash cité) / laissés ouverts (avec raison) ;
-- **Sortie de boucle** : épuisement (succès) ou plafond de rondes atteint (avertissement — signaler qu'une relecture humaine complémentaire est prudente) ;
-- **Décision** : mergée (commit de merge + branche supprimée, branche courante = <cible> à jour) ou laissée ouverte ;
-- **Reste à faire** : stash à dépiler, conflits non résolus, threads ouverts, findings non validés, thèmes non couverts, le cas échéant ;
-- **Journal** : chemins du journal et du registre sous `.harness/runs/`, et du registre projet `.claude/findings.jsonl`.
+Émettre un rapport structuré : **PR** (numéro, URL, branche → cible, créée ou reprise) ; **Rondes** (`| Ronde | Findings bruts | Confirmés | Rejetés/dédupliqués |`) ; **Correctifs** (un hash par ronde, avec résumé) ; **Threads** (résolus avec hash cité / laissés ouverts avec raison) ; **Sortie de boucle** (épuisement = succès ; plafond de rondes = avertissement, une relecture humaine complémentaire est prudente) ; **Décision** (mergée — commit de merge, branche supprimée — ou laissée ouverte, avec les conditions fausses en `auto`) ; **Reste à faire** (stash à dépiler, conflits, threads ouverts, findings non validés, thèmes non couverts) ; **Journal** (journal et registre sous `.harness/runs/`, registre projet `.claude/findings.jsonl`).

@@ -67,7 +67,10 @@ class RoutingTest(helpers.TempDirCase):
         self.assertEqual((out["profile"], out["mode"]), ("research", "build"))
         out = json.loads(self.start("suivant").stdout)
         self.assertEqual((out["profile"], out["mode"]), ("research", "plan"))
+        # BQ-07, E-P4-12: a proposed spec is routed to its profile and goes to approve.
         out = json.loads(self.start("specs/SPEC-p.md").stdout)
+        self.assertEqual((out["profile"], out["mode"]), ("software", "approve"))
+        out = json.loads(self.start("un besoin libre à arbitrer").stdout)
         self.assertEqual((out["profile"], out["gate"], out["default"]), (None, "factory-run.profile", "software"))
         out = json.loads(self.start("--profile research un besoin libre").stdout)
         self.assertEqual((out["profile"], out["need"]), ("research", "un besoin libre"))
@@ -94,14 +97,16 @@ class RoutingTest(helpers.TempDirCase):
         rec = h(self.tmp, "factory-run", "record", "--run", out["run"], "--agent", "lab-director", "--mode", "cadrage",
                 "--output", brief, "--duration-ms", "5", "--tokens", "9")
         self.assertEqual(rec.returncode, 0, rec.stderr)
-        line = json.loads((self.tmp / out["run"]).read_text(encoding="utf-8").splitlines()[0])
+        line = [json.loads(x) for x in (self.tmp / out["run"]).read_text(encoding="utf-8").splitlines()
+                if "event" not in json.loads(x)][0]
         self.assertEqual((line["agent"], line["profile"]), ("lab-director", "research"))
         soft = json.loads(self.start("specs/SPEC-a.md").stdout)
         self.assertRegex(soft["run"], r"factory-run-\d{8}-\d{6}\.jsonl$")
         rec = h(self.tmp, "factory-run", "record", "--run", soft["run"], "--agent", "factory-builder",
                 "--duration-ms", "5", "--tokens", "9")
         self.assertEqual(rec.returncode, 0, rec.stderr)
-        line = json.loads((self.tmp / soft["run"]).read_text(encoding="utf-8").splitlines()[0])
+        line = [json.loads(x) for x in (self.tmp / soft["run"]).read_text(encoding="utf-8").splitlines()
+                if "event" not in json.loads(x)][0]
         self.assertEqual(line["profile"], "software")
         self.assertEqual(h(self.tmp, "journal", "validate", str(self.tmp / soft["run"])).returncode, 0)
 

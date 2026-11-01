@@ -72,7 +72,7 @@ class FactoryRunReplayTest(helpers.TempDirCase):
         self.assertRegex(path.name, journal.NAME_RE)
         self.assertEqual(path.parent, project / ".harness" / "runs")
         check_ok(self, h("journal", "validate", run))
-        lines = journal.read(path)
+        lines = [x for x in journal.read(path) if "event" not in x]
         agents = [x["agent"] for x in lines]
         self.assertEqual(agents, ["factory-builder", "factory-verifier", "factory-builder",
                                   "factory-verifier", "factory-verifier"])
@@ -220,7 +220,7 @@ class ShipPrReplayTest(helpers.TempDirCase):
         path = self.work / run
         self.assertRegex(path.name, journal.NAME_RE)
         check_ok(self, self.h("journal", "validate", run))
-        lines = journal.read(path)
+        lines = [x for x in journal.read(path) if "event" not in x]
         self.assertTrue(all(x["iteration"] <= 3 for x in lines))
         reviewer_themes = {x["theme"] for x in lines if x["agent"] == "reviewer"}
         self.assertEqual(reviewer_themes, set(themes))
@@ -332,6 +332,7 @@ class ShipPrReplayTest(helpers.TempDirCase):
         check_ok(self, self.h("ship-pr", "validator", "--run", run, "--finding", fid, "--duration-ms", "3",
                               "--output", out))
         lines = journal.read(self.work / run)
+        lines = [x for x in lines if x.get("event") != "autonomy"]    # AP-03: one autonomy event per run
         self.assertEqual([x.get("event", x.get("agent")) for x in lines], ["gate", "gate", "reviewer", "validator"])
         self.assertEqual([x["model"] for x in lines[2:]], ["inherit", "haiku"])
         self.assertEqual(lines[1]["answer"], "main")

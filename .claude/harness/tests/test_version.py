@@ -86,8 +86,8 @@ class VersionTest(helpers.TempDirCase):
         self.assertEqual(lag(side, head=head)["status"], "diverged")
 
     def test_vs04_core_version_is_3(self):
-        """VS-04: CORE_VERSION = 3.0.0."""
-        self.assertEqual(CORE_VERSION, "3.0.0")
+        """VS-04: CORE_VERSION = 4.0.0 (Phases 4 and 5)."""
+        self.assertEqual(CORE_VERSION, "4.0.0")
 
 
 if __name__ == "__main__":

@@ -138,6 +138,8 @@
       "glob": "EXP-*.md",
       "status_proposed": "Statut : PROPOSE",
       "status_ready": "Statut : PRE-ENREGISTRE",
+      "status_blocked": "Statut : BLOQUE",
+      "status_delivered": "Statut : TERMINE",
       "status_done": "Statut : TERMINE"
     },
     {

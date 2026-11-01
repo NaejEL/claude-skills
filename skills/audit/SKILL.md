@@ -3,7 +3,7 @@ name: audit
 description: Audit unifié en lecture seule d'un projet — cartographie, un auditeur par lentille (dette d'accumulation d'un repo legacy, dette de génération d'un projet généré par IA, revue d'un projet de recherche IA), validation adversariale, priorisation interactive, puis un seul AUDIT.md et des specs. À utiliser quand l'utilisateur veut auditer un projet, savoir par où l'attaquer ou obtenir une roadmap de remise à niveau.
 context: fork
 user-invocable: true
-argument-hint: "[REPO] [--profile p[;p]] [--lenses \"l;…\"] [--max-specs N] [--max-findings N] [--max-questions N] [--models \"r=m;…\"]"
+argument-hint: "[REPO] [--profile p[;p]] [--lenses \"l;…\"] [--max-specs N] [--max-findings N] [--max-questions N] [--models \"r=m;…\"] [--autonomy gate|auto]"
 ---
 
 # Audit — diagnostic unifié, un seul `AUDIT.md`
@@ -45,12 +45,28 @@ Pour chaque `to_validate` (doublons écartés sans validateur, tous jeux confond
 
 `audit.software.framing` (jalons, critère dominant) et `audit.software.assignment` (3 appels au plus) si `legacy` ; `audit.software.order` (ordre d'attaque, sort des mineurs) si `vibecode`, et `audit.drop-security` seulement si `vibecode` est partiel et exclut `securite` ; `audit.research.framing` et `audit.research.selection` (2 appels au plus) si `research`. Chaque gate : `K gate decide --root "<REPO>" --run <audit> --id …`, AskUserQuestion, `K gate answer … --answer-file` (`reask` → reposer la question). Headless : `stop` pour `legacy` et `research` (tout l'audit s'arrête avant l'écriture), `default` signalé en tête pour `vibecode`. Données de rendu : fichier JSON du jeu, puis `K audit plan --run <run du jeu> --data-file …`. Gate finale `audit.final` : **Écrire AUDIT.md (+ specs)** / **Réajuster** (une fois) / **Abandonner**.
 
+**Politique `auto`** (`--autonomy auto` ou tampon ; PZ-01 à PZ-05) : aucune question de cadrage. `K audit prioritize --run <run du jeu> [--max-specs N] [--autonomy auto]` rend les jalons calculés (« fiabiliser d'abord » : jalon 1 = `critical`, 2 = `major`, 3 = `minor`, un prérequis remonte au jalon le plus tôt de ses dépendants, jalons vides retirés), les rangs et la `Priorité` de chaque finding, et journalise la décision avec ces valeurs ; l'affectation des findings est celle de ce calcul (rien n'est exclu, le plafond s'applique ensuite dans l'ordre des jalons). Jeu `vibecode` : « Gravité d'abord », mineurs « Les détailler » ; jeu `research` : questions triées par sévérité décroissante puis coût croissant, toutes retenues puis plafonnées. Même en headless, `/audit` va jusqu'à `AUDIT.md` sans réponse humaine (`audit.final` écrit). Chaque gate reste décidée par `K gate decide --autonomy <effective>`.
+
 ## Phase 6 — Génération (seule phase qui écrit)
 
 1. Par jeu : `K audit render --run <run du jeu> --data-file …` prépare le bloc de section (rien n'est écrit sous l'ancien nom). Puis `K audit assemble --root "<REPO>" --set-run <run> [--set-run <run>] --profiles "<p;p>" --lenses "<l;l>" [--sampled]` écrit `AUDIT.md` : en-tête « Généré par /audit le … », profils, lentilles, complet ou échantillonné, lignes `<!-- harness:import … -->` + « Repris depuis », bloc de chaque jeu dans l'ordre du tampon, « Suite ». Idempotent : mêmes entrées, même date → fichier identique.
-2. **Specs** : pour chaque spec du plan (jeu `legacy`, et jeu `research` si `software` est actif ou la factory présente et choisi), JSON des sections de jugement `{context, scope, criteria[], out_of_scope, risks}` puis `K audit spec --run … --finding … --sections … --number <n> --slug …` ; jamais écrasée. Les questions `Q-*` se lancent par `/factory-run --profile research "<question>"` ; les deux critères imposés à `fuites` sont conservés.
+2. **Specs** : pour chaque spec du plan (jeu `legacy`, et jeu `research` si `software` est actif ou la factory présente et choisi), JSON des sections de jugement `{context, scope, criteria[], out_of_scope, risks, depends_on[], priority}` (`depends_on` = noms de spec des prérequis, `priority` = le rang rendu par `prioritize` : le noyau écrit `Questions bloquantes : aucune`, `Dépend de :` et `Priorité :` sous `Statut :`) puis `K audit spec --run … --finding … --sections … --number <n> --slug …` ; jamais écrasée. Les questions `Q-*` se lancent par `/factory-run --profile research "<question>"` ; les deux critères imposés à `fuites` sont conservés.
 3. `K audit publish --run <run du jeu> --deliverable` pour chaque jeu (registre projet).
 
 ## Phase 7 — Rapport final
 
-Carte (projet, stack, taille, git, complet ou échantillonné, imports et avertissements) ; tableau par lentille (bruts, confirmés, rejetés ou dédupliqués ; scindés et occurrences pour `pattern` ; corrections et questions pour `research`) ; surfaces non auditables ; fichiers écrits (`AUDIT.md` et specs, avec l'état rendu) ; prochaine action (`/factory-run "specs/SPEC-…"`, `/factory-run --profile research "<question>"`) ; reste à faire. Les familles sans finding ne sont pas des familles sans défaut.
+Carte (projet, stack, taille, git, complet ou échantillonné, imports et avertissements) ; tableau par lentille (bruts, confirmés, rejetés ou dédupliqués ; scindés et occurrences pour `pattern` ; corrections et questions pour `research`) ; surfaces non auditables ; fichiers écrits (`AUDIT.md` et specs, avec l'état rendu) ; enchaînement (CH-04, gate `audit.chain`) : `K audit chain-plan --root "<REPO>" --only "<specs écrites>" --run <run>` rend `chain` et `only` (ordre PZ) ; si `chain` est vrai, invoquer par l'outil Skill `factory-queue run --only "<only>" --autonomy <effective>` (l'audit n'écrit que ses livrables, l'exécution a lieu dans des enfants, AD-10) ; prochaine action (`/factory-run "specs/SPEC-…"`, `/factory-run --profile research "<question>"`) ; reste à faire. Les familles sans finding ne sont pas des familles sans défaut.
+
+## Défauts en politique `auto` (AP-09)
+
+L'option `--autonomy gate|auto` (AP-03) vaut pour cette exécution seulement et n'écrit jamais `.claude/harness.json` ; elle est transmise à `K gate decide --autonomy` et aux skills enchaînés (AP-04). Défaut de chaque gate de ce skill en `auto`, avec sa justification d'une ligne (celle du catalogue `K gate list`) :
+
+- `audit.research.framing` → specs / fiabiliser — specs when a factory is present, otherwise lister; make it reliable first
+- `audit.research.selection` → Toutes — the cap applies afterwards
+- `audit.software.framing` → 3 / risque d'abord — computed by PZ-01 and PZ-02: make it reliable first, milestones computed (roadmap 4.2)
+- `audit.software.order` → Gravité d'abord / Les détailler — marked default in the attack order; detailing loses nothing
+- `audit.software.assignment` → calcul PZ-02 — milestones computed by PZ-02 from the severity, nothing is excluded
+- `audit.profiles` → proposition — read-only scout verdict, used for this audit and never written to the stamp
+- `audit.drop-security` → garder — security is the priority axis
+- `audit.final` → Écrire AUDIT.md (+ specs) — the deliverable the audit was run for
+- `audit.chain` → lancer la file — roadmap 4.2: the specs written are queued when a software factory is present

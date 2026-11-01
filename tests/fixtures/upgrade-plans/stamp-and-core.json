@@ -1,0 +1,20 @@
+{
+  "changes": [
+    {
+      "path": ".claude/harness.json",
+      "kind": "stamp",
+      "block": null
+    },
+    {
+      "path": ".claude/harness/hcore/gates.py",
+      "kind": "core",
+      "unmodified": true
+    },
+    {
+      "path": ".claude/skills/factory-run/SKILL.md",
+      "kind": "block",
+      "block": "harness.body"
+    }
+  ],
+  "divergent_blocks": []
+}

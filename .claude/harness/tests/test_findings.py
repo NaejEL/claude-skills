@@ -294,7 +294,7 @@ class ConversionTest(helpers.TempDirCase):
         the order of LA-11, FD-11 finds nothing; imposed clauses (secrets, fuites)."""
         f = findings.adapt("legacy-auditor", dict(LEGACY, id="HYG-03", category="gitignore-absent", size="XS"))
         text = findings.to_spec(f, self.sections(), "leg", 3)
-        self.assertTrue(text.startswith("Statut : PROPOSEE\n\n# SPEC-leg-03 — Secret in config.py\n"))
+        self.assertTrue(text.startswith("Statut : PROPOSEE\nQuestions bloquantes : aucune\n\n# SPEC-leg-03 — Secret in config.py\n"))
         heads = [line for line in text.splitlines() if line.startswith("## ")]
         self.assertEqual(heads, ["## Contexte", "## Périmètre", "## Critères d'acceptation", "## Hors-périmètre",
                                  "## Risques", "## Questions ouvertes"])

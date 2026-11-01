@@ -1,4 +1,5 @@
 Statut : PROPOSEE
+Questions bloquantes : aucune$extra_header
 
 # SPEC-$prefix-$number — $title
 

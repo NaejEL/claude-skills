@@ -3,6 +3,74 @@
     {
       "phrase": "le passage à l'exécution appartient à `/legacy-audit` en aval",
       "roadmap": "ROADMAP 2.3: one audit"
+    },
+    {
+      "phrase": "`argument-hint: \"<besoin | chemin d'une spec ",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "**Entrée** (FR-01) : écrire `$ARGUMENTS` tel ",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "Il retire de `$ARGUMENTS` l'option `--models ",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "…\"` (rôles `factory.planner`, `factory.builde",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "**Phase Plan (gate humaine)** : lancer le sou",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "à son retour, poser à l'utilisateur les *Ques",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "intégrer les réponses, écrire `specs/SPEC-<sl",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "présenter la spec à l'utilisateur et demander",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "sinon itérer sur la spec",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "Chaque gate : `H gate decide --run <run> --id",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "`factory-run.approval` : l'option mot pour mo",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "**Sans interaction possible (headless), `H ga",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "pour `factory-run.approval`, approuver",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "mais une question marquée bloquante sans répo",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "**Phase Build** : lancer le sous-agent `facto",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "**Rapport final** : fichiers modifiés (`git s",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
+    },
+    {
+      "phrase": "ne pas commiter à sa place).",
+      "roadmap": "ROADMAP 4.1-4.3 (SPEC-phase4-5 BQ-07, AP-01, CH-02): entry modes, gates under auto, delivery and options of factory-run are rewritten"
     }
   ]
 }

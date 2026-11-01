@@ -29,10 +29,36 @@ from . import gates, profiles
 
 # PF-05: the names of the profiles' skills come from the profiles.
 _CORE_SKILLS = ("software-factory", "ship-pr", "code-index", "ai-lab-audit", "legacy-audit",
-                "vibecode-audit", "brainstorm", "audit", "harness-doctor")
+                "vibecode-audit", "brainstorm", "audit", "harness-doctor", "factory-queue", "factory-batch")
 SKILLS = _CORE_SKILLS + tuple(n for n in profiles.journal_names() if n not in _CORE_SKILLS)
 NAME_RE = re.compile(r"^(%s)-[0-9]{8}-[0-9]{6}\.jsonl$" % "|".join(re.escape(s) for s in SKILLS))
-EVENTS = ("gate", "alias", "upgrade", "doctor")
+# AP-06, SX-05, CH-06, SM-03, HR-01, BQ-05: Phase 4 and 5 events.
+EVENTS = ("gate", "alias", "upgrade", "doctor", "autonomy", "stop", "chain", "merge_decision", "drift", "blocked")
+
+
+def _text(obj: Dict[str, Any], key: str) -> bool:
+    return isinstance(obj.get(key), str) and bool(obj[key].strip())
+
+
+def _validate_phase4(obj: Dict[str, Any]) -> List[str]:
+    """JR-02 for the Phase 4 and 5 events: required fields and their types."""
+    kind = obj["event"]
+    if kind == "autonomy":
+        ok = obj.get("value") in gates.POLICIES and obj.get("source") in gates.AUTONOMY_SOURCES
+        return [] if ok else ["autonomy event: value must be gate|auto and source flag|stamp|absent"]
+    if kind == "stop":
+        return [] if _text(obj, "kind") and _text(obj, "path") else ["stop event: kind and path are required strings"]
+    if kind == "chain":
+        ok = _text(obj, "id") and _text(obj, "skill") and "result" in obj
+        return [] if ok else ["chain event: id, skill and result are required"]
+    if kind == "merge_decision":
+        ok = isinstance(obj.get("merged"), bool) and isinstance(obj.get("conditions"), dict)
+        return [] if ok else ["merge_decision event: merged (bool) and conditions (object) are required"]
+    if kind == "drift":
+        ok = _text(obj, "path") and isinstance(obj.get("count"), int)
+        return [] if ok else ["drift event: path (string) and count (integer) are required"]
+    ok = isinstance(obj.get("questions"), list)
+    return [] if ok else ["blocked event: questions (list) is required"]
 UPGRADE_KINDS = ("header", "block", "merge", "copy", "create", "convert", "migrate", "stamp", "local")
 REQUIRED = ("agent", "model", "duration_ms", "iteration", "verdict", "findings", "tokens")
 FINDING_KEYS = ("produced", "validated", "rejected")
@@ -86,6 +112,8 @@ def validate_record(obj: Any) -> List[str]:
             checks = obj.get("checks")
             ok = isinstance(checks, dict) and all(v in ("ok", "warn", "error") for v in checks.values())
             return [] if ok else ["doctor event: checks must map each check to ok|warn|error"]
+        if obj["event"] != "gate":
+            return _validate_phase4(obj)
         return gates.validate_event(obj)
     errors = ["missing field: %s" % k for k in REQUIRED if k not in obj]
     if errors:

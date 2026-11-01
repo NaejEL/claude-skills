@@ -41,11 +41,10 @@ class PolicyTest(helpers.TempDirCase):
             res = helpers.harness(["gate", "decide", "--id", "ship-pr.merge"], self.tmp)
             self.assertEqual(res.returncode, 2, text)
 
-    def test_gt02_decision_table(self):
-        """GT-02: gate -> ask for a, b, c; auto -> default for b and c, ask for a."""
+    def test_ap01_decision_table(self):
+        """AP-01 replaces GT-02: gate -> ask for a, b, c; auto -> default for b and c; kind a goes through stop_when."""
         for kind in gates.KINDS:
             self.assertEqual(gates.decision(kind, "gate"), gates.ASK)
-        self.assertEqual(gates.decision("a", "auto"), gates.ASK)
         self.assertEqual(gates.decision("b", "auto"), gates.DEFAULT)
         self.assertEqual(gates.decision("c", "auto"), gates.DEFAULT)
         with self.assertRaises(GateError):
@@ -57,25 +56,24 @@ class PolicyTest(helpers.TempDirCase):
             self.assertEqual(event["decision"], gates.ASK, gid)
             self.assertNotIn("warning", event)
 
-    def test_gt03_auto_applied_as_gate_with_warning(self):
-        """GT-03: Phase 1 guard, auto applied as gate with a warning."""
+    def test_ap02_the_phase1_guard_is_gone(self):
+        """AP-02 removes GT-03: auto is no longer applied as gate; the decision carries its justification."""
         event = gates.decide("ship-pr.conflict", "auto")
-        self.assertEqual((event["decision"], event["policy"]), (gates.ASK, "gate"))
-        self.assertIn("applied as 'gate'", event["warning"])
-        # Without the Phase 1 guard, the same gate would take its default.
-        self.assertEqual(gates.decide("ship-pr.conflict", "auto", auto_as_gate=False)["decision"], gates.DEFAULT)
+        self.assertEqual((event["decision"], event["policy"]), (gates.DEFAULT, "auto"))
+        self.assertNotIn("warning", event)
+        self.assertTrue(event["justification"])
 
     def test_gt04_dialogue_gate_always_asks(self):
         """GT-04: a dialogue gate (brainstorm.*) always returns ask."""
         for gid in ("brainstorm.subject", "brainstorm.round", "brainstorm.write"):
             self.assertTrue(gates.get(gid).dialogue)
-            self.assertEqual(gates.decide(gid, "auto", auto_as_gate=False)["decision"], gates.ASK, gid)
+            self.assertEqual(gates.decide(gid, "auto")["decision"], gates.ASK, gid)
 
     def test_gt05_no_default_and_decision_default_is_stop(self):
         """GT-05: no default and decision default -> stop."""
-        event = gates.decide("factory-run.need", "auto", auto_as_gate=False)
+        event = gates.decide("factory-run.need", "auto")
         self.assertEqual(event["decision"], gates.STOP)
-        self.assertEqual(gates.decide("factory-run.approval", "auto", auto_as_gate=False)["decision"],
+        self.assertEqual(gates.decide("factory-run.approval", "auto")["decision"],
                          gates.DEFAULT)
         with self.assertRaises(GateError):
             gates.answer("factory-run.need", event, "user", "x")
@@ -85,12 +83,12 @@ class CatalogTest(unittest.TestCase):
     def test_gt08_catalog_has_the_35_core_gates(self):
         """GT-08: the catalog (27 gates of Phase 1, 5 of Phase 2 in the core, the rest declared by
         the profiles, PF-05), every entry complete."""
-        self.assertEqual(len(gates.CATALOG), 35)   # GT-09: + 3 gates of Phase 3
+        self.assertEqual(len(gates.CATALOG), 38)   # GT-09: + 3 gates of Phase 3; AP-10: + 3 gates of Phase 4
         for gate in gates.all_gates().values():
             self.assertIn(gate.kind, gates.KINDS, gate.id)
             self.assertIn(gate.headless, gates.HEADLESS, gate.id)
             self.assertTrue(gate.options and all(gate.options), gate.id)
-            self.assertTrue(gate.rationale.strip(), gate.id)
+            self.assertTrue(gate.justification.strip(), gate.id)
             self.assertIn(gate.skill, journal.SKILLS, gate.id)
             if gate.headless == gates.DEFAULT:
                 self.assertIsNotNone(gate.default, gate.id)
@@ -104,7 +102,7 @@ class CatalogTest(unittest.TestCase):
         """GT-06: the decision returns the headless fallback of the gate."""
         expected = {"ship-pr.target": "stop", "ship-pr.dirty": "default", "ship-pr.conflict": "default",
                     "ship-pr.merge": "default", "software-factory.code-index": "skip",
-                    "factory-run.questions": "skip", "factory-run.approval": "default"}
+                    "factory-run.questions": "stop", "factory-run.approval": "stop"}
         for gid, fallback in expected.items():
             self.assertEqual(gates.decide(gid, "gate")["headless"], fallback, gid)
 
@@ -139,7 +137,7 @@ class CliTest(helpers.TempDirCase):
         a = check_ok(self, self.h("gate", "answer", "--run", d["run"], "--id", "software-factory.code-index",
                                   "--answer", "installer"))
         self.assertEqual((a["answer"], a["source"], a["apply"]), ("installer", "user", "answer"))
-        lines = journal.read(self.tmp / d["run"])
+        lines = [x for x in journal.read(self.tmp / d["run"]) if x.get("event") == "gate"]
         self.assertEqual([x["phase"] for x in lines], ["decision", "answer"])
         self.assertEqual((lines[0]["answer"], lines[0]["source"]), (None, None))
         self.assertEqual((lines[1]["answer"], lines[1]["source"], lines[1]["policy"]), ("installer", "user", "gate"))
@@ -148,12 +146,12 @@ class CliTest(helpers.TempDirCase):
         again = self.h("gate", "answer", "--run", d["run"], "--id", "software-factory.code-index", "--answer", "x")
         self.assertEqual(again.returncode, 2)
 
-    def test_gt03_cli_auto_logs_the_warning(self):
+    def test_ap02_cli_auto_takes_the_default(self):
         (self.tmp / ".claude").mkdir()
         (self.tmp / ".claude" / "harness.json").write_text('{"autonomy": "auto"}', encoding="utf-8")
         d = check_ok(self, self.h("gate", "decide", "--id", "software-factory.code-index"))
-        self.assertEqual(d["decision"], "ask")
-        self.assertIn("applied as 'gate'", journal.read(self.tmp / d["run"])[0]["warning"])
+        self.assertEqual((d["decision"], d["policy"]), ("default", "auto"))
+        self.assertNotIn("warning", journal.read(self.tmp / d["run"])[1])
 
     def test_gt06_headless_fallbacks_applied_and_declared(self):
         run = runs.create(self.tmp, "ship-pr", shippr.new_state("main", 3, ["t"]))
@@ -171,7 +169,7 @@ class CliTest(helpers.TempDirCase):
                                      "--headless"))
         self.assertEqual((skip["apply"], skip["answer"]), ("skip", "skip"))
         lines = journal.read(run)
-        self.assertEqual([x["source"] for x in lines if x["phase"] == "answer"], ["headless"] * 3)
+        self.assertEqual([x["source"] for x in lines if x.get("phase") == "answer"], ["headless"] * 3)
         self.assertEqual(journal.validate_file(run), [])
 
     def test_gate_of_another_skill_and_answer_without_run_refused(self):
@@ -195,10 +193,11 @@ class CliTest(helpers.TempDirCase):
     def test_gt05_stop_decision_expects_no_answer(self):
         """A logged stop decision (GT-05) accepts no answer (exit 2)."""
         run = runs.create(self.tmp, "factory-run", {})
-        event = gates.decide("factory-run.questions", "auto", auto_as_gate=False)
+        event = gates.decide("factory-run.need", "auto")
+        self.assertEqual(event["decision"], gates.STOP)
         journal.append(run, event)
         self.assertEqual(journal.validate_file(run), [])
-        res = self.h("gate", "answer", "--run", str(run), "--id", "factory-run.questions", "--answer", "x")
+        res = self.h("gate", "answer", "--run", str(run), "--id", "factory-run.need", "--answer", "x")
         self.assertEqual(res.returncode, 2)
         self.assertIn("decision was stop", res.stderr)
 
@@ -232,10 +231,10 @@ class VerifierDefectsTest(helpers.TempDirCase):
             self.assertEqual(res["action"], "reask", bad)
             self.assertIn("not one of the options", res["reason"])
             self.assertEqual(res["options"], ["Merger", "Laisser la PR ouverte"])
-        self.assertEqual([x["phase"] for x in journal.read(run)], ["decision"])
+        self.assertEqual([x["phase"] for x in journal.read(run) if x.get("event") == "gate"], ["decision"])
         a = check_ok(self, self.h("gate", "answer", "--run", str(run), "--id", "ship-pr.merge", "--answer", "Merger"))
         self.assertEqual((a["action"], a["answer"]), ("apply", "Merger"))
-        self.assertEqual([x["phase"] for x in journal.read(run)], ["decision", "answer"])
+        self.assertEqual([x["phase"] for x in journal.read(run) if x.get("event") == "gate"], ["decision", "answer"])
         free = gates.answer("factory-run.need", gates.decide("factory-run.need", "gate"), "user", "Any need at all")
         self.assertEqual(free["answer"], "Any need at all")
 

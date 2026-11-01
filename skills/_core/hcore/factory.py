@@ -17,7 +17,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, Optional, Tuple
 
-from . import counters, profiles, relaunch, verdicts
+from . import counters, profiles, relaunch, specfile, verdicts
 
 # PX-04: the roles, the agents and the ready status line come from the profile with a linear loop.
 _PROFILE = profiles.by_machine("linear")
@@ -33,25 +33,35 @@ class RunOver(RuntimeError):
 
 
 def entry(arguments: str, root: Path) -> Dict[str, Any]:
-    """FR-01: picks the entry phase from $ARGUMENTS."""
+    """FR-01 extended by BQ-07: picks the entry phase from $ARGUMENTS.
+
+    - a ready spec -> build; a proposed spec -> approve (gate, then build);
+    - a blocked spec -> approve once every blocking question is answered,
+      otherwise mode "stop" (kind blocked) with the open questions;
+    - a delivered spec -> mode "stop" (kind delivered);
+    - a SPEC-*.md under specs/ with a missing or unknown status -> SpecError;
+    - anything else is a free-text need: plan."""
     candidate = (arguments or "").strip().strip("'\"")
     if candidate:
         try:
             path = Path(candidate)
             full = path if path.is_absolute() else Path(root) / path
             rel = full.resolve().relative_to(Path(root).resolve())
-            is_spec = full.is_file() and rel.parts[:1] == ("specs",)
+            is_spec = (full.is_file() and rel.parts[:1] == ("specs",)
+                       and rel.name.startswith("SPEC-") and rel.name.endswith(".md"))
         except (OSError, ValueError):
             # Free text (a need) that is not a valid path: Plan phase.
             is_spec = False
         if is_spec:
-            status = None
-            for line in full.read_text(encoding="utf-8", errors="replace").splitlines():
-                if line.strip().startswith("Statut"):
-                    status = line.strip()
-                    break
-            if status == APPROVED_LINE:
-                return {"mode": "build", "spec": rel.as_posix()}
+            parsed = specfile.parse(full.read_text(encoding="utf-8-sig", errors="replace"))
+            mode, stop = specfile.entry_mode(parsed)
+            result: Dict[str, Any] = {"mode": mode, "spec": rel.as_posix()}
+            if stop == "blocked":
+                result["questions"] = [{"id": q["id"], "text": q["text"]} for q in parsed["questions"]
+                                       if q["id"] in parsed["unanswered"]]
+            if stop:
+                result["stop"] = stop
+            return result
     return {"mode": "plan", "spec": None}
 
 

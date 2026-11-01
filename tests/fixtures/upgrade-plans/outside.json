@@ -1,0 +1,15 @@
+{
+  "changes": [
+    {
+      "path": ".claude/skills/factory-run/SKILL.md",
+      "kind": "block",
+      "block": "harness.body"
+    },
+    {
+      "path": ".claude/skills/factory-run/SKILL.md",
+      "kind": "outside",
+      "block": null
+    }
+  ],
+  "divergent_blocks": []
+}

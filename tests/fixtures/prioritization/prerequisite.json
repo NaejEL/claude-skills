@@ -1,0 +1,51 @@
+{
+  "findings": [
+    {
+      "id": "X",
+      "severity": "critical",
+      "size": "S",
+      "depends_on": [
+        "Y"
+      ]
+    },
+    {
+      "id": "Y",
+      "severity": "minor",
+      "size": "S",
+      "depends_on": []
+    },
+    {
+      "id": "Z",
+      "severity": "major",
+      "size": "S",
+      "depends_on": []
+    }
+  ],
+  "milestones": [
+    {
+      "number": 1,
+      "title": "Critiques",
+      "ids": [
+        "Y",
+        "X"
+      ]
+    },
+    {
+      "number": 2,
+      "title": "Majeurs",
+      "ids": [
+        "Z"
+      ]
+    }
+  ],
+  "assignment": {
+    "X": 1,
+    "Y": 1,
+    "Z": 2
+  },
+  "ranks": {
+    "Y": 1,
+    "X": 2,
+    "Z": 3
+  }
+}

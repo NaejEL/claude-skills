@@ -97,6 +97,28 @@ Pilote le **cycle complet d'une pull request GitHub** depuis la branche courante
 
 Garde-fous anti-dérive : périmètre strictement limité au diff (pas de refacto, pas de durcissement sécurité spéculatif, pas de nitpick), « zéro finding » est une réponse acceptable, registre cumulatif empêchant un finding rejeté de ressusciter d'une ronde à l'autre.
 
+### `factory-queue`
+
+Liste les specs de `specs/` avec leur statut dérivé (proposée, bloquée, en cours, livrée, mergée), leurs dépendances (`Dépend de :`) et leur `Priorité :`, puis, avec `run`, les déroule l'une après l'autre : chaque spec éligible est confiée à un processus enfant headless (`claude -p "/factory-run <spec> --ship <cible>"`, contexte neuf), dont la PR est mergée avant de passer à la suivante. `run` exige la politique `auto` ; un enfant arrêté arrête la file. Aucun autre état n'est nécessaire : tout se déduit de `Statut :`, de git et de `.harness/runs/`.
+
+```text
+/factory-queue
+/factory-queue run [--only "SPEC-a.md;SPEC-b.md"] [--target main] [--autonomy auto]
+```
+
+### `factory-batch`
+
+Construit plusieurs specs **en parallèle** (`--parallel N`, défaut 2, plafond 4), chacune dans un worktree git créé et suivi par le harnais, puis les livre **une à la fois** : rebase de la branche locale sur la cible, `ship-pr`, merge, rassemblement des journaux du worktree, suppression. Un conflit non trivial arrête le lot (type `conflict`) en conservant le worktree. Non invocable par un autre skill.
+
+```text
+/factory-batch specs/SPEC-leg-*.md --parallel 3 --autonomy auto
+/factory-batch --resume <id>
+```
+
+#### Coexistence avec vos worktrees
+
+Le harnais ne touche jamais au worktree principal ni à ceux que vous créez vous-même (i3, Orca, `git worktree add`). Il ne crée que des worktrees `factory/<slug>` sous `<dépôt>.harness-wt/`, les inscrit dans un registre commun à tous les worktrees (`<git-common-dir>/harness/worktrees.json`, hors versionnement), et n'opère que sur un chemin **à la fois** inscrit au registre **et** listé par `git worktree list --porcelain` avec la branche enregistrée. Jamais de `git worktree prune`, de `remove --force`, de `move`, `lock` ou `unlock`. `git worktree list` est le seul moyen de voir les siens ; `/factory-run --worktree` construit une spec dans un worktree dédié, supprimé après le merge. Prérequis : `.claude/harness/` et `.claude/settings.json` doivent être commités sur la branche cible.
+
 ### `audit`
 
 Audit **unifié et en lecture seule** d'un projet : cartographie, un auditeur par lentille, validation adversariale de chaque finding, priorisation interactive, puis **un seul livrable `AUDIT.md`** et des specs `specs/SPEC-*.md` au format factory.
@@ -189,6 +211,16 @@ python .claude/rgkb/rgkb.py hooks remove
 Le câblage (sauf `--no-wire`) ajoute aux agents existants un bloc délimité `<!-- rgkb:debut -->` / `<!-- rgkb:fin -->`, réentrant, sans jamais réécrire leur prompt : fiche de fichier avant de lire un fichier entier, lecture des notes avant de formuler un avis, réindexation après modification pour le Builder, et à la consignation finale d'un cycle une proposition de note (1 à 3 par cycle, jamais ce que l'index retrouve seul). `/software-factory` et `/ai-lab` proposent son installation en fin de parcours (Phase 6b), toujours avec accord explicite.
 
 Le skill s'appuie sur le noyau `_core` (`hcore/cx.py`) pour tout ce qui est déterministe : arguments, commande d'installation de `rg`, état du dépôt, copie versionnée du serveur, fusion de `.mcp.json`, `settings.json`, `tasks.json` et de l'exclusion de `config.json`, blocs réentrants, `tools` et `--allowedTools` complétés sans rien retirer. Il exige Python ≥ 3.9.
+
+## Politique d'autonomie
+
+La clé `autonomy` de `.claude/harness.json` vaut `gate` (chaque décision humaine est posée) ou `auto` (défaut installé par `/software-factory`). L'option `--autonomy gate|auto` des skills la remplace pour une exécution, sans jamais écrire le tampon ; la politique effective est transmise aux skills enchaînés. En `auto`, une gate de type (b) ou (c) prend son défaut justifié, journalisé (la justification figure dans le skill qui pose la gate et dans `harness.py gate list`) ; une gate de type (a) s'évalue sur sa condition d'arrêt. Une boucle `auto` ne demande rien d'autre que ses conditions d'arrêt : spec `BLOQUEE` (question bloquante sans défaut), trois itérations sans approbation, agent mort deux fois, dérive de périmètre répétée, opération destructive, secret, enfant en échec, gate sans défaut.
+
+Chaque arrêt écrit un fichier `.harness/runs/STOP-<horodatage>.md` (en anglais, 40 lignes au plus : où, pourquoi, comment reprendre, la commande exacte), un événement `stop` au journal et sort en code 1 ; le harnais ne les supprime jamais. Les enchaînements : `/audit` → `/factory-queue run` (les specs écrites, dans l'ordre de priorité calculé), `/factory-run` → `/ship-pr` (commit de livraison puis PR), et `/ship-pr` merge **sans question** si cinq conditions sont vraies (aucun finding validé restant, tous les threads résolus, CI verte, cible non protégée, pas de conflit), en postant la décision en commentaire de la PR ; sinon la PR reste ouverte. `/brainstorm` ne lance rien. Ce dépôt reste en `gate` : le harnais ne s'auto-modifie pas en autonomie.
+
+## Hooks
+
+`/software-factory` installe dans `.claude/settings.json` (fusion additive, vos hooks et commentaires sont conservés) trois hooks Python stdlib, copiés avec le noyau sous `.claude/harness/hooks/` : un filet Bash/PowerShell **permanent** qui bloque `git push --force`, la suppression de branche, la réécriture d'historique, la destruction de travail non committé et les suppressions de fichiers hors artefacts générés (c'est un filet au mieux, pas une preuve : exécutez-vous-même l'opération voulue dans un terminal) ; pendant `/factory-run`, le contrôle du `Périmètre fichiers :` de la spec (la seconde dérive arrête le cycle) ; pendant `/ship-pr`, la limitation au diff de la PR ; et, si le projet configure un linter (`hooks.lint` de `.claude/harness.json`), un `PostToolUse` de vérification, jamais bloquant. Une erreur interne d'un hook laisse passer l'action et le dit. Les hooks ne valent qu'à la session suivante (ou après revue dans `/hooks`).
 
 ## Profils
 

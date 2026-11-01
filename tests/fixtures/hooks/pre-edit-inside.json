@@ -1,0 +1,7 @@
+{
+ "tool_name": "Edit",
+ "tool_input": {
+  "file_path": "src/a.py"
+ },
+ "session_id": "s1"
+}

@@ -1,0 +1,7 @@
+{
+ "tool_name": "Bash",
+ "tool_input": {
+  "command": "git push --force"
+ },
+ "session_id": "s1"
+}

@@ -220,7 +220,7 @@ class WiringTest(helpers.TempDirCase):
         check_ok(self, helpers.harness(common + ["--agent", "factory-builder"], self.tmp))
         out = helpers.write_output(self.tmp, "verifier-1.md", helpers.verifier_block("APPROVED", True))
         check_ok(self, helpers.harness(common + ["--agent", "factory-verifier", "--output", out], self.tmp))
-        lines = journal.read(self.tmp / start["run"])
+        lines = [x for x in journal.read(self.tmp / start["run"]) if "event" not in x]     # + the autonomy event (AP-03)
         self.assertEqual([(x["agent"], x["model"]) for x in lines],
                          [("factory-builder", "inherit"), ("factory-verifier", "haiku")])
 

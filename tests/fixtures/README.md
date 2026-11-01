@@ -31,6 +31,22 @@ Les fichiers de configuration n'y portent pas leur nom pointe (`.gitignore`, `.c
 pour ne pas agir sur ce depot ; les tests les copient sous leur vrai nom dans un dossier
 temporaire.
 
+## Phases 4 et 5 (autonomie, boucle, hooks)
+
+- `autonomy/` : les quatre formes du tampon (`gate`, `auto`, clé absente, valeur invalide).
+- `specs-p4/` : specs au format de la Phase 4 (statuts `PROPOSEE`, `BLOQUEE` avec ou sans réponse, `LIVREE`,
+  `Périmètre fichiers`, dépendances, cycle x/y) et `SPEC-mal-formee/` (un cas par erreur de `spec check`).
+- `stop-expected/` : le `STOP-*.md` attendu de chaque type d'arrêt.
+- `bash-guard/commands.json` : plus de 60 commandes Bash et PowerShell avec le résultat attendu et la catégorie.
+- `hooks/` : `settings-input.json` (hooks de l'utilisateur, JSONC), `settings-expected.json`, et les entrées stdin
+  des hooks (`pre-edit-*.json`, `pre-bash-*.json`, `post-edit-*.json`).
+- `upgrade-plans/` : plans d'upgrade (contrat de la Phase 3) pour `doctor auto-upgrade`.
+- `prioritization/` : jeux de findings et jalons, rangs attendus.
+
+Les scénarios du merge automatique (réponses simulées de `gh` pour chaque condition vraie ou fausse) sont des
+tables dans `skills/_core/tests/test_automerge.py` ; les dépôts git avec remote nu, les worktrees et les branches
+sont créés par les tests en dossier temporaire (`tests/phase4.py`), avec `fake_claude.py` et `fake_git.py`.
+
 ## Phase 3 (versioning, `--upgrade`, `/harness-doctor`)
 
 Les projets de la Phase 3 (`upgrade-legacy`, `upgrade-blocks`, `upgrade-stamp-phase2`, copies de noyau

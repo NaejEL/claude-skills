@@ -203,6 +203,40 @@ def show(root: Path) -> Dict[str, Any]:
     return {"present": data is not None, "stamp": data}
 
 
+def set_hooks_lint(root: Path, entries: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    """HL-01: `hooks.lint` of the stamp: [{glob, argv (with {file}), timeout_s}], verification commands only."""
+    clean = []
+    for e in entries:
+        argv = e.get("argv") if isinstance(e, dict) else None
+        if not (isinstance(e, dict) and isinstance(e.get("glob"), str) and e["glob"].strip() and isinstance(argv, list)
+                and argv and all(isinstance(a, str) for a in argv) and any("{file}" in a for a in argv)):
+            raise StampError("hooks.lint entries are {glob, argv (with {file}), timeout_s}, got %r" % (e,))
+        clean.append({"glob": e["glob"], "argv": list(argv), "timeout_s": int(e.get("timeout_s", 30))})
+    data = dict(_read(root) or {})
+    hooks = dict(data.get("hooks") or {})
+    if hooks.get("lint") == clean:
+        return {"lint": clean, "written": False}
+    hooks["lint"] = clean
+    data["hooks"] = hooks
+    _write(root, data)
+    return {"lint": clean, "written": True}
+
+
+def ensure_autonomy(root: Path, value: Optional[str] = None) -> Dict[str, Any]:
+    """AP-05: writes `autonomy` (default `auto`, or the --autonomy value) when the key is absent.
+    An existing value is never replaced and the file is then left untouched."""
+    wanted = value or "auto"
+    if wanted not in ("gate", "auto"):
+        raise StampError("autonomy must be gate or auto, got %r" % (wanted,))
+    data = _read(root)
+    if data is not None and "autonomy" in data:
+        return {"value": data["autonomy"], "written": False}
+    data = dict(data or {})
+    data["autonomy"] = wanted
+    _write(root, data)
+    return {"value": wanted, "written": True}
+
+
 def compose(existing: Optional[Dict[str, Any]], skill: str, entry: Dict[str, Any],
             profile_names: Sequence[str] = (), by: str = "inferred", today: Optional[str] = None,
             migrations: Sequence[Dict[str, Any]] = (), inferred_from: Optional[str] = None) -> Dict[str, Any]:

@@ -81,7 +81,11 @@ def _artefact(candidate: str, root: Path, active: Sequence[Dict[str, Any]]) -> O
                 continue
             if not Path(rel.name).match(art["glob"]):
                 continue
-            if _status_line(full) == art["status_ready"]:
+            line = _status_line(full) or ""
+            # BQ-07: a proposed, blocked or delivered spec is routed to its profile as well.
+            lines = [art[k] for k in ("status_ready", "status_proposed", "status_blocked", "status_delivered")
+                     if art.get(k)]
+            if any(line == s or line.startswith(s + " ") for s in lines):
                 return {"profile": prof["name"], "mode": "build", "artefact": rel.as_posix()}
     return None
 

@@ -11,8 +11,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -25,10 +27,12 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from hcore import CORE_VERSION  # noqa: E402
-from hcore import (aliases, audit, blocks, bs, counters, cx, doctor, factory, findings, fusion, gates,  # noqa: E402
-                   ghflow, history, interp, journal, lab, labrun, loop, models, profiles, registry, runs,
-                   scan, scout, shippr, stack, stamp, tshirt, unified, upgrade, verdicts, version)
+from hcore import (aliases, audit, autoupgrade, automerge, batch, blocks, bs, chain, counters, cx,  # noqa: E402
+                   doctor, factory, findings, fusion, gates, ghflow, history, hooks_install, interp, journal, lab,
+                   labrun, loop, models, prioritize, profiles, registry, runs, scan, scope, scout, shippr, specfile,
+                   stack, stamp, stops, tshirt, unified, upgrade, verdicts, version, worktrees)
 from hcore import proc  # noqa: E402
+from hcore import queue as queue_mod  # noqa: E402
 from hcore.proc import Runner  # noqa: E402
 
 
@@ -402,11 +406,51 @@ def cmd_audit_alias_args(args: argparse.Namespace) -> int:
 
 
 def cmd_gate_list(args: argparse.Namespace) -> int:
-    emit({"gates": [{"id": g.id, "kind": g.kind, "default": g.default, "rationale": g.rationale,
-                     "headless": g.headless, "phase2_auto": g.phase2_auto,
-                     "phase3_auto": g.phase3_auto}
+    emit({"gates": [{"id": g.id, "kind": g.kind, "default": g.default, "justification": g.justification,
+                     "rationale": g.justification, "headless": g.headless, "stop_when": g.stop_when,
+                     "dialogue": g.dialogue}
                     for g in gates.all_gates().values()]})
     return 0
+
+
+def _stop(root: Path, skill: str, kind: str, reason: str, details: Optional[Dict[str, Any]] = None,
+          run: Optional[Path] = None) -> None:
+    """SX-02 and SX-05: the STOP file, the `stop` event, then the exit 1 with `STOP: <reason> (see <path>)`."""
+    path = stops.write(root, skill, kind, dict(details or {}, reason=reason), run)
+    raise ghflow.Stop(stops.message(reason, stops.rel(root, path)))
+
+
+def _stop_request(exc: "stops.StopRequest", root: Path, skill: str, run: Optional[Path]) -> None:
+    _stop(root, skill, exc.kind, str(exc), exc.details, run if run is not None else getattr(exc, "run", None))
+
+
+def _policy(root: Path, flag: Optional[str]) -> Tuple[str, str]:
+    """AP-03: (value, source); an invalid value is a usage error (exit 2)."""
+    try:
+        return gates.effective_policy(root, flag)
+    except gates.GateError as exc:
+        raise Usage(str(exc))
+
+
+def _note_autonomy(run: Path, root: Path, flag: Optional[str]) -> str:
+    """AP-03 and AP-04: the effective policy of a run, journaled once (`autonomy` event) and kept in its state."""
+    value, source = _policy(root, flag)
+    state = runs.load_state(run)
+    if state.get("autonomy") != value:
+        journal.append(run, {"event": "autonomy", "value": value, "source": source})
+        state["autonomy"] = value
+        runs.save_state(run, state)
+    return value
+
+
+def _inputs(pairs: Optional[List[str]]) -> Dict[str, Any]:
+    out: Dict[str, Any] = {}
+    for item in pairs or []:
+        key, sep, value = item.partition("=")
+        if not sep or not key.strip():
+            raise Usage("--input expects name=value, got %r" % item)
+        out[key.strip()] = value.strip().lower() in ("1", "true", "yes")
+    return out
 
 # --------------------------------------------------------------------- gates
 
@@ -430,16 +474,23 @@ def cmd_gate_decide(args: argparse.Namespace) -> int:
     root = Path(runs.load_state(run)["root"]) if run is not None else Path(args.root)
     # GT-01: an invalid .claude/harness.json is refused BEFORE any run is opened
     # (no orphan run left behind by an exit 2).
-    event = gates.decide(gate.id, gates.read_policy(root), ambiguous=args.ambiguous)
+    policy, _source = _policy(root, args.autonomy)
+    dynamic = gates.stamp_ship_target(root) if gate.id == "ship-pr.target" and policy == "auto" else None
+    event = gates.decide(gate.id, policy, ambiguous=args.ambiguous, inputs=_inputs(args.input), default=dynamic)
     if run is None:
         run = runs.create(root, gate.skill, {"gate_only": True})
+    _note_autonomy(run, root, args.autonomy)
     journal.append(run, event)
     if event["decision"] == gates.STOP:
         if event.get("ambiguous"):
-            raise gates.GateStop("gate %s: ambiguous proposal under autonomy auto: see %s; resume with /%s "
-                                 "--profile <p>[;<p>]" % (gate.id, args.verdict or "the scout-*.json verdict",
-                                                           gate.skill))
-        raise gates.GateStop(gates.stop_message(gate, "decision default without a default to apply"))
+            _stop(root, gate.skill, "profile",
+                  "gate %s: ambiguous proposal under autonomy auto: see %s; resume with /%s --profile <p>[;<p>]"
+                  % (gate.id, args.verdict or "the scout-*.json verdict", gate.skill),
+                  {"items": [], "profile": "<p>"}, run)
+        if event.get("stop_result"):
+            _stop(root, gate.skill, "gate", "gate %s: stop condition %s holds" % (gate.id, gate.stop_when), None, run)
+        _stop(root, gate.skill, "gate", gates.stop_message(gate, "decision default without a default to apply"),
+              None, run)
     emit(dict(event, options=list(gate.options), dialogue=gate.dialogue, run=runs.display(run)))
     return 0
 
@@ -467,7 +518,8 @@ def cmd_gate_answer(args: argparse.Namespace) -> int:
     journal.append(run, event)
     apply = gates.applied(gate.id, event)
     if apply == gates.STOP:
-        raise gates.GateStop(gates.stop_message(gate, "no interaction possible (headless fallback: stop)"))
+        _stop(root, gate.skill, "gate", gates.stop_message(gate, "no interaction possible (headless fallback: stop)"),
+              None, run)
     emit({"id": gate.id, "action": "apply", "answer": event["answer"], "source": source, "apply": apply})
     return 0
 
@@ -640,6 +692,10 @@ def cmd_upgrade_apply(args: argparse.Namespace) -> int:
 
 def cmd_doctor(args: argparse.Namespace) -> int:
     root = Path(args.root)
+    if args.action == "auto-upgrade":
+        if not args.plan:
+            raise Usage("doctor auto-upgrade expects --plan")
+        return cmd_doctor_auto_upgrade(args)
     if args.action == "scan":
         rows = scan.scan(root, scan.parse_depth(args.depth), _repo_path(args), HERE)
         for row in rows:
@@ -671,6 +727,10 @@ def cmd_fr_start(args: argparse.Namespace) -> int:
         rest, override = models.extract_option(arguments)
     except models.ModelsError as exc:
         raise Usage(str(exc))
+    try:
+        rest, run_options = chain.extract_options(rest)      # CH-03, AP-03: before the routing, which reads a spec path
+    except chain.ChainError as exc:
+        raise Usage(str(exc))
     # LP-05, LP-06: the input is routed to a profile of the stamp.
     stamped = stamp.resolve(root)
     instance = args.orchestrator if args.orchestrator != "factory-run" else None
@@ -686,6 +746,7 @@ def cmd_fr_start(args: argparse.Namespace) -> int:
         return 0
     prof = profiles.get(routed["profile"])
     rest = loop.extract_profile_option(rest)[0]
+    flag = args.autonomy or run_options["autonomy"]
     lab_machine = loop.machine_of(prof) == "lab"
     try:
         resolved = models.resolve_root(root, tuple(prof["model_roles"]), override, "lab" if lab_machine else None)
@@ -700,13 +761,30 @@ def cmd_fr_start(args: argparse.Namespace) -> int:
         choice = factory.entry(rest, root)
         state = factory.new_state(assignment)
     state["profile"] = prof["name"]
+    state.update(spec=choice.get("spec"), ship=run_options["ship"], no_ship=run_options["no_ship"],
+                 deliver_only=run_options["deliver_only"], worktree=run_options["worktree"],
+                 chained_from=run_options["chained_from"],
+                 chain_id=run_options["chain_id"] or os.environ.get("HARNESS_CHAIN_ID") or None,
+                 dirty_at_start=_git_dirty(root), untracked_at_start=scope.untracked_snapshot(root))
     run = runs.create(root, args.orchestrator, state)
+    policy = _note_autonomy(run, root, flag)
     result = dict(choice, profile=prof["name"], orchestrator=args.orchestrator, run=runs.display(run),
-                  models=resolved["roles"])
+                  models=resolved["roles"], autonomy=policy, dirty_at_start=state["dirty_at_start"],
+                  options={k: v for k, v in run_options.items() if k != "autonomy"})
     if choice["mode"] == "plan":
         result["need"] = rest
     if resolved["warnings"]:
         result["model_warnings"] = resolved["warnings"]
+    if choice["mode"] == "stop":
+        # BQ-07: a blocked spec with open questions, or a delivered one, stops here.
+        if choice["stop"] == "blocked":
+            journal.append(run, {"event": "blocked", "questions": choice["questions"]})
+            _stop(root, args.orchestrator, "blocked", "the spec %s has blocking question(s) without answer"
+                  % choice["spec"], {"items": ["%s — %s" % (q["id"], q["text"]) for q in choice["questions"]],
+                                     "spec": choice["spec"], "phase": "entry"}, run)
+        _stop(root, args.orchestrator, "gate", "spec already delivered: %s" % choice["spec"],
+              {"spec": choice["spec"], "phase": "entry",
+               "command": "(nothing to run: the spec is delivered)"}, run)
     emit(result)
     return 0
 
@@ -724,7 +802,25 @@ def cmd_fr_record(args: argparse.Namespace) -> int:
     measure = _measure(state, args, args.agent)
     decision, fields = factory.record(state, args.agent, read_output(args.output), args.dead)
     model = _model(args, state, factory.AGENT_ROLES[args.agent])
-    _log(run, args, args.agent, measure, fields, decision, model, **_profile_extra(state))
+    extra = _profile_extra(state)
+    if decision["action"] == "success" and state.get("spec"):
+        # BQ-09: the spec is delivered at success, whatever the policy.
+        try:
+            done = specfile.set_role(Path(state["root"]) / state["spec"], "delivered")
+            extra["spec_status"] = done["to"]
+            decision["spec_status"] = done["to"]
+        except (specfile.SpecError, OSError) as exc:
+            decision["spec_status_warning"] = str(exc)
+    elif decision["action"] == "fail":
+        # SX-01: three iterations without approval, or an agent dead twice, are explicit stops.
+        kind = "agent" if "died twice" in decision["reason"] else "iterations"
+        _log(run, args, args.agent, measure, fields, decision, model, **extra)
+        runs.save_state(run, state)
+        emit(decision)
+        _stop(Path(state["root"]), state.get("skill", "factory-run"), kind, decision["reason"],
+              {"items": ["%s: %s" % (i.get("severity", "?"), i.get("description", i)) if isinstance(i, dict) else str(i)
+                         for i in decision.get("issues", [])][:10], "spec": state.get("spec"), "phase": "verify"}, run)
+    _log(run, args, args.agent, measure, fields, decision, model, **extra)
     runs.save_state(run, state)
     emit(decision)
     return 0
@@ -755,6 +851,7 @@ def cmd_sp_start(args: argparse.Namespace) -> int:
         raise Usage(str(exc))
     root = Path(args.root).resolve()
     adopted, previous = None, {}
+    flag = args.autonomy
     if args.run:
         # Run opened by the ship-pr.target gate: its journal (gate events) is continued.
         adopted = _run_path(args.run)
@@ -772,7 +869,7 @@ def cmd_sp_start(args: argparse.Namespace) -> int:
     info.update(ghflow.worktree_and_repo(run_cmd))
     assignment = {r: e["model"] for r, e in resolved["roles"].items()}
     state = shippr.new_state(args.target, rounds, themes, assignment)
-    state.update(branch=info["branch"], owner_repo=info["owner_repo"])
+    state.update(branch=info["branch"], owner_repo=info["owner_repo"], spec=args.spec)
     # RG-04: the project registry is read once, when the run starts.
     state["project"] = {k: {"status": e["status"], "source": e["source"]}
                         for k, e in registry.ProjectRegistry(root).read().items()}
@@ -781,9 +878,10 @@ def cmd_sp_start(args: argparse.Namespace) -> int:
     else:
         run = adopted
         runs.save_state(run, dict(state, skill="ship-pr", root=str(root), begun=previous.get("begun", {})))
+    policy = _note_autonomy(run, root, flag)
     result = dict(info, run=runs.display(run), registry=runs.display(runs.registry_path(run)),
                   rounds=rounds, themes=themes, round=1, exclude_added=excluded, models=resolved["roles"],
-                  project_findings=len(state["project"]))
+                  project_findings=len(state["project"]), autonomy=policy, spec=args.spec)
     if resolved["warnings"]:
         result["model_warnings"] = resolved["warnings"]
     emit(result)
@@ -950,8 +1048,47 @@ def cmd_sp_end_round(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ship_settings(root: Path) -> Dict[str, Any]:
+    try:
+        data = json.loads((root / gates.POLICY_FILE).read_text(encoding="utf-8-sig"))
+        ship = data.get("ship_pr")
+    except (OSError, UnicodeDecodeError, ValueError, AttributeError):
+        ship = None
+    return ship if isinstance(ship, dict) else {}
+
+
+def _sleeper():
+    """SM-01 waits; the tests of the core skip them (HCORE_TEST_MODE=1 and HCORE_NO_SLEEP=1)."""
+    if proc.test_mode() and os.environ.get("HCORE_NO_SLEEP") == "1":
+        return lambda _s: None
+    return time.sleep
+
+
 def cmd_sp_merge(args: argparse.Namespace) -> int:
     run, state, run_cmd, _ = _ship_ctx(args)
+    root = Path(state["root"])
+    if args.auto:
+        # SM-02 and SM-03: the five conditions, the comment, then the merge or not. Never a question.
+        settings = _ship_settings(root)
+        in_worktree = worktrees.entry_of(run_cmd, root, root) is not None
+        wait_min = float(settings.get("ci_wait_min", automerge.DEFAULT_CI_WAIT_MIN))
+        result = automerge.run_auto(run_cmd, root, state, list(settings.get("protected") or []), in_worktree,
+                                    wait_min, _sleeper())
+        journal.append(run, dict({"event": "merge_decision", "merged": bool(result["merged"]),
+                                  "conditions": {k: v["ok"] for k, v in result["conditions"].items()}},
+                                 **({"refusal": result["refusal"]} if result.get("refusal") else {})))
+        runs.save_state(run, state)
+        emit(result)
+        return 0
+    if args.check and args.conditions:
+        # SM-05: under `gate` the summary shows the five conditions, for information.
+        settings = _ship_settings(root)
+        info = automerge.evaluate(run_cmd, state, list(settings.get("protected") or []),
+                                  0.0, _sleeper())
+        result = ghflow.merge(run_cmd, state, True)
+        result["conditions"] = info["conditions"]
+        emit(result)
+        return 0
     result = ghflow.merge(run_cmd, state, args.check)
     runs.save_state(run, state)
     emit(result)
@@ -1520,6 +1657,338 @@ def cmd_bs_finish(args: argparse.Namespace) -> int:
 
 # -------------------------------------------------------------------- parser
 
+# ------------------------------------------------ Phases 4 and 5: stops, specs, chains
+
+def _git_dirty(root: Path) -> bool:
+    res = Runner(cwd=str(root))(["git", "status", "--porcelain"])
+    return bool(res.ok and res.out.strip())
+
+
+def cmd_stop_write(args: argparse.Namespace) -> int:
+    """SX-02: details written by Write (consumed), then the STOP file."""
+    root = Path(args.root)
+    try:
+        details = json.loads(read_file(args.details_file))
+    except ValueError as exc:
+        raise Usage("--details-file is not valid JSON: %s" % exc)
+    finally:
+        _remove_transit(root, args.details_file)
+    if not isinstance(details, dict):
+        raise Usage("--details-file must hold a JSON object")
+    run = _run_path(args.run) if args.run else None
+    _stop(root, args.skill, args.kind, str(details.get("reason") or "stop requested"), details, run)
+    return 1
+
+
+def cmd_spec_check(args: argparse.Namespace) -> int:
+    result = specfile.check(Path(args.file))
+    emit(result)
+    if result["errors"]:
+        raise Usage("; ".join(result["errors"]))
+    return 0
+
+
+def cmd_spec_set_status(args: argparse.Namespace) -> int:
+    emit(specfile.set_status(Path(args.file), args.status))
+    return 0
+
+
+def cmd_spec_settle(args: argparse.Namespace) -> int:
+    """BQ-05 and BQ-06 under `auto`: a spec with open blocking questions becomes blocked and stops the cycle;
+    otherwise every non-blocking question takes its default. Under `gate` nothing is changed."""
+    run = _run_path(args.run)
+    state = runs.load_state(run)
+    root = Path(state["root"])
+    path = Path(args.file)
+    parsed = specfile.parse(path.read_text(encoding="utf-8-sig", errors="replace"))
+    if parsed["errors"]:
+        raise Usage("; ".join(parsed["errors"]))
+    policy = _note_autonomy(run, root, args.autonomy)
+    rel = stops.rel(root, path)
+    if policy != "auto":
+        emit({"policy": policy, "action": "ask", "unanswered": parsed["unanswered"]})
+        return 0
+    if parsed["unanswered"]:
+        open_ = [q for q in parsed["questions"] if q["id"] in parsed["unanswered"]]
+        if parsed["role"] == "proposed":
+            specfile.set_role(path, "blocked")
+        journal.append(run, {"event": "blocked", "questions": [{"id": q["id"], "text": q["text"]} for q in open_]})
+        _stop(root, state.get("skill", "factory-run"), "blocked",
+              "the spec holds %d blocking question(s) without answer" % len(open_),
+              {"items": ["%s — %s" % (q["id"], q["text"]) for q in open_], "spec": rel}, run)
+    done = specfile.apply_defaults(path)
+    if done["missing_default"]:
+        _stop(root, state.get("skill", "factory-run"), "gate",
+              "non-blocking question(s) without a `Défaut :` line: %s" % ", ".join(done["missing_default"]),
+              {"spec": rel}, run)
+    if done["applied"]:
+        event = gates.decide("factory-run.questions", "auto")
+        event["applied"] = done["applied"]
+        journal.append(run, event)
+        journal.append(run, dict(gates.answer("factory-run.questions", event, "default", None),
+                                 applied=done["applied"]))
+    emit({"policy": "auto", "action": "defaults", "applied": done["applied"]})
+    return 0
+
+
+def cmd_stamp_autonomy(args: argparse.Namespace) -> int:
+    """AP-05: `autonomy` written at installation when absent; an existing value is never replaced."""
+    emit(stamp.ensure_autonomy(Path(args.root), args.autonomy))
+    return 0
+
+
+def cmd_activate(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    run = _run_path(args.run)
+    state = runs.load_state(run)
+    try:
+        emit(scope.activate(root, args.skill, stops.rel(root, run), args.session, args.phase,
+                            args.spec or state.get("spec"), state.get("target")))
+    except scope.ScopeError as exc:
+        raise Usage(str(exc))
+    return 0
+
+
+def cmd_deactivate(args: argparse.Namespace) -> int:
+    run = _run_path(args.run)
+    emit(scope.deactivate(Path(args.root), stops.rel(Path(args.root), run), args.session))
+    return 0
+
+
+def cmd_hooks_install(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    lint = None
+    if args.lint_file:
+        try:
+            entries = json.loads(read_file(args.lint_file))
+        except ValueError as exc:
+            raise Usage("--lint-file is not valid JSON: %s" % exc)
+        finally:
+            _remove_transit(root, args.lint_file)
+        if not isinstance(entries, list):
+            raise Usage("--lint-file must hold a JSON list")
+        try:
+            lint = stamp.set_hooks_lint(root, entries)
+        except stamp.StampError as exc:
+            raise Usage(str(exc))
+    result = hooks_install.apply(root, args.py)
+    if lint is not None:
+        result["lint"] = lint
+    emit(result)
+    return 0
+
+
+def cmd_fr_deliver(args: argparse.Namespace) -> int:
+    """CH-02: the delivery commit of a successful cycle (no push), when the conditions hold."""
+    run = _run_path(args.run)
+    state = runs.load_state(run)
+    root = Path(state["root"])
+    run_cmd = Runner(cwd=str(root))
+    target = chain.resolve_target(run_cmd, root, state.get("ship"))
+    reasons = chain.deliver_conditions(state, target)
+    if state.get("status") != "success":
+        reasons.append("the cycle did not end in success")
+    if state.get("no_ship"):
+        reasons.append("--no-ship was given")
+    if reasons:
+        journal.append(run, {"event": "chain", "id": "deliver", "skill": "ship-pr", "args": state.get("spec") or "",
+                             "parent_run": runs.display(run), "result": "skipped: " + "; ".join(reasons)})
+        emit({"delivered": False, "reasons": reasons,
+              "suggestion": "/ship-pr %s" % (target or "<target>")})
+        return 0
+    try:
+        result = chain.deliver(run_cmd, root, state, target, args.trailer or [])
+    except chain.ChainStop as exc:
+        _stop(root, "factory-run", exc.kind, str(exc), None, run)
+    state["delivered"] = result
+    runs.save_state(run, state)
+    ship = not state.get("deliver_only")
+    emit(dict(result, ship=ship, ship_args="%s --autonomy %s --spec %s" % (target, state.get("autonomy", "gate"),
+                                                                           state["spec"]) if ship else None))
+    return 0
+
+
+def cmd_fr_bind(args: argparse.Namespace) -> int:
+    """The spec written by a Plan phase becomes the spec of the run (delivered at success, delivery title)."""
+    run = _run_path(args.run)
+    state = runs.load_state(run)
+    path = Path(state["root"]) / args.spec
+    if not path.is_file():
+        raise Usage("spec not found: %s" % args.spec)
+    state["spec"] = Path(args.spec).as_posix()
+    runs.save_state(run, state)
+    emit({"spec": state["spec"]})
+    return 0
+
+
+def cmd_chain_spawn(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    try:
+        text = read_file(args.args_file)
+    finally:
+        _remove_transit(root, args.args_file)
+    parent = _run_path(args.parent_run) if args.parent_run else None
+    policy = _policy(root, args.autonomy)[0]
+    try:
+        card = chain.spawn(root, args.skill, text.strip(), runs.display(parent) if parent else None, policy,
+                           cwd=Path(args.cwd) if args.cwd else None)
+    except chain.ChainStop as exc:
+        _stop(root, args.stop_skill, exc.kind, str(exc), None, parent)
+    except chain.ChainError as exc:
+        raise Usage(str(exc))
+    if parent:
+        journal.append(parent, {"event": "chain", "id": card["id"], "skill": args.skill, "args": text.strip(),
+                                "parent_run": runs.display(parent), "result": "started"})
+    emit({k: card[k] for k in ("id", "skill", "args", "pid", "status", "out", "err")})
+    return 0
+
+
+def cmd_chain_status(args: argparse.Namespace) -> int:
+    try:
+        emit(chain.status(Path(args.root), args.id))
+    except chain.ChainError as exc:
+        raise Usage(str(exc))
+    return 0
+
+
+def cmd_chain_wait(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    try:
+        result = chain.wait(root, args.id, args.max_seconds)
+    except chain.ChainError as exc:
+        raise Usage(str(exc))
+    problem = chain.failure(result)
+    emit(result)
+    if problem:
+        parent = root / result["parent_run"] if result.get("parent_run") else None
+        run = parent if parent is not None and runs.state_path(parent).exists() else None
+        _stop(root, "factory-run", "child", problem, {"child_stop": (result["stops"] or [None])[-1],
+                                                      "child_command": "/%s %s" % (result["skill"], result["args"])}, run)
+    return 0
+
+
+def cmd_chain_exec(args: argparse.Namespace) -> int:
+    return chain.exec_card(Path(args.root), args.id)
+
+
+def cmd_audit_prioritize(args: argparse.Namespace) -> int:
+    """PZ-05: milestones, ranks and `Priorité` from the CONFIRMED findings; the decision is journaled."""
+    run, state, p, reg = _audit_ctx(args)
+    confirmed = [f for f in state["findings"].values() if f["status"] == findings.CONFIRMED]
+    result = prioritize.rank(confirmed)
+    root = Path(state["repo"])
+    policy = _note_autonomy(run, root, args.autonomy)
+    event = gates.decide("audit.software.assignment", policy)
+    event["computed"] = {"assignment": result["assignment"], "ranks": result["ranks"]}
+    journal.append(run, event)
+    result["policy"] = policy
+    if args.max_specs is not None:
+        result["cap"] = prioritize.apply_cap(sorted(result["ranks"], key=result["ranks"].get), args.max_specs)
+    emit(result)
+    return 0
+
+
+def cmd_audit_chain_plan(args: argparse.Namespace) -> int:
+    """CH-04: the specs to queue after `audit.chain`, in the PZ order."""
+    root = Path(args.root)
+    only = [o for o in (args.only or "").split(";") if o.strip()]
+    rows = prioritize.chain_plan(root, only)
+    policy = _policy(root, args.autonomy)[0]
+    factory_here = (root / ".claude" / "harness" / "harness.py").is_file()
+    event = gates.decide("audit.chain", policy)
+    if args.run:
+        journal.append(_run_path(args.run), event)
+    chained = policy == "auto" and factory_here and bool(rows)
+    emit({"chain": chained, "decision": event["decision"], "policy": policy, "factory": factory_here,
+          "specs": [r["file"] for r in rows], "only": ";".join(r["file"] for r in rows)})
+    return 0
+
+
+def cmd_doctor_auto_upgrade(args: argparse.Namespace) -> int:
+    """UA-01 and UA-02."""
+    root = Path(args.root)
+    try:
+        plan = json.loads(Path(args.plan).read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError) as exc:
+        raise Usage("--plan is not readable JSON: %s" % exc)
+    emit(autoupgrade.decide(plan, _policy(root, args.autonomy)[0]))
+    return 0
+
+
+def _target_of(root: Path, flag: Optional[str]) -> str:
+    target = chain.resolve_target(Runner(cwd=str(root)), root, flag)
+    if not target:
+        raise Usage("no target branch: pass --target, set ship_pr.target, or set origin/HEAD")
+    return target
+
+
+def cmd_queue_list(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    emit(queue_mod.scan(Runner(cwd=str(root)), root, _target_of(root, args.target), fetch=not args.no_fetch))
+    return 0
+
+
+def cmd_queue_next(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    run_cmd = Runner(cwd=str(root))
+    listing = queue_mod.scan(run_cmd, root, _target_of(root, args.target), fetch=not args.no_fetch)
+    skip = {Path(s).name for s in (args.attempted or "").split(";") if s.strip()}
+    emit({"next": queue_mod.next_spec(listing, skip), "left": queue_mod.leftovers(listing, skip)})
+    return 0
+
+
+def cmd_queue_run(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    run_cmd = Runner(cwd=str(root))
+    policy = _policy(root, args.autonomy)[0]
+    holder: Dict[str, Path] = {}
+    try:
+        emit(queue_mod.run_queue(root, _target_of(root, args.target), (args.only or "").split(";") if args.only else None,
+                                 policy, run_cmd, on_run=lambda p: holder.__setitem__("run", p)))
+    except stops.StopRequest as exc:
+        _stop_request(exc, root, "factory-queue", holder.get("run"))
+    return 0
+
+
+def cmd_worktree(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    run_cmd = Runner(cwd=str(root))
+    try:
+        if args.wcmd == "list":
+            emit({"worktrees": worktrees.listing(run_cmd, root)})
+        elif args.wcmd == "create":
+            emit(worktrees.create(run_cmd, root, args.slug, _target_of(root, args.target), args.spec, "worktree create"))
+        elif args.wcmd == "remove":
+            emit(worktrees.remove(run_cmd, root, args.path, args.merged))
+        elif args.wcmd == "transfer":
+            worktrees.require(run_cmd, root, args.path)                            # WT-03
+            emit(worktrees.transfer_spec(run_cmd, root, Path(args.path), args.spec, _target_of(root, args.target)))
+    except worktrees.BaseMissing as exc:
+        _stop(root, "factory-run", "gate", str(exc))
+    except worktrees.WorktreeError as exc:
+        raise ghflow.Stop(str(exc))
+    return 0
+
+
+def cmd_batch_run(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    run_cmd = Runner(cwd=str(root))
+    try:
+        parallel = batch.parse_parallel(args.parallel)
+    except batch.BatchUsage as exc:
+        raise Usage(str(exc))
+    policy = _policy(root, args.autonomy)[0]
+    holder: Dict[str, Path] = {}
+    try:
+        emit(batch.run_batch(root, args.globs, parallel, _target_of(root, args.target), policy, run_cmd,
+                             resume=args.resume, on_run=lambda p: holder.__setitem__("run", p)))
+    except batch.BatchUsage as exc:
+        raise Usage(str(exc))
+    except stops.StopRequest as exc:
+        _stop_request(exc, root, "factory-batch", getattr(exc, "run", None) or holder.get("run"))
+    return 0
+
+
 def _agent_args(p: argparse.ArgumentParser) -> None:
     p.add_argument("--run", required=True, help="run journal (.harness/runs/<skill>-<timestamp>.jsonl)")
     p.add_argument("--model", default=None,
@@ -1576,8 +2045,11 @@ def build_parser() -> argparse.ArgumentParser:
         q.set_defaults(func=func)
         if name == "decide":
             q.add_argument("--ambiguous", action="store_true",
-                           help="AR-02: the scout proposal is ambiguous (phase2_auto gates)")
+                           help="AR-02: the scout proposal is ambiguous (gates declared `proposal`)")
             q.add_argument("--verdict", default=None, help="scout verdict file, named in the stop message")
+            q.add_argument("--autonomy", default=None, help="gate|auto for this execution only (AP-03)")
+            q.add_argument("--input", action="append", default=[],
+                           help="name=true|false: input of the stop_when condition of a kind a gate (AP-01)")
     gsub.add_parser("list", help="the gate catalog (core and profiles)").set_defaults(func=cmd_gate_list)
     q.add_argument("--answer", default=None, help="option chosen by the user")
     q.add_argument("--answer-file", default=None, help="free answer, file written by Write (consumed)")
@@ -1699,6 +2171,17 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--audit-date", required=True)
     q.add_argument("--entry-date", required=True)
     q.set_defaults(func=cmd_audit_settle)
+    q = asub.add_parser("prioritize", help="PZ-05: milestones, ranks and Priorité of the CONFIRMED findings")
+    q.add_argument("--run", required=True)
+    q.add_argument("--autonomy", default=None)
+    q.add_argument("--max-specs", type=int, default=None)
+    q.set_defaults(func=cmd_audit_prioritize)
+    q = asub.add_parser("chain-plan", help="CH-04: the specs to queue after audit.chain, in the PZ order")
+    q.add_argument("--root", default=".")
+    q.add_argument("--only", default=None, help="a;b: the specs written by the audit")
+    q.add_argument("--run", default=None)
+    q.add_argument("--autonomy", default=None)
+    q.set_defaults(func=cmd_audit_chain_plan)
     q = asub.add_parser("themes", help="gate calls for N themes (AU-16)")
     q.add_argument("--skill", required=True, choices=sorted(audit.PROFILES))
     q.add_argument("--count", required=True, type=int)
@@ -1748,6 +2231,10 @@ def build_parser() -> argparse.ArgumentParser:
     q = stsub2.add_parser("validate", help="exit 0 if the stamp file is conform (HJ-07, HJ-12), 2 otherwise")
     q.add_argument("file")
     q.set_defaults(func=cmd_stamp_validate)
+    q = stsub2.add_parser("autonomy", help="AP-05: writes `autonomy` when absent (default auto), never replaces it")
+    q.add_argument("--root", default=".")
+    q.add_argument("--autonomy", default=None)
+    q.set_defaults(func=cmd_stamp_autonomy)
     q = stsub2.add_parser("show", help="the stamp of a project (HJ-15)")
     q.add_argument("--root", default=".")
     q.set_defaults(func=cmd_stamp_show)
@@ -1775,8 +2262,10 @@ def build_parser() -> argparse.ArgumentParser:
                    help='JSON {"files": {path: "keep"|"convert"}, "source": "user|headless|default"}')
     q.set_defaults(func=cmd_upgrade_apply)
     p = sub.add_parser("doctor", help="state of the installation of a project, or 'doctor scan' of a tree (DR, SN)")
-    p.add_argument("action", nargs="?", choices=("scan",), default=None)
+    p.add_argument("action", nargs="?", choices=("scan", "auto-upgrade"), default=None)
     p.add_argument("--root", default=".")
+    p.add_argument("--plan", default=None, help="auto-upgrade: upgrade plan JSON (UA-01)")
+    p.add_argument("--autonomy", default=None, help="gate|auto for this execution only (AP-03)")
     p.add_argument("--depth", default=None)
     p.add_argument("--no-journal", action="store_true")
     p.set_defaults(func=cmd_doctor)
@@ -1844,12 +2333,21 @@ def build_parser() -> argparse.ArgumentParser:
                    help="instance of the orchestrator template (LP-06)")
     q.add_argument("--arguments-file", default=None,
                    help="file holding $ARGUMENTS, written by the Write tool (never through the shell)")
+    q.add_argument("--autonomy", default=None, help="gate|auto for this cycle only (AP-03)")
     q.set_defaults(func=cmd_fr_start)
     q = fsub.add_parser("record")
     _agent_args(q)
     q.add_argument("--agent", required=True, help="an agent of the run's profile")
     q.add_argument("--mode", default=None, help="director mode of a loop with consultation (cadrage|interpretation)")
     q.set_defaults(func=cmd_fr_record)
+    q = fsub.add_parser("deliver", help="CH-02: delivery commit of a successful cycle (no push)")
+    q.add_argument("--run", required=True)
+    q.add_argument("--trailer", action="append", default=[], help="trailer line (attribution), repeatable")
+    q.set_defaults(func=cmd_fr_deliver)
+    q = fsub.add_parser("bind", help="records the spec written by the Plan phase in the run")
+    q.add_argument("--run", required=True)
+    q.add_argument("--spec", required=True)
+    q.set_defaults(func=cmd_fr_bind)
 
     p = sub.add_parser("cx", help="code-index rules (CX-01 to CX-16)")
     csub = p.add_subparsers(dest="cxcmd", required=True)
@@ -1921,12 +2419,125 @@ def build_parser() -> argparse.ArgumentParser:
         q.add_argument("--data", default="-")
         q.set_defaults(func=func)
 
+    p = sub.add_parser("stop", help="STOP files (SX-01 to SX-07)")
+    spsub = p.add_subparsers(dest="stopcmd", required=True)
+    q = spsub.add_parser("write", help="writes .harness/runs/STOP-<ts>.md, the stop event and exits 1 (SX-02, SX-05)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--skill", required=True)
+    q.add_argument("--kind", required=True, choices=stops.KINDS)
+    q.add_argument("--run", default=None)
+    q.add_argument("--details-file", required=True, help="JSON {reason, items, spec, phase, ...}, written by Write (consumed)")
+    q.set_defaults(func=cmd_stop_write)
+    p = sub.add_parser("spec", help="spec files: header, questions, statuses (BQ-01 to BQ-09)")
+    sbsub = p.add_subparsers(dest="speccmd", required=True)
+    q = sbsub.add_parser("check", help="{status, blocking, unanswered, perimeter, depends_on, priority, errors}; exit 2 if malformed")
+    q.add_argument("file")
+    q.set_defaults(func=cmd_spec_check)
+    q = sbsub.add_parser("set-status", help="rewrites the `Statut :` line only, along the admitted transitions (BQ-08)")
+    q.add_argument("file")
+    q.add_argument("status")
+    q.set_defaults(func=cmd_spec_set_status)
+    q = sbsub.add_parser("settle", help="BQ-05, BQ-06: blocked and stop, or defaults applied, under auto")
+    q.add_argument("--file", required=True)
+    q.add_argument("--run", required=True)
+    q.add_argument("--autonomy", default=None)
+    q.set_defaults(func=cmd_spec_settle)
+    p = sub.add_parser("chain", help="headless child processes (CH-01)")
+    chsub = p.add_subparsers(dest="chaincmd", required=True)
+    q = chsub.add_parser("spawn", help="launches `claude -p \"/<skill> <args>\"`, detached")
+    q.add_argument("--root", default=".")
+    q.add_argument("--skill", required=True, choices=chain.SKILLS)
+    q.add_argument("--args-file", required=True, help="the arguments of the child, written by Write (consumed)")
+    q.add_argument("--parent-run", default=None)
+    q.add_argument("--autonomy", default=None)
+    q.add_argument("--cwd", default=None, help="working directory of the child (a registered worktree)")
+    q.add_argument("--stop-skill", default="factory-run", help="skill named in the STOP file of a refused launch")
+    q.set_defaults(func=cmd_chain_spawn)
+    q = chsub.add_parser("status")
+    q.add_argument("--root", default=".")
+    q.add_argument("--id", required=True)
+    q.set_defaults(func=cmd_chain_status)
+    q = chsub.add_parser("wait", help="waits at most --max-seconds; a failed child is a stop of kind child")
+    q.add_argument("--root", default=".")
+    q.add_argument("--id", required=True)
+    q.add_argument("--max-seconds", type=float, default=540)
+    q.set_defaults(func=cmd_chain_wait)
+    q = chsub.add_parser("exec", help=argparse.SUPPRESS)
+    q.add_argument("--root", default=".")
+    q.add_argument("--id", required=True)
+    q.set_defaults(func=cmd_chain_exec)
+    p = sub.add_parser("queue", help="the spec queue (FQ-01 to FQ-10)")
+    qsub = p.add_subparsers(dest="queuecmd", required=True)
+    for name, func in (("list", cmd_queue_list), ("next", cmd_queue_next), ("run", cmd_queue_run)):
+        q = qsub.add_parser(name)
+        q.add_argument("--root", default=".")
+        q.add_argument("--target", default=None)
+        if name != "run":
+            q.add_argument("--no-fetch", action="store_true")
+        if name == "next":
+            q.add_argument("--attempted", default=None, help="a;b: specs already attempted")
+        if name == "run":
+            q.add_argument("--only", default=None, help="a;b")
+            q.add_argument("--autonomy", default=None)
+        q.set_defaults(func=func)
+    p = sub.add_parser("worktree", help="worktrees of the harness (WT-01 to WT-09)")
+    wsub = p.add_subparsers(dest="wcmd", required=True)
+    q = wsub.add_parser("list")
+    q.add_argument("--root", default=".")
+    q.set_defaults(func=cmd_worktree)
+    q = wsub.add_parser("create")
+    q.add_argument("--root", default=".")
+    q.add_argument("--slug", required=True)
+    q.add_argument("--target", default=None)
+    q.add_argument("--spec", default=None)
+    q.set_defaults(func=cmd_worktree)
+    q = wsub.add_parser("transfer", help="WT-05: copies the spec into the worktree, moves the original to handoff/")
+    q.add_argument("--root", default=".")
+    q.add_argument("--path", required=True)
+    q.add_argument("--spec", required=True)
+    q.add_argument("--target", default=None)
+    q.set_defaults(func=cmd_worktree)
+    q = wsub.add_parser("remove", help="refused outside the registry (WT-03); kept unless --merged")
+    q.add_argument("--root", default=".")
+    q.add_argument("--path", required=True)
+    q.add_argument("--merged", action="store_true")
+    q.set_defaults(func=cmd_worktree)
+    p = sub.add_parser("batch", help="parallel worktrees, one ship at a time (FB-01 to FB-08)")
+    bsub2 = p.add_subparsers(dest="batchcmd", required=True)
+    q = bsub2.add_parser("run")
+    q.add_argument("globs", nargs="*")
+    q.add_argument("--root", default=".")
+    q.add_argument("--parallel", default=None)
+    q.add_argument("--target", default=None)
+    q.add_argument("--autonomy", default=None)
+    q.add_argument("--resume", default=None)
+    q.set_defaults(func=cmd_batch_run)
+    p = sub.add_parser("hooks", help="Claude Code hooks (HK-02)")
+    hsub = p.add_subparsers(dest="hookscmd", required=True)
+    q = hsub.add_parser("install", help="merges the `hooks` key of .claude/settings.json")
+    q.add_argument("--root", default=".")
+    q.add_argument("--py", required=True, help="the detected interpreter command, e.g. 'py -3'")
+    q.add_argument("--lint-file", default=None,
+                   help="HL-01: JSON list [{glob, argv, timeout_s}] of the verification linters, written by Write (consumed)")
+    q.set_defaults(func=cmd_hooks_install)
+    for name, func in (("activate", cmd_activate), ("deactivate", cmd_deactivate)):
+        p = sub.add_parser(name, help="HK-05: cycle context marker of the hooks")
+        p.add_argument("--root", default=".")
+        p.add_argument("--run", required=True)
+        p.add_argument("--session", default=None, help='"${CLAUDE_SESSION_ID}"')
+        if name == "activate":
+            p.add_argument("--skill", required=True, choices=scope.CONTEXT_SKILLS)
+            p.add_argument("--phase", default="build")
+            p.add_argument("--spec", default=None)
+        p.set_defaults(func=func)
     p = sub.add_parser("ship-pr", help="ship-pr orchestration (SP-01 to SP-19)")
     psub = p.add_subparsers(dest="spcmd", required=True)
     q = psub.add_parser("start")
     q.add_argument("--root", default=".")
     q.add_argument("--target", required=True)
     q.add_argument("--run", default=None, help="run opened by the ship-pr.target gate")
+    q.add_argument("--spec", default=None, help="SM-07: the spec delivered by this PR (link to the queue)")
+    q.add_argument("--autonomy", default=None, help="gate|auto for this execution only (AP-03)")
     q.add_argument("--models", default=None, help='"role=model;..." for this cycle only (X6)')
     q.add_argument("--rounds", default=None)
     q.add_argument("--themes", default=None,
@@ -1976,6 +2587,9 @@ def build_parser() -> argparse.ArgumentParser:
     q = psub.add_parser("merge")
     q.add_argument("--run", required=True)
     q.add_argument("--check", action="store_true", help="checks and summarizes without merging")
+    q.add_argument("--auto", action="store_true",
+                   help="SM-02: evaluate the five conditions, comment, merge only if all hold (never a question)")
+    q.add_argument("--conditions", action="store_true", help="with --check: also report the five conditions (SM-05)")
     q.set_defaults(func=cmd_sp_merge)
     return parser
 
@@ -1992,12 +2606,14 @@ def main(argv: Optional[List[str]] = None) -> int:
         if run is None:
             return args.func(args)
         with runs.locked(run):
+            if args.cmd not in ("stop", "deactivate", "journal"):
+                stops.refuse_if_stopped(runs.load_state(run))      # SX-06
             return args.func(args)
-    except (ghflow.Stop, runs.LockTimeout, gates.GateStop, audit.AuditStop) as exc:
+    except (ghflow.Stop, runs.LockTimeout, gates.GateStop, audit.AuditStop, stops.Stopped) as exc:
         sys.stderr.write("STOP: %s\n" % exc)
         return 1
     except (Usage, ValueError, factory.RunOver, labrun.RunOver, shippr.LoopError, fusion.FusionError,
-            blocks.BlockError, FileNotFoundError, KeyError, upgrade.UpgradeError) as exc:
+            blocks.BlockError, FileNotFoundError, KeyError, upgrade.UpgradeError, chain.ChainError) as exc:
         sys.stderr.write("ERROR: %s\n" % exc)
         return 2
 

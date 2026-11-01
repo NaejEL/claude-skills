@@ -27,11 +27,19 @@ class EntryTest(helpers.TempDirCase):
 
     def test_fr01_other_inputs_go_to_plan(self):
         """FR-01."""
-        proposed = self.spec("SPEC-b.md", "Statut : PROPOSEE")
         outside = self.tmp / "SPEC-c.md"
         outside.write_text("Statut : APPROUVEE\n", encoding="utf-8")
-        for args in (proposed, "add the CSV export", "specs/missing.md", "SPEC-c.md", ""):
+        for args in ("add the CSV export", "specs/missing.md", "SPEC-c.md", ""):
             self.assertEqual(factory.entry(args, self.tmp)["mode"], "plan", args)
+
+    def test_bq07_e_p4_12_a_proposed_spec_goes_to_approve(self):
+        """BQ-07, E-P4-12: a proposed spec goes to approve; a delivered one stops; an unknown status is refused."""
+        proposed = self.spec("SPEC-b.md", "Statut : PROPOSEE")
+        self.assertEqual(factory.entry(proposed, self.tmp)["mode"], "approve")
+        delivered = factory.entry(self.spec("SPEC-d.md", "Statut : LIVREE"), self.tmp)
+        self.assertEqual((delivered["mode"], delivered["stop"]), ("stop", "delivered"))
+        with self.assertRaises(ValueError):
+            factory.entry(self.spec("SPEC-e.md", "Statut : INCONNU"), self.tmp)
 
     def test_fr01_free_text_with_shell_characters_goes_to_plan(self):
         """FR-01: a free-text need (quotes, $, backtick, ':' or line break) is

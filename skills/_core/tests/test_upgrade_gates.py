@@ -20,14 +20,13 @@ def report(blocks_only: bool, changes: int = 3) -> dict:
 
 class GateCatalogTest(helpers.TempDirCase):
     def test_gt09_catalog_and_phase3_auto(self):
-        """GT-09: the three gates are in the catalog; only upgrade-blocks is phase3_auto; upgrade.convert is journaled
+        """GT-09: the three gates are in the catalog; upgrade.convert is journaled
         with software-factory."""
         listed = {g["id"]: g for g in json.loads(H(["gate", "list"], self.tmp).stdout)["gates"]}
         for gid in ("upgrade.convert", "harness-doctor.upgrade-blocks", "harness-doctor.upgrade-other"):
             self.assertIn(gid, listed)
             self.assertEqual(listed[gid]["kind"], "b")
-        self.assertTrue(listed["harness-doctor.upgrade-blocks"]["phase3_auto"])
-        self.assertEqual([g for g, v in listed.items() if v["phase3_auto"]], ["harness-doctor.upgrade-blocks"])
+        self.assertIn("harness-doctor.upgrade", listed)      # AP-10, UA-02
         self.assertEqual(gates.get("upgrade.convert").skill, "software-factory")
         self.assertEqual(gates.get("upgrade.convert").default, "Conserver tel quel")
 

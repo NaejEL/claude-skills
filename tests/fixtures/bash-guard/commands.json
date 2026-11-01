@@ -1,0 +1,842 @@
+[
+ {
+  "tool": "Bash",
+  "command": "git push --force",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "git push -f origin main",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "git push origin main --force-with-lease",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "git push --force-if-includes",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "git push --mirror",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "git push origin +main",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "git push origin HEAD --force",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "git -C sub push -f",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "git push -fu origin x",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "git push --force-with-lease=main:abc origin main",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "git push origin --delete feat",
+  "expect": "deny",
+  "category": "branch-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "git push origin :feat",
+  "expect": "deny",
+  "category": "branch-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "git push -d origin feat",
+  "expect": "deny",
+  "category": "branch-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "git branch -d feat",
+  "expect": "deny",
+  "category": "branch-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "git branch -D feat",
+  "expect": "deny",
+  "category": "branch-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "git branch --delete feat",
+  "expect": "deny",
+  "category": "branch-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "git rebase main",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git rebase -i HEAD~3",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git commit --amend",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git commit --amend -m x",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git reset --hard HEAD~1",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git reset --hard",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git reset --keep abc123",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git reset --merge",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git reset HEAD~2",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git reset --soft HEAD~1",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git filter-branch --all",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git filter-repo --path x",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git replace a b",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git update-ref -d refs/heads/x",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git reflog expire --expire=now --all",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git gc --prune=now",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git clean -fd",
+  "expect": "deny",
+  "category": "work-destruction"
+ },
+ {
+  "tool": "Bash",
+  "command": "git clean -f",
+  "expect": "deny",
+  "category": "work-destruction"
+ },
+ {
+  "tool": "Bash",
+  "command": "git clean -xdf",
+  "expect": "deny",
+  "category": "work-destruction"
+ },
+ {
+  "tool": "Bash",
+  "command": "git checkout -- src/a.py",
+  "expect": "deny",
+  "category": "work-destruction"
+ },
+ {
+  "tool": "Bash",
+  "command": "git checkout .",
+  "expect": "deny",
+  "category": "work-destruction"
+ },
+ {
+  "tool": "Bash",
+  "command": "git restore src/a.py",
+  "expect": "deny",
+  "category": "work-destruction"
+ },
+ {
+  "tool": "Bash",
+  "command": "git restore .",
+  "expect": "deny",
+  "category": "work-destruction"
+ },
+ {
+  "tool": "Bash",
+  "command": "git restore --staged --worktree a.py",
+  "expect": "deny",
+  "category": "work-destruction"
+ },
+ {
+  "tool": "Bash",
+  "command": "git stash drop",
+  "expect": "deny",
+  "category": "work-destruction"
+ },
+ {
+  "tool": "Bash",
+  "command": "git stash clear",
+  "expect": "deny",
+  "category": "work-destruction"
+ },
+ {
+  "tool": "Bash",
+  "command": "git worktree remove ../wt",
+  "expect": "deny",
+  "category": "work-destruction"
+ },
+ {
+  "tool": "Bash",
+  "command": "git worktree prune",
+  "expect": "deny",
+  "category": "work-destruction"
+ },
+ {
+  "tool": "Bash",
+  "command": "rm src/a.py",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "rm -rf src",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "rmdir src",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "unlink a.txt",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "find . -name '*.py' -delete",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "find src -exec rm {} \\;",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "git rm src/a.py",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "xargs rm",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "ls | xargs rm -f",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "rm -rf $HOME/x",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "rm *.log",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "rm -rf \"$TARGET\"",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "git rm -r src",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "echo hi && git push --force",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "ls; git push -f",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "echo $(git push -f)",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "bash -c \"git push -f\"",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "sh -c 'git push --force'",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "sudo git push -f",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "env FOO=1 git push --force",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "git status | git push -f",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "x=1; git branch -D a",
+  "expect": "deny",
+  "category": "branch-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "echo `git push -f`",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "FOO=1 git push -f",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "command git push -f",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "true || git push --mirror",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "Bash",
+  "command": "ls && git reset --hard",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "bash -c 'git rebase main'",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "(git commit --amend)",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "ls && rm -rf src",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "bash -c 'rm a.txt'",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "echo $(rm a.txt)",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "Bash",
+  "command": "git status; git clean -fdx",
+  "expect": "deny",
+  "category": "work-destruction"
+ },
+ {
+  "tool": "Bash",
+  "command": "sh -c \"git stash clear\"",
+  "expect": "deny",
+  "category": "work-destruction"
+ },
+ {
+  "tool": "PowerShell",
+  "command": "git push --force",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "PowerShell",
+  "command": "git push origin +main",
+  "expect": "deny",
+  "category": "force-push"
+ },
+ {
+  "tool": "PowerShell",
+  "command": "Remove-Item -Recurse -Force src",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "PowerShell",
+  "command": "ri src\\a.py",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "PowerShell",
+  "command": "del src\\a.py",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "PowerShell",
+  "command": "rd /s src",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "PowerShell",
+  "command": "Remove-Item -Path src\\a.py",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "PowerShell",
+  "command": "Remove-Item -Recurse $env:TEMP\\x",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "PowerShell",
+  "command": "rm -r -fo src",
+  "expect": "deny",
+  "category": "file-delete"
+ },
+ {
+  "tool": "PowerShell",
+  "command": "git reset --hard; Write-Host done",
+  "expect": "deny",
+  "category": "history-rewrite"
+ },
+ {
+  "tool": "Bash",
+  "command": "git status",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git log --oneline",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git diff",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git diff | head",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git push",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git push -u origin HEAD",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git push origin main",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git commit -m \"fix\"",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git add -A",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git checkout main",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git checkout -b new",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git branch -a",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git branch feature",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git reset HEAD",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git reset",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git restore --staged a.py",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git stash",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git stash pop",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git stash list",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git clean -n",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git worktree list",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git worktree add ../x",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git fetch",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git pull --ff-only",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git merge main",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git rm --cached a.py",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git -C sub status",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "git -c user.name=x commit -m y",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "ls -la",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "cat README.md",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "echo \"git push --force\"",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "grep -r \"rm -rf\" .",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "python -m pytest",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "npm test",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "echo $(date)",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "bash -c \"ls\"",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "FOO=1 git status",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "sudo ls",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "x=1; git status",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "rm -rf node_modules",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "rm -rf build/",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "rm -rf dist",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "rm -rf src/__pycache__",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "rm -rf .harness/runs/x",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "rm factory-logs/a.log",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "find . -name x",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "find build -name '*.o' -delete",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "Bash",
+  "command": "rm -rf experiments/results/run1",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "PowerShell",
+  "command": "git status",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "PowerShell",
+  "command": "Get-ChildItem",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "PowerShell",
+  "command": "Remove-Item -Recurse -Force .\\build",
+  "expect": "allow",
+  "category": null
+ },
+ {
+  "tool": "PowerShell",
+  "command": "git push",
+  "expect": "allow",
+  "category": null
+ }
+]
