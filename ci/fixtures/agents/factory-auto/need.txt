@@ -1,0 +1,1 @@
+Add a mean function to toy.core that returns the average of a list (0 for an empty list).

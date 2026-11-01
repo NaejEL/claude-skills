@@ -1,0 +1,173 @@
+{
+  "name": "alpha",
+  "schema_version": 1,
+  "fallback": false,
+  "fragments": {
+    "orchestrator": "orchestrator.md",
+    "install": "install.md",
+    "scout": "scout.md"
+  },
+  "roles": [
+    {
+      "name": "alpha-worker",
+      "mission": "roles/worker.md",
+      "read_only": true,
+      "tools": "Read, Glob, Grep",
+      "model_role": "alpha.worker",
+      "model_default": "inherit",
+      "agent_file": ".claude/agents/alpha-worker.md"
+    }
+  ],
+  "model_roles": [
+    "alpha.worker"
+  ],
+  "model_presets": {},
+  "loop": {
+    "max_iterations": 3,
+    "entry_role": "worker",
+    "phases": [
+      {
+        "kind": "plan",
+        "agent": "alpha-worker"
+      },
+      {
+        "kind": "record"
+      }
+    ]
+  },
+  "artefacts": [
+    {
+      "kind": "note",
+      "dir": "toynotes",
+      "glob": "NOTE-*.md",
+      "status_proposed": "Statut : BROUILLON",
+      "status_ready": "Statut : PRET",
+      "status_done": null
+    }
+  ],
+  "verifier": {
+    "required_true": [
+      "tests_passed"
+    ],
+    "issue_kinds": []
+  },
+  "deterministic_checks": [],
+  "settings": {
+    "deny_by_stack": {},
+    "deny_generic": [
+      "Read(./toy-logs/**)"
+    ],
+    "deny_if_present": {
+      "dirs": [],
+      "suffixes": [],
+      "cache": false
+    }
+  },
+  "gitignore": [
+    "toy-logs/"
+  ],
+  "tasks": {
+    "inputs": [],
+    "tasks": []
+  },
+  "ci": {
+    "script": "alpha",
+    "command": "/alpha-run",
+    "max_turns": 10,
+    "status_line": "Statut : PRET",
+    "logs_dir": "toy-logs"
+  },
+  "orchestrator": {
+    "name": "alpha-run",
+    "alias_of": null
+  },
+  "gate_namespaces": [],
+  "gates": [
+    {
+      "id": "alpha-run.go",
+      "source": "toy",
+      "kind": "b",
+      "options": "oui / non",
+      "default": "oui",
+      "rationale": "toy gate",
+      "headless": "default"
+    }
+  ],
+  "journal_names": [
+    "alpha-run"
+  ],
+  "lens_sets": [
+    {
+      "name": "toy",
+      "lenses": [
+        "alpha-lens"
+      ],
+      "plan": "toy",
+      "deliverable_section": "toy",
+      "spec_prefix": null,
+      "cap_option": "--max-toys",
+      "cap": 5,
+      "cap_default": 3,
+      "statuses": [
+        "A_FAIRE"
+      ],
+      "gates": [],
+      "fragment": "lenses/lens.md"
+    }
+  ],
+  "lenses": [
+    {
+      "name": "alpha-lens",
+      "prefix": "TOY",
+      "set": "toy",
+      "fragment": "lenses/lens.md",
+      "debt": "none",
+      "shape": "occurrence",
+      "ordering": "severity_size",
+      "axis": null,
+      "axis_rank": null,
+      "unauditable": "mark",
+      "no_run": false,
+      "no_protocol": false,
+      "allowed_exec": [],
+      "journal_check": false,
+      "nature": [
+        "correction"
+      ],
+      "size_scale": "dev",
+      "critical_definition": "lenses/lens.md",
+      "subagent_type": null,
+      "model_role": "audit.auditor",
+      "stack_agnostic": false,
+      "dedup_key": "file-line-category",
+      "evidence_kinds": [
+        "structural"
+      ],
+      "receives": [],
+      "validator_fields": [
+        "size_correction"
+      ],
+      "deliverable": {
+        "section": "toy",
+        "statuses": [
+          "A_FAIRE"
+        ]
+      }
+    }
+  ],
+  "detection": {
+    "accept": 1,
+    "reject": 1,
+    "criteria": [
+      {
+        "id": "toy-marker",
+        "kind": "glob",
+        "weight": 1,
+        "pattern": "toy.marker"
+      }
+    ]
+  },
+  "audit_sections": [
+    "toy"
+  ]
+}

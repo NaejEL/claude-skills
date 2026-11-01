@@ -1,0 +1,85 @@
+{
+  "autonomy": "gate",
+  "schema_version": 1,
+  "profiles": [
+    {
+      "name": "software",
+      "added": "2026-11-01",
+      "by": "scout"
+    }
+  ],
+  "skills": {
+    "software-factory": {
+      "repo_commit": "ed251d2ec30fa7654c46fda73bf8262f901e0487",
+      "repo_describe": "ed251d2",
+      "repo_dirty": false,
+      "core_version": "4.0.0",
+      "installed_at": "2026-11-01T17:33:07+01:00",
+      "updated_at": "2026-11-01T17:33:07+01:00",
+      "options": {
+        "stacks": [],
+        "interpreter": "py -3",
+        "ci": [
+          "ci/factory.ps1",
+          "ci/factory.sh"
+        ],
+        "code_index_offered": false
+      },
+      "params": {},
+      "files": {
+        ".claude/agents/factory-builder.md": {
+          "kind": "generated",
+          "blocks": {
+            "harness.frontmatter": "4f7fa1733dd7cb30c74d238a04248e37bdbae61fc03d6da52f70a7f81c0c3960",
+            "harness.body": "d5666ec09e8128d3b7c6259a8c5821b316e8b8f4a231f76c439e46efdf7005b6"
+          }
+        },
+        ".claude/agents/factory-planner.md": {
+          "kind": "generated",
+          "blocks": {
+            "harness.frontmatter": "5d316e29443081f09f3e1d5e1ee274ae7df6c18cf27798754cbb9f923077c51f",
+            "harness.body": "a96d8221df6f141c4d14ca989c287c91dc906e6ab03da1836fa4d289b5544019"
+          }
+        },
+        ".claude/agents/factory-verifier.md": {
+          "kind": "generated",
+          "blocks": {
+            "harness.frontmatter": "57fd6a75448daa38a267b40386ebc9241e36b181748bf9984793787e96d0924e",
+            "harness.body": "ecd6541b3bcb42165362a0662eaafb5201308af1aea402469e25104c9edbef70"
+          }
+        },
+        ".claude/harness/MANIFEST.json": {
+          "kind": "copied"
+        },
+        ".claude/settings.json": {
+          "kind": "merged"
+        },
+        ".claude/skills/factory-run/SKILL.md": {
+          "kind": "generated",
+          "blocks": {
+            "harness.frontmatter": "3e852a073b4de01cc3d61e89481ec64466ffdd4c1c7fcd94dbc483098217a31e",
+            "harness.profile.software": "088f87ba88d573066393d895a96cc4752e8d8c506073cc76abef6d544212ccde"
+          }
+        },
+        ".gitignore": {
+          "kind": "merged"
+        },
+        ".vscode/tasks.json": {
+          "kind": "merged"
+        },
+        "ci/factory.ps1": {
+          "kind": "generated",
+          "blocks": {
+            "harness.ci": "3aab3d08d9e730f6751aa43a4c85e511cf01a9ed6c49ae46408dc04d4c861fb6"
+          }
+        },
+        "ci/factory.sh": {
+          "kind": "generated",
+          "blocks": {
+            "harness.ci": "76fce16cf3735e2c55de1ec358143b88a54b993180f66640ac48519885b85c19"
+          }
+        }
+      }
+    }
+  }
+}

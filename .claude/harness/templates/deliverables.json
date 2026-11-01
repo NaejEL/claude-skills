@@ -1,0 +1,15 @@
+{
+  "spec": {
+    "secrets_out_of_scope": "Réécriture d'historique",
+    "leak_criteria": [
+      "La baseline et la condition testée sont exécutées par la même commande à la variable manipulée près.",
+      "Les résultats du tableau dépendant de cette éval sont marqués *à re-mesurer* dans l'audit."
+    ],
+    "no_questions": "Aucune"
+  },
+  "tshirt": {
+    "dev": {"XS": "< 30 min", "S": "< 2 h", "M": "demi-journée", "L": "1-2 jours", "XL": "à découper"},
+    "gpu": {"XS": "quelques minutes GPU", "S": "< 1 h", "M": "demi-journée de runs", "L": "plusieurs jours",
+            "XL": "hors de portée du matériel"}
+  }
+}

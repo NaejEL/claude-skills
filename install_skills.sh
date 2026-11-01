@@ -12,16 +12,19 @@
 set -euo pipefail
 
 skip_tools=0
+unlink=0
 for arg in "$@"; do
     case "$arg" in
         --skip-tools|--skip-ripgrep) skip_tools=1 ;;
+        --unlink) unlink=1 ;;
         -h|--help)
-            echo "Usage: $(basename "$0") [--skip-tools]"
+            echo "Usage: $(basename "$0") [--skip-tools] [--unlink]"
             echo "  --skip-tools  ne pas installer les outils externes manquants"
+            echo "  --unlink      remove the links this installer created to this repository (nothing else)"
             exit 0
             ;;
         *)
-            echo "Argument inconnu : $arg (attendu : --skip-tools)" >&2
+            echo "Argument inconnu : $arg (attendu : --skip-tools | --unlink)" >&2
             exit 1
             ;;
     esac
@@ -168,6 +171,26 @@ target_root="$HOME/.claude/skills"
 if [ ! -d "$skills_src" ]; then
     echo "Dossier introuvable : $skills_src" >&2
     exit 1
+fi
+
+echo "DEPRECATED: install_skills.sh is deprecated and will be removed in the next version." >&2
+echo "            Install the plugin instead: claude plugin marketplace add <this-repo> && claude plugin install harness@harness" >&2
+
+if [ "$unlink" -eq 1 ]; then
+    # Removes only the symlinks that point to this repository; real folders and other links are left alone.
+    removed=0
+    for dir in "$skills_src"/*/; do
+        [ -d "$dir" ] || continue
+        src="${dir%/}"
+        link="$target_root/$(basename "$src")"
+        if [ -L "$link" ] && [ "$(readlink "$link")" = "$src" ]; then
+            rm "$link"
+            echo "[removed] $link"
+            removed=$((removed + 1))
+        fi
+    done
+    echo "Unlink done: $removed link(s) removed."
+    exit 0
 fi
 
 mkdir -p "$target_root"

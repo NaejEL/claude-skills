@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./factory-logs/**)",
+      "Read(./.git/objects/**)",
+      "Read(./secrets/**)"
+    ]
+  },
+  "env": {
+    "TEAM_MODE": "strict"
+  }
+}

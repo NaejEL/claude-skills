@@ -1,0 +1,106 @@
+{
+  "arguments": "",
+  "git": false,
+  "project": [],
+  "auditors": {
+    "acces": [
+      {"findings": [
+        {"id": "ACC-01", "axis": "securite",
+         "pattern": "Les points d'entrée de modification ne vérifient pas l'appartenance de la ressource",
+         "severity": "critical",
+         "occurrences": [{"file": "api/orders.js", "line": 42, "evidence": "Order.update(req.params.id, req.body)"},
+                         {"file": "api/users.js", "line": 88, "evidence": "User.update(req.params.id, req.body)"},
+                         {"file": "api/items.js", "line": 17, "evidence": "Item.update(req.params.id, req.body)"},
+                         {"file": "api/carts.js", "line": 9, "evidence": "Cart.update(req.params.id, req.body)"},
+                         {"file": "api/tags.js", "line": 5, "evidence": "Tag.update(req.params.id, req.body)"}],
+         "count": 14, "sampled": true,
+         "impact": "un utilisateur modifie la ressource d'autrui en changeant l'identifiant",
+         "remediation": "vérifier l'appartenance côté serveur dans une couche commune",
+         "difficulty": "M", "regression_risk": "eleve",
+         "risk_rationale": "aucun test sur ces points d'entrée, 14 appelants", "depends_on": []}
+      ]}
+    ],
+    "injection": [null, "truncated {\"findings\": ["],
+    "metier": [
+      {"findings": [
+        {"id": "MET-01", "axis": "securite", "pattern": "Le montant de la commande est fourni par le client",
+         "severity": "major",
+         "occurrences": [{"file": "api/checkout.js", "line": 21, "evidence": "total: req.body.total"},
+                         {"file": "api/refund.js", "line": 8, "evidence": "amount: req.body.amount"}],
+         "count": 2, "sampled": false, "impact": "paiement d'un montant arbitraire",
+         "remediation": "recalculer les montants côté serveur", "difficulty": "S",
+         "regression_risk": "moyen", "risk_rationale": "deux appelants, un test de paiement", "depends_on": []}
+      ]}
+    ],
+    "maintenabilite": [
+      {"findings": [
+        {"id": "MNT-01", "axis": "maintenabilite",
+         "pattern": "Les mêmes règles de validation sont écrites deux fois avec des divergences",
+         "severity": "major",
+         "occurrences": [{"file": "web/form.js", "line": 30, "evidence": "if (age < 18)"},
+                         {"file": "api/users.js", "line": 12, "evidence": "if (age < 16)"},
+                         {"file": "web/date.js", "line": 4, "evidence": "formatDate(d)"}],
+         "count": 3, "sampled": false, "impact": "des saisies acceptées côté client sont refusées côté serveur",
+         "remediation": "une seule source des règles", "difficulty": "M",
+         "regression_risk": "moyen", "risk_rationale": "trois fichiers sans tests", "depends_on": []},
+        {"id": "MNT-02", "axis": "maintenabilite", "pattern": "Des commentaires paraphrasent le code",
+         "severity": "minor",
+         "occurrences": [{"file": "api/orders.js", "line": 3, "evidence": "// update the order"}],
+         "count": 1, "sampled": false, "impact": "bruit à la lecture", "remediation": "dire pourquoi, pas quoi",
+         "difficulty": "XS", "regression_risk": "faible", "risk_rationale": "commentaires seulement",
+         "depends_on": []}
+      ]}
+    ],
+    "evolutivite": [
+      {"findings": [
+        {"id": "EVO-01", "axis": "evolutivite",
+         "pattern": "Le schéma de données est modifié sans historique de migration",
+         "severity": "critical",
+         "occurrences": [{"file": "db/schema.sql", "line": 1, "evidence": "ALTER TABLE orders ADD total"}],
+         "count": 1, "sampled": false, "impact": "impossible de rejouer la base ailleurs",
+         "remediation": "introduire des migrations versionnées", "difficulty": "L",
+         "regression_risk": "eleve", "risk_rationale": "toute la persistance en dépend", "depends_on": []}
+      ]}
+    ]
+  },
+  "validators": {
+    "ACC-01": [{"verdict": "CONFIRMED", "reason": "aucun contrôle d'appartenance trouvé",
+                "severity_correction": null, "axis_correction": null, "difficulty_correction": null,
+                "corrected_count": 0, "false_occurrences": ["api/tags.js:5"], "split_into": []}],
+    "MET-01": [{"verdict": "CONFIRMED", "reason": "montant repris tel quel", "severity_correction": null,
+                "axis_correction": null, "difficulty_correction": null, "corrected_count": 0,
+                "false_occurrences": [], "split_into": []}],
+    "MNT-01": [{"verdict": "SPLIT", "reason": "deux défauts distincts", "severity_correction": null,
+                "axis_correction": null, "difficulty_correction": null, "corrected_count": 0,
+                "false_occurrences": [],
+                "split_into": [{"pattern": "Les règles d'âge divergent entre client et serveur",
+                                "occurrences": ["web/form.js:30", "api/users.js:12"], "severity": "major",
+                                "difficulty": "S"},
+                               {"pattern": "Le formatage des dates est réécrit localement",
+                                "occurrences": ["web/date.js:4"], "severity": "minor", "difficulty": "XS"}]}],
+    "MNT-02": [{"verdict": "CONFIRMED", "reason": "paraphrase avérée", "severity_correction": null,
+                "axis_correction": null, "difficulty_correction": null, "corrected_count": 0,
+                "false_occurrences": [], "split_into": []}],
+    "EVO-01": [null, null]
+  },
+  "expected": {
+    "renamed": {"ACC-01": "VIB-01", "EVO-01": "VIB-02", "MET-01": "VIB-03", "MNT-01.1": "VIB-04",
+                "MNT-01.2": "VIB-05", "MNT-02": "VIB-06"},
+    "not_audited": [],
+    "surfaces": ["injection"],
+    "dismissed": {},
+    "unvalidated": ["EVO-01"],
+    "next_after_validation": "consolidate"
+  },
+  "data": {
+    "name": "poc-genere",
+    "date": "2026-10-17",
+    "axes": ["securite", "maintenabilite", "evolutivite"],
+    "path": "./poc-genere",
+    "headless": true,
+    "surfaces": [{"surface": "dépendances installées", "why": "aucun outil d'audit de vulnérabilités disponible",
+                  "needs": "un audit des dépendances par le gestionnaire de paquets"}],
+    "findings": {}
+  },
+  "specs": []
+}

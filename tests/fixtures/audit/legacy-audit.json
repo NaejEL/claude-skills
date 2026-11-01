@@ -1,0 +1,84 @@
+{
+  "arguments": "--categories \"hygiene;portabilite;qualite;filet\" --max-specs 5",
+  "git": true,
+  "project": [
+    {"key": "README.md::readme sans section d installation", "status": "REJECTED", "source": "ship-pr",
+     "run": "ship-pr-20261001-120000.jsonl", "title": "README sans section d'installation", "file": "README.md"}
+  ],
+  "auditors": {
+    "hygiene": [
+      {"findings": [
+        {"id": "HYG-01", "category": "secrets-commites", "severity": "critical",
+         "title": "Secret commité dans config.py", "location": {"file": "config.py", "line": 4},
+         "evidence": "API_KEY = \"sk-live-123\"", "impact": "la clé est lisible par tout clone du dépôt",
+         "remediation": "lire la clé depuis l'environnement et la révoquer", "size": "S", "depends_on": []},
+        {"id": "HYG-02", "category": "gitignore-absent", "severity": "major",
+         "title": "Aucun .gitignore", "location": {"file": null, "line": null},
+         "evidence": "aucun fichier .gitignore à la racine", "impact": "__pycache__/ apparaît dans git status",
+         "remediation": "ajouter un .gitignore adapté à Python", "size": "XS", "depends_on": []}
+      ]}
+    ],
+    "portabilite": [
+      null,
+      {"findings": [
+        {"id": "PORT-01", "category": "chemin-absolu", "severity": "major",
+         "title": "Chemin absolu dans le script de build", "location": {"file": "build.sh", "line": 3},
+         "evidence": "cd /home/alice/projet", "impact": "le build échoue hors de la machine d'origine",
+         "remediation": "partir du dossier du script", "size": "S", "depends_on": []},
+        {"id": "PORT-02", "category": "dependances-non-epinglees", "severity": "minor",
+         "title": "Dépendances non épinglées", "location": {"file": "requirements.txt", "line": 1},
+         "evidence": "requests", "impact": "builds non reproductibles",
+         "remediation": "épingler les versions", "size": "M", "depends_on": ["HYG-02"]}
+      ]}
+    ],
+    "qualite": [null, "Analysis without any final block."],
+    "filet": [
+      {"findings": [
+        {"id": "FIL-01", "category": "tests-absents", "severity": "major",
+         "title": "Aucun test dans le dépôt", "location": {"file": null, "line": null},
+         "evidence": "aucun fichier de test", "impact": "toute régression passe inaperçue",
+         "remediation": "initialiser pytest avec un premier test", "size": "M", "depends_on": []},
+        {"id": "FIL-02", "category": "doc-absente", "severity": "minor",
+         "title": "README sans section d'installation", "location": {"file": "README.md", "line": 1},
+         "evidence": "# Projet", "impact": "installation à deviner",
+         "remediation": "ajouter une section Installation", "size": "XS", "depends_on": []}
+      ]}
+    ]
+  },
+  "validators": {
+    "HYG-01": [{"verdict": "CONFIRMED", "reason": "la clé est bien en clair", "size_correction": null}],
+    "HYG-02": [{"verdict": "CONFIRMED", "reason": "aucun .gitignore", "size_correction": null}],
+    "PORT-01": [{"verdict": "REJECTED", "reason": "script d'exemple documenté comme tel", "size_correction": null}],
+    "PORT-02": [{"verdict": "CONFIRMED", "reason": "aucune version", "size_correction": "L"}],
+    "FIL-01": [null, null]
+  },
+  "expected": {
+    "renamed": {"HYG-01": "LEG-01", "HYG-02": "LEG-02", "PORT-02": "LEG-03"},
+    "not_audited": ["qualite"],
+    "dismissed": {"FIL-02": "REJECTED@ship-pr"},
+    "unvalidated": ["FIL-01"],
+    "next_after_validation": "consolidate"
+  },
+  "data": {
+    "name": "projet-jouet",
+    "date": "2026-10-17",
+    "factory": false,
+    "milestones": [{"number": 1, "title": "Assainir le dépôt"}, {"number": 2, "title": "Fiabiliser la configuration"}],
+    "findings": {
+      "LEG-01": {"milestone": 1, "spec": "specs/SPEC-leg-01-purge-secrets.md"},
+      "LEG-02": {"milestone": 1, "spec": "specs/SPEC-leg-02-gitignore.md"},
+      "LEG-03": {"not_retained": "cap"}
+    }
+  },
+  "specs": [
+    {"finding": "LEG-01", "number": 1, "slug": "purge-secrets",
+     "sections": {"context": "API_KEY en clair dans config.py:4.", "scope": "Lire la clé depuis l'environnement.",
+                  "criteria": ["`grep -n sk-live config.py` ne trouve rien.", "Le programme lit API_KEY dans l'environnement."],
+                  "out_of_scope": "Rotation de la clé chez le fournisseur.", "risks": "Un déploiement sans la variable échoue."}},
+    {"finding": "LEG-02", "number": 2, "slug": "gitignore",
+     "sections": {"context": "aucun .gitignore ; __pycache__/ apparaît dans git status.",
+                  "scope": "Créer un .gitignore à la racine.",
+                  "criteria": ["Un `.gitignore` existe et contient `__pycache__/`."],
+                  "out_of_scope": ".gitignore par sous-dossier.", "risks": "Un motif trop large."}}
+  ]
+}

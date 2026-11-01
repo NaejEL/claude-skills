@@ -1,0 +1,86 @@
+{
+  "findings": [
+    {
+      "id": "A",
+      "severity": "critical",
+      "size": "M",
+      "depends_on": []
+    },
+    {
+      "id": "B",
+      "severity": "major",
+      "size": "S",
+      "depends_on": []
+    },
+    {
+      "id": "C",
+      "severity": "minor",
+      "size": "XS",
+      "depends_on": [
+        "A"
+      ]
+    },
+    {
+      "id": "D",
+      "severity": "minor",
+      "size": "S",
+      "depends_on": []
+    },
+    {
+      "id": "E",
+      "severity": "major",
+      "size": "L",
+      "depends_on": [
+        "B"
+      ]
+    },
+    {
+      "id": "F",
+      "severity": "critical",
+      "size": "XS",
+      "depends_on": []
+    }
+  ],
+  "milestones": [
+    {
+      "number": 1,
+      "title": "Critiques",
+      "ids": [
+        "F",
+        "A"
+      ]
+    },
+    {
+      "number": 2,
+      "title": "Majeurs",
+      "ids": [
+        "B",
+        "E"
+      ]
+    },
+    {
+      "number": 3,
+      "title": "Mineurs",
+      "ids": [
+        "C",
+        "D"
+      ]
+    }
+  ],
+  "assignment": {
+    "A": 1,
+    "B": 2,
+    "C": 3,
+    "D": 3,
+    "E": 2,
+    "F": 1
+  },
+  "ranks": {
+    "F": 1,
+    "A": 2,
+    "B": 3,
+    "E": 4,
+    "C": 5,
+    "D": 6
+  }
+}

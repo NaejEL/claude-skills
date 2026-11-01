@@ -1,0 +1,10 @@
+.claude/agents/factory-builder.md
+.claude/agents/factory-planner.md
+.claude/agents/factory-verifier.md
+.claude/harness.json
+.claude/settings.json
+.claude/skills/factory-run/SKILL.md
+.gitignore
+.vscode/tasks.json
+ci/factory.ps1
+ci/factory.sh

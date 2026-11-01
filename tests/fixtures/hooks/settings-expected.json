@@ -1,0 +1,48 @@
+{
+  // permissions of the team
+  "permissions": {
+    "deny": [
+      "Read(./node_modules/**)" // generated
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [{ "type": "command", "command": "echo user-hook", "timeout": 5 }]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py\"; [ -f \"$f\" ] || exit 0; py -3 \"$f\" pre-edit; rc=$?; [ \"$rc\" -eq 2 ] && exit 2; exit 0",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py\"; [ -f \"$f\" ] || exit 0; py -3 \"$f\" pre-bash; rc=$?; [ \"$rc\" -eq 2 ] && exit 2; exit 0",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py\"; [ -f \"$f\" ] || exit 0; py -3 \"$f\" post-edit; rc=$?; [ \"$rc\" -eq 2 ] && exit 2; exit 0",
+            "timeout": 60
+          }
+        ]
+      }
+    ]
+  }
+}

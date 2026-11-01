@@ -1,0 +1,15 @@
+{
+  "model": "sonnet",
+  "permissions": {
+    "allow": [
+      "Bash(npm test)"
+    ],
+    "deny": [
+      "Read(./node_modules/**)",
+      "Read(./secrets/**)"
+    ]
+  },
+  "env": {
+    "TOY": "1"
+  }
+}

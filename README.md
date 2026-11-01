@@ -2,7 +2,30 @@
 
 Skills globaux [Claude Code](https://code.claude.com/docs) personnels, versionnés pour être réutilisés sur plusieurs machines (Windows / Linux / macOS).
 
-## Installation
+## Installer
+
+Deux voies coexistent pendant la version 2.0.x. **Ne pas utiliser les deux ensemble** : chaque skill apparaîtrait deux fois.
+
+**Voie 1 — plugin `harness` (recommandée).** Le dépôt est sa propre marketplace (`.claude-plugin/marketplace.json`, source `./`) :
+
+```bash
+claude plugin marketplace add <chemin-ou-url-du-depot>
+claude plugin install harness@harness
+```
+
+Les skills sont exposés sous `/harness:<skill>` ; la forme courte (`/ship-pr`) fonctionne aussi. Le cache du plugin est indexé par `version` (`.claude-plugin/plugin.json`) : tout changement sous `skills/` exige une hausse de `version`, sinon `claude plugin update` répond « already at the latest version ». Une garde le vérifie (`harness.py plugin version-guard`, scénario `plugin-guard` de `ci/test-harness.*`). Pour développer : `claude --plugin-dir <dépôt>`. `ripgrep` n'est pas installé d'avance : `code-index` propose lui-même son installation.
+
+**Voie 2 — liens (dépréciée, retirée à la version suivante).** `install_skills.*` affiche un avertissement de retrait. Pour passer au plugin, retirer d'abord les liens, **seulement ceux que l'installeur a créés vers ce dépôt** (un lien étranger ou un dossier réel n'est jamais touché) :
+
+```powershell
+.\install_skills.ps1 -Unlink
+```
+
+```bash
+./install_skills.sh --unlink
+```
+
+### Installation par liens
 
 Cloner le dépôt puis lier les skills dans `~/.claude/skills` :
 
@@ -34,11 +57,16 @@ La détection du gestionnaire de paquets est **factorisée** et indépendante de
 
 ### `software-factory`
 
-Initialise une **usine logicielle multi-agents** dans n'importe quel projet :
+Point d'entrée **unique** de l'installation d'une usine multi-agents dans n'importe quel projet. Il détecte les **profils** applicables (voir « Profils »), installe l'usine de chacun et note les profils retenus dans `.claude/harness.json` :
 
 ```text
 /software-factory
+/software-factory --profile "software;research"
+/software-factory --rescan
+/software-factory --upgrade
 ```
+
+`--profile` force les profils et saute le scout ; `--rescan` relance le scout et ne propose que des **ajouts** (un profil disparu est rapporté, jamais retiré). Sans option, un projet déjà équipé est relu depuis `.claude/harness.json` (ou déduit de ses fichiers générés) sans nouveau scout.
 
 Le skill détecte la stack du projet (C, C#, Python, Node, Docker, Ansible…) et génère :
 
@@ -65,6 +93,17 @@ Cycle d'un besoin :
 
 En CI : `ci/factory.sh specs/SPEC-x.md` (mode sûr `--permission-mode acceptEdits` + liste blanche d'outils) ou `--yolo` pour `--dangerously-skip-permissions`.
 
+### `harness-doctor`
+
+Diagnostique l'installation du harnais d'un projet, ou d'une arborescence de projets. Dans un projet, il compare la version installée à celle du dépôt claude-skills (retard en commits), signale les blocs divergents (`edited`, `outdated`), les fichiers manquants, les hooks rgkb déclarés mais absents, un `models.json` absent, un `gh` non authentifié et les profils nouveaux (il **propose** `--rescan`, sans le lancer), puis propose `--upgrade` : il le lance (par l'outil Skill, `software-factory` puis `code-index`) quand le diff ne touche que des blocs et que la politique d'autonomie l'autorise.
+
+```text
+/harness-doctor
+/harness-doctor --scan ~/projets --depth 3
+```
+
+Avec `--scan <racine>`, une ligne par projet équipé : version installée, retard, dernier cycle, commande d'upgrade. Le scan est en lecture seule et ne lance jamais d'upgrade.
+
 ### `ship-pr`
 
 Pilote le **cycle complet d'une pull request GitHub** depuis la branche courante jusqu'au merge :
@@ -81,103 +120,61 @@ Pilote le **cycle complet d'une pull request GitHub** depuis la branche courante
 
 Garde-fous anti-dérive : périmètre strictement limité au diff (pas de refacto, pas de durcissement sécurité spéculatif, pas de nitpick), « zéro finding » est une réponse acceptable, registre cumulatif empêchant un finding rejeté de ressusciter d'une ronde à l'autre.
 
-### `legacy-audit`
+### `factory-queue`
 
-Audite un **repo legacy en lecture seule** et en tire un plan d'assainissement exécutable par la factory :
+Liste les specs de `specs/` avec leur statut dérivé (proposée, bloquée, en cours, livrée, mergée), leurs dépendances (`Dépend de :`) et leur `Priorité :`, puis, avec `run`, les déroule l'une après l'autre : chaque spec éligible est confiée à un processus enfant headless (`claude -p "/factory-run <spec> --ship <cible>"`, contexte neuf), dont la PR est mergée avant de passer à la suivante. `run` exige la politique `auto` ; un enfant arrêté arrête la file. Aucun autre état n'est nécessaire : tout se déduit de `Statut :`, de git et de `.harness/runs/`.
 
 ```text
-/legacy-audit
-/legacy-audit C:/chemin/vieux-projet --categories "hygiene;qualite" --max-specs 10
+/factory-queue
+/factory-queue run [--only "SPEC-a.md;SPEC-b.md"] [--target main] [--autonomy auto]
 ```
 
-1. **Cartographie** du repo (stack, taille, git présent ou non — l'absence de versioning est un finding) ;
-2. **4 auditeurs parallèles** par familles de smells (hygiène du dépôt, portabilité/config, qualité du code, filet de sécurité : tests/doc) → **validation adversariale** de chaque finding par un mini-agent qui relit la preuve à la source ;
-3. **Priorisation interactive** : nombre de jalons, critère dominant et affectation par thème décidés par l'utilisateur (AskUserQuestion) ;
-4. **Livrables** : `ROADMAP-legacy.md` (jalons, estimations, dépendances) + une spec `specs/SPEC-leg-*.md` au format factory (statut proposé) par finding retenu — prêtes pour `/factory-run`.
+### `factory-batch`
 
-Garde-fous : lecture seule stricte hors livrables (même un `.gitignore` manquant est un finding, pas une action), « zéro finding » est une réponse acceptable, estimation T-shirt (XS→XL, les XL sont découpés en specs chaînées), idempotent (reprise d'une roadmap existante, statuts FAIT préservés, specs jamais écrasées).
+Construit plusieurs specs **en parallèle** (`--parallel N`, défaut 2, plafond 4), chacune dans un worktree git créé et suivi par le harnais, puis les livre **une à la fois** : rebase de la branche locale sur la cible, `ship-pr`, merge, rassemblement des journaux du worktree, suppression. Un conflit non trivial arrête le lot (type `conflict`) en conservant le worktree. Non invocable par un autre skill.
+
+```text
+/factory-batch specs/SPEC-leg-*.md --parallel 3 --autonomy auto
+/factory-batch --resume <id>
+```
+
+#### Coexistence avec vos worktrees
+
+Le harnais ne touche jamais au worktree principal ni à ceux que vous créez vous-même (i3, Orca, `git worktree add`). Il ne crée que des worktrees `factory/<slug>` sous `<dépôt>.harness-wt/`, les inscrit dans un registre commun à tous les worktrees (`<git-common-dir>/harness/worktrees.json`, hors versionnement), et n'opère que sur un chemin **à la fois** inscrit au registre **et** listé par `git worktree list --porcelain` avec la branche enregistrée. Jamais de `git worktree prune`, de `remove --force`, de `move`, `lock` ou `unlock`. `git worktree list` est le seul moyen de voir les siens ; `/factory-run --worktree` construit une spec dans un worktree dédié, supprimé après le merge. Prérequis : `.claude/harness/` et `.claude/settings.json` doivent être commités sur la branche cible.
+
+### `audit`
+
+Audit **unifié et en lecture seule** d'un projet : cartographie, un auditeur par lentille, validation adversariale de chaque finding, priorisation interactive, puis **un seul livrable `AUDIT.md`** et des specs `specs/SPEC-*.md` au format factory.
+
+```text
+/audit
+/audit C:/chemin/projet --profile software --lenses "securite;evolutivite" --max-findings 10
+/audit --profile research --max-questions 4
+```
+
+Les lentilles viennent des profils actifs : `software` (jeu `legacy` : hygiène, portabilité, qualité, filet de sécurité ; jeu `vibecode` : accès, injection, métier, maintenabilité, évolutivité) et `research` (fidélité, validité, fuites, analogies biologiques, feuille de route). `--lenses` accepte des noms de lentille ou d'axe (`securite` = accès, injection, métier) ; au plus 5 auditeurs en parallèle, par vagues. `AUDIT.md` regroupe l'en-tête (profils, lentilles, complet ou échantillonné), les sections de chaque jeu et une « Suite » ; les anciens livrables (`ROADMAP-legacy.md`, `AUDIT-vibecode.md`, `AUDIT-lab.md`) sont **repris une fois** (ligne `<!-- harness:import … -->`, statuts `FAIT`, `EN_COURS`, `TRANCHEE` préservés), jamais modifiés ni supprimés. Idempotent : mêmes entrées, même `AUDIT.md`.
+
+### `legacy-audit`
+
+Skill **alias** de `/audit --profile software` limité aux lentilles `hygiene`, `portabilite`, `qualite`, `filet` (`--categories` devient `--lenses`), conservé pendant la version 2.0.0 puis retiré. Écrit `AUDIT.md` et les specs `SPEC-leg-*`.
 
 ### `vibecode-audit`
 
-Diagnostique un **projet vibecodé** (généré par IA) repris par quelqu'un qui n'en est pas l'auteur, et répond à une seule question : par où attaquer avant la mise en production.
-
-```text
-/vibecode-audit
-/vibecode-audit C:/chemin/poc --axes "securite;maintenabilite" --max-findings 10
-```
-
-1. **Cartographie** : forme du projet, **frontières de confiance** (points d'entrée exposés, couche d'accès aux données), signaux de génération, vérifications déterministes (vulnérabilités, secrets) triées par atteignabilité en production ;
-2. **5 auditeurs parallèles** guidés par une taxonomie des signatures propres au code généré — contrôle d'accès absent ou déporté chez le client, injection et rendu non échappé, **logique métier exploitable** (invariants du domaine, concurrence, transitions d'état), réimplémentation entre sessions, adhérence au fournisseur — puis **validation adversariale** avec pouvoir de **scinder** un motif trop grossier ;
-3. **Gate humaine légère** (un seul appel) : ordre d'attaque et sort des motifs mineurs ;
-4. **Livrable unique** : `AUDIT-vibecode.md` — encadré de portée et limites, surfaces non auditables, tableau « par où attaquer », motifs détaillés.
-
-Ce qui le distingue de `legacy-audit` : deux distributions de défauts. `legacy-audit` vise la dette d'**accumulation** (code humain, dérive sur des années) ; `vibecode-audit` vise la dette de **génération** (chaque session régénère sans connaître la précédente, le modèle écrit le chemin nominal). Les enchaîner est le mode d'emploi normal — le diagnostic prémâche le travail, `/legacy-audit` en tire roadmap et specs.
-
-Garde-fous : **une seule écriture**, le rapport — ni spec, ni hook, ni correctif ; le finding est un **motif à N occurrences**, jamais une occurrence isolée ; **la gravité prime sur l'axe** — un `critical` trouvé par la lentille évolutivité n'est jamais relégué derrière tout l'axe sécurité ; la difficulté (T-shirt XS→XL) est un **ordre de grandeur**, pas une estimation — elle varie d'un audit à l'autre sur le même code, contrairement à la gravité ; le **risque de régression informe seulement** (il sature à « élevé » sur un projet sans tests et ne discriminerait rien) ; **aucune adhérence à une pile technique** — la taxonomie décrit des classes de défaut, jamais un écosystème ; **ce qui ne peut pas être audité est un finding**, jamais un silence rassurant ; les motifs non passés par la validation adversariale sont **marqués comme tels** (sur un échantillon, la moitié se sont révélés matériellement inexacts).
+Skill **alias** de `/audit --profile software` limité aux lentilles vibecode (`--axes` développé en lentilles), conservé pendant la version 2.0.0 puis retiré.
 
 ### `ai-lab`
 
-Installe un **laboratoire de recherche IA multi-agents** dans un projet d'expérimentation (PoC d'architecture, mécanisme bio-inspiré, étude d'ablation) — le pendant scientifique de `software-factory` :
+Skill **alias** de `/software-factory --profile research`, conservé sans échéance « pour ne rien casser ». Installe le **laboratoire de recherche IA** (profil `research`) : Directeur de recherche, experts neurosciences et maths, Builder, Verifier, le skill `/lab-run` (seconde instance du gabarit d'orchestrateur, profil `research` imposé), `ci/lab.*`, la copie du noyau et l'affectation des modèles par rôle (`.claude/models.json`, clés `lab.*`). Sur un projet déjà équipé du profil `software`, `research` est **ajouté** au tampon `.claude/harness.json`, rien n'est retiré.
 
 ```text
 /ai-lab
-/ai-lab "le gating par surprise est-il nécessaire à l'échelle 1.5B ?"
-```
-
-Le skill détecte la stack (framework, venv, GPU réel), le **corpus scientifique** du projet (journal d'expériences et son format, architecture, feuille de route et tableau des résultats, documents figés, évals existantes, classe de config, contraintes non négociables) et génère :
-
-| Fichier généré | Rôle |
-| --- | --- |
-| `.claude/agents/lab-director.md` | Directeur de recherche : cadre l'hypothèse, rédige le protocole pré-enregistré (prédictions chiffrées, contrôles, critères d'abandon), arbitre, tranche RETENU / REJETE / INCONCLUSIF, rédige l'entrée de journal (lecture seule) |
-| `.claude/agents/lab-neuro.md` | Expert neurosciences/biologie : analogue biologique fidèle, prédictions que la bio impose, analogies de façade dénoncées (lecture seule) |
-| `.claude/agents/lab-math.md` | Expert algèbre linéaire/optimisation/stats : formalisation, bornes (capacité, stabilité, interférence), puissance statistique, confondants, recalcul des chiffres (lecture seule) |
-| `.claude/agents/lab-builder.md` | Implémente le protocole comme flag de config ablatable + tests + script d'éval, exécute l'expérience complète, rend les résultats bruts **sans interpréter** |
-| `.claude/agents/lab-verifier.md` | Adversarial : conformité au protocole, fuites/confondants dans le code, ré-exécution d'au moins un run, recalcul, verdict JSON (jamais d'édition) |
-| `.claude/skills/lab-run/SKILL.md` | Orchestrateur de la boucle scientifique |
-| `.claude/lab-models.json` | Affectation d'un modèle par rôle, choisie à l'installation (gate humaine) |
-| `ci/lab.sh` + `ci/lab.ps1` | Entrée headless : `claude -p "/lab-run 'experiments/EXP-x.md'"` |
-| `.claude/settings.json` | `permissions.deny` : venv, caches, données, poids, résultats bruts (fusionné) |
-| `.vscode/tasks.json` | Tâches VS Code Lab (fusionné) |
-
-Cycle d'une expérience :
-
-```text
 /lab-run "la lecture itérée CA3 améliore-t-elle le rappel par paraphrase ?"
-/lab-run suivant        # le Director choisit la prochaine expérience de la feuille de route
+/lab-run suivant
 ```
-
-1. **Cadrage** : Director → brouillon de protocole ; **Neuro et Math en parallèle** ; Director consolide ;
-2. **Gate humaine** : vous êtes le PI — le protocole `experiments/EXP-*.md` est **pré-enregistré** (prédictions et critères d'abandon gelés) après votre approbation explicite ;
-3. **Builder** (contexte frais) implémente, fait passer les tests, exécute tous les runs (baseline, contrôles, seeds) et rend un compte rendu brut ;
-4. **Verifier** (contexte vierge) contrôle le protocole, traque les fuites, ré-exécute, recalcule ; `CHANGES_REQUESTED` réinjecté au Builder — **3 itérations maximum**, puis échec explicite consigné ;
-5. **Interprétation croisée** : Neuro et Math en parallèle, puis Director → verdict, entrée de journal au format du projet, ligne du tableau des résultats, prochaine expérience ;
-6. **Gate humaine** avant écriture dans le journal. Les documents figés du projet ne sont jamais édités.
-
-Un résultat négatif est un résultat : le cycle réussit quand la question a une réponse honnête, pas quand le code « marche ».
-
-**Un modèle par rôle.** À l'installation, une gate humaine choisit quel modèle tient quel rôle (profils prêts : tout hérité / le plus capable sur les deux experts / le plus capable seulement sur l'interprétation / sur-mesure par rôle). Le choix est écrit dans `.claude/lab-models.json` et relu à chaque cycle ; `inherit` = le rôle suit le modèle de la session. Override ponctuel sans toucher au fichier :
-
-```text
-/lab-run "ma question" --models "math=fable;director.interpretation=fable;builder=sonnet"
-```
-
-Les rôles affectés à un modèle coûteux sont traités comme une ressource rare : jamais le journal entier ni les résultats bruts en entrée, pas de relance pour une reformulation, et l'interprétation croisée n'a lieu qu'une fois par cycle. L'entrée de journal consigne quel modèle a tenu quel rôle — condition de reproductibilité du jugement, au même titre que les seeds.
 
 ### `ai-lab-audit`
 
-Revue externe d'un **projet de recherche IA en lecture seule** — le pendant scientifique de `legacy-audit`, qui alimente `/lab-run` au lieu de le détourner (auditer ≠ expérimenter : aucun run, aucun protocole) :
-
-```text
-/ai-lab-audit
-/ai-lab-audit C:/chemin/projet --lenses "validite;fuites" --max-questions 4 --models "math=fable"
-```
-
-1. **Cartographie du corpus scientifique** (journal et format de ses entrées, architecture, feuille de route et tableau des résultats, documents figés, évals et leurs options réelles, contraintes non négociables) ; réutilise les agents `lab-*` s'ils sont installés ;
-2. **5 auditeurs parallèles** par lentilles : `fidelite` (code ↔ maths de l'architecture), `validite` (conclusions plus fortes que leurs données : seeds, dispersion, chiffres incohérents entre documents), `fuites` (confondants dans les évals : état non réinitialisé, baseline à budget différent, écriture pendant le rappel…), `bio` (analogies de façade, déclencheurs observés mais mécanisme jamais essayé), `route` (désaccords état courant / journal / tableau, décisions « quasi closes » sans mesure) → **validation adversariale** de chaque finding, avec grep du journal pour vérifier que la réponse n'existe pas déjà ;
-3. **Arbitrage humain** : sort des corrections (specs factory ou simple liste) et critère de priorité des questions (fiabiliser d'abord / le moins cher / ordre de la feuille de route) ;
-4. **Livrable** `AUDIT-lab.md` : **corrections** `COR-*` (avec specs `specs/SPEC-lab-*.md` si la factory est présente) et **questions de recherche** `Q-*` — une phrase falsifiable, sa motivation chiffrée, ce qu'elle trancherait, son coût, sa dépendance éventuelle à une correction, et la commande `/lab-run "<question>"` exacte.
-
-Garde-fous : « zéro finding » est une réponse acceptable, une question dont dépend un banc d'éval fuyant attend la correction du banc, idempotent (reprise, questions tranchées par une entrée de journal postérieure marquées `TRANCHEE`). L'audit lit la même affectation de modèles que `/lab-run` (`.claude/lab-models.json`) : les mini-validateurs restent sur un modèle économique, contester un extrait de trois lignes ne justifie pas le modèle le plus cher.
+Skill **alias** de `/audit --profile research` (lentilles `fidelite`, `validite`, `fuites`, `bio`, `route`), conservé pendant la version 2.0.0 puis retiré. Les questions `Q-*` se lancent par `/factory-run --profile research "<question>"`.
 
 ### `brainstorm`
 
@@ -194,6 +191,8 @@ Co-réfléchit à une idée en la **challengeant** au lieu de la valider, et **s
 4. **Convergence** : synthèse en conversation (idée après confrontation, angles retenus, angles écartés avec leur raison), puis gate finale proposant de l'écrire dans `BRAINSTORM-<slug>.md` — en cas de refus, rien n'est écrit.
 
 **Condition de terminaison** : plafond dur de **3 tours** (`--rounds N` borné à `min(N, 3)`), passage forcé à la convergence au plafond, sortie anticipée observable dès qu'un tour ne produit plus aucun angle hors énoncé nouveau, et **5 pistes retenues au maximum** dans la synthèse. Le rapport final suggère `/factory-run` ou `/lab-run` quand un angle retenu est implémentable, sans jamais lancer la commande. Arrêt en erreur explicite en exécution headless : le skill est intrinsèquement dialogué.
+
+Rebranché sur le noyau `_core` (`hcore/bs.py`) : arguments et plafond de tours, validation du JSON des lentilles, relance unique d'une lentille muette (qui désactive la sortie anticipée du tour), sortie anticipée, plafond de 5 pistes retenues, slug, reprise et rendu de la synthèse sont du code testé. **Aucune écriture avant la gate finale** : le noyau est sans état et la session lui passe le sien sur l'entrée standard ; le journal est écrit avec la synthèse.
 
 ### `code-index`
 
@@ -228,11 +227,72 @@ python .claude/rgkb/rgkb.py hooks status
 python .claude/rgkb/rgkb.py hooks remove
 ```
 
-`post-merge` (donc `git pull`) et `post-rewrite` (rebase) réindexent après coup ; `--with-commit` ajoute `pre-commit`, qui réindexe et met `.knowledge/` à l'index, de sorte que **tout commit porte un index cohérent avec son code**. Les hooks n'écrivent que si le contenu a changé et ne font jamais échouer une opération git ; `RGKB_NO_HOOK=1 git pull` les neutralise ponctuellement. Un hook existant est complété par un bloc délimité, jamais écrasé. `.git/hooks/` n'est pas versionné, mais l'**intention** l'est : `hooks install` écrit `"hooks": "commit"` dans `.knowledge/config.json`, et tout `status` ou `index` réconcilie les hooks locaux avec elle. Un utilisateur qui clone les obtient donc au premier cycle, sans rien lancer.
+`post-merge` (donc `git pull`) et `post-rewrite` (rebase) réindexent après coup ; `--with-commit` ajoute `pre-commit`, qui réindexe et met `.knowledge/` à l'index, de sorte que **tout commit porte un index cohérent avec son code**. Les hooks n'écrivent que si le contenu a changé et ne font jamais échouer une opération git ; `RGKB_NO_HOOK=1 git pull` les neutralise ponctuellement. Un hook existant est complété par un bloc délimité, jamais écrasé. `.git/hooks/` n'est pas versionné, mais l'**intention** l'est : `hooks install` écrit `"hooks": "commit"` dans `.knowledge/config.json`, et tout `status` ou `index` réconcilie les hooks locaux avec elle. Un utilisateur qui clone les obtient donc au premier cycle, sans rien lancer. `rgkb.py init` ne réécrit jamais un `config.json` existant, et `hooks install` ne remplace jamais un `config.json` illisible.
 
 `post-checkout` est **volontairement absent** : réindexer après un changement de branche salit l'arbre à chaque fois et git refuse le checkout suivant. Avec `pre-commit`, il n'a de toute façon rien à faire.
 
 Le câblage (sauf `--no-wire`) ajoute aux agents existants un bloc délimité `<!-- rgkb:debut -->` / `<!-- rgkb:fin -->`, réentrant, sans jamais réécrire leur prompt : fiche de fichier avant de lire un fichier entier, lecture des notes avant de formuler un avis, réindexation après modification pour le Builder, et à la consignation finale d'un cycle une proposition de note (1 à 3 par cycle, jamais ce que l'index retrouve seul). `/software-factory` et `/ai-lab` proposent son installation en fin de parcours (Phase 6b), toujours avec accord explicite.
+
+Le skill s'appuie sur le noyau `_core` (`hcore/cx.py`) pour tout ce qui est déterministe : arguments, commande d'installation de `rg`, état du dépôt, copie versionnée du serveur, fusion de `.mcp.json`, `settings.json`, `tasks.json` et de l'exclusion de `config.json`, blocs réentrants, `tools` et `--allowedTools` complétés sans rien retirer. Il exige Python ≥ 3.9.
+
+## Politique d'autonomie
+
+La clé `autonomy` de `.claude/harness.json` vaut `gate` (chaque décision humaine est posée) ou `auto` (défaut installé par `/software-factory`). L'option `--autonomy gate|auto` des skills la remplace pour une exécution, sans jamais écrire le tampon ; la politique effective est transmise aux skills enchaînés. En `auto`, une gate de type (b) ou (c) prend son défaut justifié, journalisé (la justification figure dans le skill qui pose la gate et dans `harness.py gate list`) ; une gate de type (a) s'évalue sur sa condition d'arrêt. Une boucle `auto` ne demande rien d'autre que ses conditions d'arrêt : spec `BLOQUEE` (question bloquante sans défaut), trois itérations sans approbation, agent mort deux fois, dérive de périmètre répétée, opération destructive, secret, enfant en échec, gate sans défaut.
+
+Chaque arrêt écrit un fichier `.harness/runs/STOP-<horodatage>.md` (en anglais, 40 lignes au plus : où, pourquoi, comment reprendre, la commande exacte), un événement `stop` au journal et sort en code 1 ; le harnais ne les supprime jamais. Les enchaînements : `/audit` → `/factory-queue run` (les specs écrites, dans l'ordre de priorité calculé), `/factory-run` → `/ship-pr` (commit de livraison puis PR), et `/ship-pr` merge **sans question** si cinq conditions sont vraies (aucun finding validé restant, tous les threads résolus, CI verte, cible non protégée, pas de conflit), en postant la décision en commentaire de la PR ; sinon la PR reste ouverte. `/brainstorm` ne lance rien. Ce dépôt reste en `gate` : le harnais ne s'auto-modifie pas en autonomie.
+
+## Hooks
+
+`/software-factory` installe dans `.claude/settings.json` (fusion additive, vos hooks et commentaires sont conservés) trois hooks Python stdlib, copiés avec le noyau sous `.claude/harness/hooks/` : un filet Bash/PowerShell **permanent** qui bloque `git push --force`, la suppression de branche, la réécriture d'historique, la destruction de travail non committé et les suppressions de fichiers hors artefacts générés (c'est un filet au mieux, pas une preuve : exécutez-vous-même l'opération voulue dans un terminal) ; pendant `/factory-run`, le contrôle du `Périmètre fichiers :` de la spec (la seconde dérive arrête le cycle) ; pendant `/ship-pr`, la limitation au diff de la PR ; et, si le projet configure un linter (`hooks.lint` de `.claude/harness.json`), un `PostToolUse` de vérification, jamais bloquant. Une erreur interne d'un hook laisse passer l'action et le dit. Les hooks ne valent qu'à la session suivante (ou après revue dans `/hooks`).
+
+## Profils
+
+Un **profil** est un dossier de données sous `skills/_core/profiles/<nom>/` (manifeste `profile.json` plus fragments Markdown : rôles, lentilles, orchestrateur, détection) ; il ne contient aucun code. Deux profils sont livrés : `software` (usine logicielle, profil de repli) et `research` (laboratoire de recherche IA). Ajouter un profil = ajouter un dossier ; `harness.py profile validate <dossier>` le contrôle (schéma : `skills/_core/profiles/SCHEMA.md`).
+
+Un agent `harness-scout` (sous-agent Explore en lecture seule, modèle économique) détecte les profils applicables : le noyau relève les signaux déterministes et vérifie les preuves de l'agent. Les profils retenus sont notés dans `.claude/harness.json` (clé `profiles`) ; le noyau ne fait qu'ajouter. Une proposition nette est prise par défaut en autonomie `auto`, une proposition ambiguë arrête avec la commande de reprise `--profile`.
+
+## Mettre à jour un projet équipé
+
+Chaque projet équipé porte un tampon **versionné** `.claude/harness.json` : version du dépôt claude-skills qui l'a produit (tag git ou hash), date, skills installés et leurs options, politique d'autonomie, profils actifs, fichiers générés avec le hachage de leurs blocs (`skills/_core/STAMP.md`). Chaque fichier généré commence par un en-tête `harness: claude-skills <version>`, suivi de **blocs délimités** (`harness.frontmatter`, `harness.body`, `harness.profile.<nom>`, `harness.ci`, `rgkb`) ; tout ce qui est hors bloc appartient à l'utilisateur.
+
+```text
+/software-factory --upgrade [--convert]
+/code-index --upgrade
+/harness-doctor
+```
+
+`--upgrade` ne régénère que les blocs, préserve tout le hors-bloc (invariant vérifié avant l'écriture), migre les formats (`lab-models.json` vers `models.json`, anciens registres de run vers `.claude/findings.jsonl`), met à jour la copie du noyau `.claude/harness/` dans le même plan que les blocs de tous les profils, **montre le diff complet** puis l'applique, tout ou rien, avec sauvegarde sous `.harness/runs/upgrade-<horodatage>/backup/`. Il est idempotent : relancé sans changement, il ne produit aucun diff. Un fichier généré avant le noyau (sans bloc) est converti sans perte s'il est resté tel que généré ou s'il n'a reçu qu'un ajout en fin de fichier ; sinon la gate `upgrade.convert` propose de le conserver (défaut) ou de le convertir avec sauvegarde (`--convert` pour tous). Un projet sans tampon est détecté par ses fichiers générés, et le tampon est créé à la première mise à jour. Pas de retour en arrière : un projet installé par un harnais plus récent que le dépôt est refusé.
+
+## Noyau `skills/_core/`
+
+`skills/_core/` n'est pas un skill (il n'a pas de `SKILL.md`) : c'est le noyau déterministe partagé, en Python de bibliothèque standard (≥ 3.9), exposé par une CLI unique `harness.py` et testé par `py -3 -B -m unittest discover -s skills/_core/tests` (ou `python3`). Il porte ce qui ne relève pas du jugement — parsing des blocs JSON de verdict, compteurs d'itérations et de rondes, relance d'un agent mort, fusions de fichiers, séquences `gh`/`git` de `ship-pr`, et pour tous les skills : la primitive de **gate** (politique d'autonomie, catalogue des gates, repli headless), le schéma unique de **finding** (adaptateurs, validateur, conversions en spec, note ou commentaire) avec son registre projet local **`.claude/findings.jsonl`** (exclu de git, une ligne par finding), la détection de **stack** et ses bornes, les tailles et tris **tshirt**, les modèles par rôle (`.claude/models.json`, avec migration de `lab-models.json`), le moteur commun des audits — et écrit le journal de cycle `.harness/runs/<skill>-<horodatage>.jsonl`, exclu de git. Le script d'installation le lie comme les skills, en `~/.claude/skills/_core`, où `ship-pr` l'appelle par `${CLAUDE_SKILL_DIR}/../_core` ; `software-factory` le copie dans chaque projet équipé sous `.claude/harness/` (avec un `MANIFEST.json`, et `history.json` qui reconnaît ses états successifs : `harness.py core history --check`), que le `/factory-run` généré et la CI appellent.
+
+## Tester le harnais
+
+Deux niveaux de tests :
+
+- **Tests unitaires** du noyau : `cd skills/_core/tests && py -3 -B -m unittest discover -s . -t .` (règles isolées, fixtures de `tests/fixtures/`).
+- **Scénarios de bout en bout** : `bash ci/test-harness.sh` ou `pwsh ci/test-harness.ps1`. Un runner Python commun (`ci/scenarios/`, bibliothèque standard seule) rejoue, dans des dossiers temporaires, la séquence d'appels au noyau que prescrivent les SKILL.md et l'orchestrateur généré, sur les projets jouets de `ci/fixtures/`. Les agents sont simulés (sorties figées, le Verifier lance les vrais tests du projet), `gh` est le faux `skills/_core/tests/fake_gh.py` au-dessus d'un dépôt nu local, et `claude` n'est jamais appelé : des cales en tête du PATH comptent tout appel au vrai `gh` ou `claude` (`real_gh_calls`, `real_claude_calls` du rapport).
+
+| Scénario | Ce qu'il vérifie |
+| --- | --- |
+| `install-fresh` | installation à neuf de `/software-factory` sur un projet Python |
+| `install-skills` | `install_skills.sh` / `.ps1` vers un `HOME` temporaire (liens, idempotence, conflit) |
+| `install-unlink` | `--unlink` / `-Unlink` dans un `HOME` temporaire : seuls les liens vers ce dépôt sont retirés |
+| `plugin-guard` | garde de version du plugin (changement sous `skills/` sans hausse de `version`), nom effectif d'un skill dans les deux modes |
+| `plugin-validate` | `claude plugin validate .` (SKIP sans `claude`) |
+| `upgrade-legacy` | `--upgrade` d'un projet installé à l'ancienne, personnalisations hors bloc conservées |
+| `factory-auto` | cycle `factory-run` complet en `auto` jusqu'au Verifier, et contre-épreuve d'une question bloquante |
+| `stop-iteration3` | arrêt propre à la 3e itération (`STOP-*.md`) |
+| `shippr-automerge` | `ship-pr` sans finding : merge automatique, et les refus (CI rouge, branche protégée, thème muet) |
+| `hook-diff` | le hook PreToolUse de `ship-pr` bloque hors du diff, exécuté par la ligne de `settings.json` |
+| `models-absent`, `models-legacy` | `models.json` absent, migration de `lab-models.json` |
+
+Options : `--list [--verbose]`, `--scenario <id>` (répétable), `--live`, `--keep`, `--fixtures <dossier>`, `--report <fichier>` (PowerShell : `-List`, `-Details`, `-Scenario`, `-Live`, `-Keep`, `-Fixtures`, `-Report`). Une ligne `PASS|FAIL|SKIP <id> <durée>` par scénario ; code de sortie 0 (tout `PASS` ou `SKIP` motivé), 1 (un `FAIL`, ou `--live` sans `claude`), 2 (option ou scénario inconnu). Sous Git Bash sans liens symboliques natifs, `install-skills` est `SKIP` (la couverture Windows passe par le lanceur PowerShell).
+
+`--live` ajoute `live-install`, `live-factory` et `live-hook` : le vrai `claude -p` (`--max-turns`, liste blanche d'outils, jamais le contournement des permissions), avec des assertions structurelles seulement. Il consomme l'abonnement et n'est jamais lancé par défaut. `ship-pr` réel reste une recette manuelle sur un dépôt GitHub jetable.
+
+**`claude plugin eval` ne porte pas ces scénarios** (BACKLOG §5) : il sait préparer une fixture, mais aucun grader n'exécute de commande shell, alors que chaque résultat attendu ici est un état observable par commande (code de sortie, octets d'un fichier, état git, état du faux `gh`, journal). Il suppose en outre un plugin, ce que la Phase 7 n'a pas décidé. Il reste réexaminable pour des évaluations jugées par un LLM (qualité d'une spec).
 
 ## Ajouter un skill
 

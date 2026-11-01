@@ -1,0 +1,37 @@
+{
+  "base": "031df12",
+  "note": "structural lines (headings, table headers) of the deliverable skeleton of each SKILL.md at BASE1; placeholder headings (<...>, …) are left out",
+  "skeletons": {
+    "legacy-audit": [
+      "| ID | Finding | Sévérité | Taille | Dépend de | Spec | Statut |",
+      "|---|---|---|---|---|---|---|",
+      "## Findings non retenus dans ce cycle",
+      "| ID | Finding | Raison (exclu par l'utilisateur / au-delà du plafond de specs) |",
+      "## Findings rejetés à la validation",
+      "| ID | Finding | Raison |"
+    ],
+    "ai-lab-audit": [
+      "## Corrections à faire",
+      "| ID | Finding | Lentille | Sévérité | Taille | Dépend de | Spec | Statut |",
+      "| --- | --- | --- | --- | --- | --- | --- | --- |",
+      "## Questions de recherche retenues (ordre recommandé)",
+      "## Questions non retenues dans ce cycle",
+      "| ID | Question | Raison (exclue par l'utilisateur / au-delà du plafond) |",
+      "## Findings rejetés à la validation",
+      "| ID | Finding | Raison |"
+    ],
+    "vibecode-audit": [
+      "## Surfaces non auditables",
+      "| Surface | Pourquoi | Ce qu'il faudrait pour la couvrir |",
+      "## Par où attaquer",
+      "| # | ID | Motif | Axe | Sév. | Occ. | Diff. | Risque rég. | Validé | Dépend de | Statut |",
+      "|---|---|---|---|---|---|---|---|---|---|---|",
+      "## Motifs détaillés",
+      "## Motifs non détaillés dans ce cycle",
+      "| ID | Motif | Axe | Sévérité | Occ. | Raison (mineur / au-delà du plafond) |",
+      "## Motifs rejetés à la validation",
+      "| ID | Motif | Raison |",
+      "## Suite"
+    ]
+  }
+}

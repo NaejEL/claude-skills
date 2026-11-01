@@ -1,0 +1,15 @@
+{
+  "changes": [
+    {
+      "path": ".claude/lab-models.json",
+      "kind": "migration",
+      "block": null
+    },
+    {
+      "path": ".claude/harness/hcore/gates.py",
+      "kind": "core",
+      "unmodified": false
+    }
+  ],
+  "divergent_blocks": []
+}

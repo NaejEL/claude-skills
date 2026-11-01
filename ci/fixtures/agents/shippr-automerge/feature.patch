@@ -1,0 +1,11 @@
+diff --git a/toy/core.py b/toy/core.py
+--- a/toy/core.py
++++ b/toy/core.py
+@@ -7,3 +7,7 @@ def total(values):
+     for value in values:
+         result += value
+     return result
++
++
++def count(values):
++    return len(values)

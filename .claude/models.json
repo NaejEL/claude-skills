@@ -1,0 +1,5 @@
+{
+  "factory.planner": "sonnet",
+  "factory.builder": "sonnet",
+  "factory.verifier": "sonnet"
+}

@@ -1,0 +1,73 @@
+{
+  "arguments": "--lenses \"fidelite;validite;fuites;bio\" --max-questions 4",
+  "git": true,
+  "project": [],
+  "auditors": {
+    "fidelite": [
+      {"findings": [
+        {"id": "FID-01", "lens": "fidelite", "nature": "correction", "severity": "major",
+         "title": "La valeur par défaut de tau diffère de l'état du projet",
+         "location": {"file": "src/config.py", "line": 12, "journal_date": null},
+         "evidence": "tau: float = 0.5", "impact": "les runs ne mesurent pas la config annoncée",
+         "proposal": "aligner tau sur 0.1 et le test associé", "size": "S", "depends_on": []}
+      ]}
+    ],
+    "validite": [
+      {"findings": [
+        {"id": "VAL-01", "lens": "validite", "nature": "question", "severity": "critical",
+         "title": "Le gain de rappel repose sur un seul seed",
+         "location": {"file": "docs/journal.md", "line": null, "journal_date": "2026-09-01"},
+         "evidence": "rappel +12 % (seed 0)", "impact": "la conclusion-titre n'est pas établie",
+         "proposal": "le gain de rappel subsiste-t-il sur 5 seeds ?", "size": "M", "depends_on": ["LEAK-01"]}
+      ]}
+    ],
+    "fuites": [
+      {"findings": [
+        {"id": "LEAK-01", "lens": "fuites", "nature": "correction", "severity": "critical",
+         "title": "E2 : la baseline n'est pas exécutée avec le même nombre de tokens",
+         "location": {"file": "evals/e2.py", "line": 40, "journal_date": null},
+         "evidence": "max_tokens=512 if baseline else 1024", "impact": "le résultat E2 du tableau est biaisé",
+         "proposal": "un seul budget de tokens pour les deux conditions", "size": "S", "depends_on": []},
+        {"id": "LEAK-02", "lens": "fuites", "nature": "correction", "severity": "major",
+         "title": "Budget de tokens différent selon la condition",
+         "location": {"file": "evals/e2.py", "line": 40, "journal_date": null},
+         "evidence": "max_tokens=512 if baseline else 1024", "impact": "biais",
+         "proposal": "aligner", "size": "S", "depends_on": []}
+      ]}
+    ],
+    "bio": [null, null]
+  },
+  "validators": {
+    "FID-01": [{"verdict": "CONFIRMED", "reason": "écart vérifié", "nature_correction": null, "size_correction": "XS"}],
+    "VAL-01": ["no block here", {"verdict": "CONFIRMED", "reason": "un seul seed dans le journal", "nature_correction": null, "size_correction": null}],
+    "LEAK-01": [{"verdict": "CONFIRMED", "reason": "budget différent vérifié", "nature_correction": null, "size_correction": null}]
+  },
+  "expected": {
+    "renamed": {"LEAK-01": "COR-01", "FID-01": "COR-02", "VAL-01": "Q-01"},
+    "not_audited": ["bio"],
+    "dismissed": {"LEAK-02": null},
+    "unvalidated": [],
+    "next_after_validation": "consolidate"
+  },
+  "data": {
+    "name": "labo-jouet",
+    "date": "2026-10-17",
+    "lab": true,
+    "factory": true,
+    "lenses": ["fidelite", "validite", "fuites", "bio"],
+    "journal_date": "2026-09-01",
+    "findings": {
+      "COR-01": {"spec": "specs/SPEC-lab-01-e2-meme-budget.md"},
+      "Q-01": {"question": "Le gain de rappel de E2 subsiste-t-il sur 5 seeds avec un budget de tokens identique ?",
+               "motivation": "VAL-01 ; rappel +12 % sur le seul seed 0 (journal du 2026-09-01)",
+               "decides": "la conclusion-titre du tableau des résultats"}
+    }
+  },
+  "specs": [
+    {"finding": "COR-01", "number": 1, "slug": "e2-meme-budget",
+     "sections": {"context": "la baseline de E2 reçoit 512 tokens, la condition testée 1024 (evals/e2.py:40).",
+                  "scope": "Un seul budget de tokens pour les deux conditions de E2.",
+                  "criteria": ["`evals/e2.py` ne lit qu'une constante de budget."],
+                  "out_of_scope": "La re-mesure de E2 (question Q-01).", "risks": "Les chiffres E2 changent."}}
+  ]
+}

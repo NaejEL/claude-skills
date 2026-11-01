@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# harness: claude-skills ed251d2 (core 4.0.0)
+# >>> harness.ci >>>
 # Lance un cycle headless de l'usine logicielle sur une spec deja approuvee.
 # Usage : ci/factory.sh <chemin-spec> [--yolo]
 set -euo pipefail
@@ -52,13 +54,14 @@ log_dir="$repo_dir/factory-logs"
 mkdir -p "$log_dir"
 log_file="$log_dir/factory-$(date +%Y%m%d-%H%M%S).json"
 
+export CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS=0
 cmd=(claude -p "/factory-run '$spec'" --output-format json --max-turns 100)
 
 if [ "$yolo" -eq 1 ]; then
     cmd+=(--dangerously-skip-permissions)
 else
     cmd+=(--permission-mode acceptEdits)
-    cmd+=(--allowedTools "Read,Glob,Grep,Write,Edit,Bash(git *),Bash(bash *),Bash(bats *),Bash(shellcheck *),Bash(pwsh *)")
+    cmd+=(--allowedTools "Read,Glob,Grep,Write,Edit,Bash(git *),Bash(py *)")
 fi
 
 echo "Spec      : $spec"
@@ -72,3 +75,4 @@ set -e
 
 echo "Sortie claude : exit code $status"
 exit "$status"
+# <<< harness.ci <<<

@@ -1,0 +1,3 @@
+Skill projet `factory-run`, pilote d'un cycle complet. Frontmatter exact, une clé par ligne : `name: factory-run` ; `description: Lance un cycle de l'usine logicielle (Planner → gate humaine sur la spec → Builder → Verifier avec boucle de correction) sur un besoin ou une spec approuvée.` ; `disable-model-invocation: true` ; `argument-hint: "<besoin | chemin d'une spec> [--models \"role=modele;...\"] [--autonomy gate|auto] [--ship <cible> | --no-ship] [--worktree]"`.
+
+Le corps n'est pas rédigé à la main : il est rendu par le noyau (`upgrade plan`) depuis l'unique source `bodies/orchestrator.md` de ce profil (interpréteur substitué, bloc `harness.profile.software`). Ne jamais le réécrire ni le résumer ; pour changer la procédure, modifier ce fragment.

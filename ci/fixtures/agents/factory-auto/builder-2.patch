@@ -1,0 +1,27 @@
+diff --git a/toy/extra.py b/toy/extra.py
+new file mode 100644
+--- /dev/null
++++ b/toy/extra.py
+@@ -0,0 +1,6 @@
++"""Second module added by the simulated Builder of the counter-test."""
++
++
++def largest(values):
++    """Return the largest value (None for an empty list)."""
++    return max(values) if values else None
+diff --git a/tests/test_extra.py b/tests/test_extra.py
+new file mode 100644
+--- /dev/null
++++ b/tests/test_extra.py
+@@ -0,0 +1,11 @@
++import unittest
++
++from toy.extra import largest
++
++
++class LargestTest(unittest.TestCase):
++    def test_largest(self):
++        self.assertEqual(largest([1, 9, 3]), 9)
++
++    def test_empty(self):
++        self.assertIsNone(largest([]))

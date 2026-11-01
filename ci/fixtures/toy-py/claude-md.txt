@@ -1,0 +1,5 @@
+# Toy project
+
+Small Python project used by the end-to-end harness scenarios.
+
+Tests: `python -m unittest discover -s tests -t .`

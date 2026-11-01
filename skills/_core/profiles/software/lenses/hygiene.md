@@ -1,0 +1,1 @@
+- **(a) `hygiene`** (ids `HYG-`) — versioning absent, `.gitignore` absent ou insuffisant, binaires et artefacts trackés, fichiers géants versionnés, **secrets/credentials commités** (clés, mots de passe, `.env` tracké), licence absente, fins de ligne incohérentes sans `.gitattributes` ;
