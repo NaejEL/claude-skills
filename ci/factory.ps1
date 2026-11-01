@@ -1,3 +1,5 @@
+# harness: claude-skills ed251d2 (core 4.0.0)
+# >>> harness.ci >>>
 # Lance un cycle headless de l'usine logicielle sur une spec deja approuvee.
 # Usage : pwsh -File ci/factory.ps1 <chemin-spec> [-Yolo]
 [CmdletBinding()]
@@ -40,7 +42,7 @@ if ($Yolo) {
 }
 else {
     $claudeArgs += @('--permission-mode', 'acceptEdits')
-    $claudeArgs += @('--allowedTools', 'Read,Glob,Grep,Write,Edit,Bash(git *),Bash(python *),Bash(python3 *),Bash(py *),Bash(bash *),Bash(bats *),Bash(shellcheck *),Bash(pwsh *)')
+    $claudeArgs += @('--allowedTools', 'Read,Glob,Grep,Write,Edit,Bash(git *),Bash(py *)')
     $mode = 'acceptEdits + liste blanche'
 }
 
@@ -55,3 +57,4 @@ $status = $LASTEXITCODE
 
 Write-Host "Sortie claude : exit code $status"
 exit $status
+# <<< harness.ci <<<

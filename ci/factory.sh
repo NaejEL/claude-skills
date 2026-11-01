@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# harness: claude-skills ed251d2 (core 4.0.0)
+# >>> harness.ci >>>
 # Lance un cycle headless de l'usine logicielle sur une spec deja approuvee.
 # Usage : ci/factory.sh <chemin-spec> [--yolo]
 set -euo pipefail
@@ -59,7 +61,7 @@ if [ "$yolo" -eq 1 ]; then
     cmd+=(--dangerously-skip-permissions)
 else
     cmd+=(--permission-mode acceptEdits)
-    cmd+=(--allowedTools "Read,Glob,Grep,Write,Edit,Bash(git *),Bash(python *),Bash(python3 *),Bash(py *),Bash(bash *),Bash(bats *),Bash(shellcheck *),Bash(pwsh *)")
+    cmd+=(--allowedTools "Read,Glob,Grep,Write,Edit,Bash(git *),Bash(py *)")
 fi
 
 echo "Spec      : $spec"
@@ -73,3 +75,4 @@ set -e
 
 echo "Sortie claude : exit code $status"
 exit "$status"
+# <<< harness.ci <<<
