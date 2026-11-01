@@ -100,4 +100,20 @@ Conditions :
 
 Si P1 ou P3 échoue : rester sur `install_skills.*` et versionner par étiquette git seulement.
 
+## Résultats des recettes (2026-11-01)
+
+Exécutées sur une copie (`git archive HEAD`) avec `.claude-plugin/plugin.json` et `marketplace.json` (source `./`), et un skill `probe` jetable. P4 a utilisé un `CLAUDE_CONFIG_DIR` temporaire, pour ne pas toucher au `~/.claude` réel. Coût en modèle : moins de 0,01 $.
+
+| Recette | Résultat | Détail |
+| --- | --- | --- |
+| Nom | **Échec du nom `claude-skills`** | `claude plugin validate` refuse : « Plugin name "claude-skills" is reserved ». Un nom tiers ne peut pas commencer par `claude-`. Il faut un autre nom. |
+| P1 | Passe (`--plugin-dir`) | `${CLAUDE_SKILL_DIR}` = `<plugin>/skills/probe`, et `${CLAUDE_SKILL_DIR}/../_core/harness.py version` répond (`core_version 4.0.0`). `_core` n'apparaît pas parmi les commandes. Depuis le cache, `harness.py` répond aussi quand on l'appelle par son chemin. Seul l'appel via un skill chargé depuis le cache n'a pas été fait, faute de session authentifiée dans la configuration isolée. |
+| P2 | Passe | `sf copy-core` lancé depuis le plugin produit un `.claude/harness/` complet, `profiles/` compris. |
+| P3 | Passe | Les skills sont exposés sous `/harness:<skill>`, mais la forme courte `/probe` fonctionne aussi en headless (`claude -p`). |
+| P4 | Piège confirmé | Le cache est indexé par version (`cache/<marketplace>/<plugin>/<version>/`). Un contenu modifié sans hausse de `version` n'arrive pas dans le cache, et `claude plugin update` répond « already at the latest version ». Après une hausse à 2.0.1, une nouvelle entrée de cache apparaît avec le contenu à jour. La garde de version est donc indispensable. Avec une marketplace de type dossier local, la CLI dit pourtant que le plugin « is read from its folder […] Edits there take effect at the next session start ». Le chemin réellement chargé est à confirmer en session. |
+| P5 | Sans objet ici | `~/.claude/skills` ne contient aucun lien vers ce dépôt (l'installeur n'a jamais tourné). Il n'y a donc pas de doublon à observer sur cette machine. |
+| P6 | Passe | `claude plugin validate .` passe une fois le nom changé, avec deux avertissements : `author` et la description de la marketplace. |
+
+Conclusion : P1, P2, P3 et P6 passent. Les conditions 2 et 3 de la recommandation sont tenables, mais il faut un nom qui ne commence pas par `claude-`.
+
 Point à trancher par l'utilisateur : le nom du plugin. `harness` donne `/harness:ship-pr`, mais aussi `/harness:harness-doctor`. `claude-skills` est plus long, sans redondance. La règle commune « pas d'autre renommage » interdit de renommer les skills pour compenser.
