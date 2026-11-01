@@ -11,8 +11,8 @@ argument-hint: "[REPO] [--categories \"hygiene;portabilite;qualite;filet\"] [--m
 
 Afficher d'abord cette phrase mot pour mot, puis :
 
-1. Écrire `$ARGUMENTS` tel quel avec l'outil Write dans `.harness/runs/legacy-audit-arguments.txt` (jamais par le shell), puis appeler `<PY> "${CLAUDE_SKILL_DIR}/../_core/harness.py" audit alias-args --skill legacy-audit --arguments-file .harness/runs/legacy-audit-arguments.txt` (`<PY>` : voir `/software-factory`). Le champ `arguments` rendu traduit `--categories` en `--lenses`, force `--profile software` et ajoute `--via legacy-audit`.
-2. Invoquer **en ligne** (sans sous-agent) l'outil Skill sur `audit` avec ces arguments. Repli si l'outil Skill est indisponible : lire `${CLAUDE_SKILL_DIR}/../audit/SKILL.md` et suivre ses instructions avec ces arguments.
+1. Écrire `$ARGUMENTS` tel quel avec l'outil Write dans `.harness/runs/legacy-audit-arguments.txt` (jamais par le shell), puis appeler `<PY> "${CLAUDE_SKILL_DIR}/../_core/harness.py" audit alias-args --skill legacy-audit --arguments-file .harness/runs/legacy-audit-arguments.txt --skill-dir "${CLAUDE_SKILL_DIR}"` (`<PY>` : voir `/software-factory`). Le champ `arguments` rendu traduit `--categories` en `--lenses`, force `--profile software` et ajoute `--via legacy-audit` ; le champ `invoke` est le nom effectif de `audit` pour l'outil Skill.
+2. Invoquer **en ligne** (sans sous-agent) l'outil Skill sur le skill nommé par `invoke` avec ces arguments. Repli si l'outil Skill est indisponible : lire `${CLAUDE_SKILL_DIR}/../audit/SKILL.md` et suivre ses instructions avec ces arguments.
 
 ## Défauts en politique `auto` (AP-09)
 

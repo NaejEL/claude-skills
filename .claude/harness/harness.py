@@ -29,7 +29,7 @@ if str(HERE) not in sys.path:
 from hcore import CORE_VERSION  # noqa: E402
 from hcore import (aliases, audit, autoupgrade, automerge, batch, blocks, bs, chain, counters, cx,  # noqa: E402
                    doctor, factory, findings, fusion, gates, ghflow, history, hooks_install, interp, journal, lab,
-                   labrun, loop, models, prioritize, profiles, registry, runs, scan, scope, scout, shippr, specfile,
+                   labrun, loop, models, plugin, prioritize, profiles, registry, runs, scan, scope, scout, shippr, specfile,
                    stack, stamp, stops, tshirt, unified, upgrade, verdicts, version, worktrees)
 from hcore import proc  # noqa: E402
 from hcore import queue as queue_mod  # noqa: E402
@@ -401,7 +401,26 @@ def cmd_audit_alias_args(args: argparse.Namespace) -> int:
         text = read_file(args.arguments_file) if args.arguments_file else ""
     finally:
         _remove_transit(Path(args.root), args.arguments_file)
-    emit(aliases.translate(args.skill, text))
+    result = aliases.translate(args.skill, text)
+    result["invoke"] = plugin.effective_name("audit", args.skill_dir)["name"]      # PL-02
+    emit(result)
+    return 0
+
+
+def cmd_plugin_skill_name(args: argparse.Namespace) -> int:
+    """PL-02: the name the Skill tool must use for a skill of this repository."""
+    emit(plugin.effective_name(args.skill, args.skill_dir))
+    return 0
+
+
+def cmd_plugin_version_guard(args: argparse.Namespace) -> int:
+    """PL-03: exit 1 when skills/ changed since the last version bump and version was not raised."""
+    result = plugin.version_guard(Path(args.root))
+    emit(result)
+    if not result["ok"]:
+        raise ghflow.Stop("skills/ changed since version %s was set in .claude-plugin/plugin.json: raise "
+                          "`version` (the plugin cache serves a stale content otherwise): %s"
+                          % (result["version"], ", ".join(result["files"][:10])))
     return 0
 
 
@@ -2005,6 +2024,15 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="cmd", required=True)
 
     sub.add_parser("version").set_defaults(func=cmd_version)
+    p = sub.add_parser("plugin", help="plugin distribution (PL-01 to PL-03)")
+    plsub = p.add_subparsers(dest="plcmd", required=True)
+    q = plsub.add_parser("skill-name", help="name of a skill for the Skill tool: <plugin>:<skill> or <skill>")
+    q.add_argument("--skill", required=True)
+    q.add_argument("--skill-dir", default=None, help="${CLAUDE_SKILL_DIR} of the calling skill (not resolved)")
+    q.set_defaults(func=cmd_plugin_skill_name)
+    q = plsub.add_parser("version-guard", help="fails when skills/ changed without a version bump")
+    q.add_argument("--root", default=str(HERE.parent.parent))
+    q.set_defaults(func=cmd_plugin_version_guard)
     p = sub.add_parser("interp", help="interpreter detection (D5)")
     p.add_argument("--timeout", type=float, default=interp.TIMEOUT)
     p.set_defaults(func=cmd_interp)
@@ -2167,6 +2195,7 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--skill", required=True, choices=sorted(aliases.ALIASES))
     q.add_argument("--root", default=".")
     q.add_argument("--arguments-file", default=None, help="file holding $ARGUMENTS, written by Write (consumed)")
+    q.add_argument("--skill-dir", default=None, help="${CLAUDE_SKILL_DIR} of the alias (gives `invoke`, PL-02)")
     q.set_defaults(func=cmd_audit_alias_args)
     q = asub.add_parser("settle", help="TRANCHEE (journal <date>) when the entry is later than the audit (AA-10)")
     q.add_argument("--audit-date", required=True)

@@ -13,11 +13,14 @@
     winget, puis scoop, puis chocolatey, avec cargo en dernier recours.
 .PARAMETER SkipTools
     Ne pas installer les outils externes manquants.
+.PARAMETER Unlink
+    Removes the junctions this installer created to this repository (nothing else), then exits.
 #>
 [CmdletBinding()]
 param(
     [Alias('SkipRipgrep')]
-    [switch]$SkipTools
+    [switch]$SkipTools,
+    [switch]$Unlink
 )
 
 $ErrorActionPreference = 'Stop'
@@ -157,6 +160,28 @@ $targetRoot = Join-Path $HOME '.claude\skills'
 
 if (-not (Test-Path $repoSkills)) {
     throw "Dossier introuvable : $repoSkills"
+}
+
+[Console]::Error.WriteLine('DEPRECATED: install_skills.ps1 is deprecated and will be removed in the next version.')
+[Console]::Error.WriteLine('            Install the plugin instead: claude plugin marketplace add <this-repo> && claude plugin install harness@harness')
+
+if ($Unlink) {
+    # Removes only the junctions that point to this repository; real folders and other links are left alone.
+    $removed = 0
+    foreach ($dir in Get-ChildItem -Path $repoSkills -Directory) {
+        $link = Join-Path $targetRoot $dir.Name
+        if (-not (Test-Path $link)) { continue }
+        $item = Get-Item $link -Force
+        $currentTarget = @($item.Target)[0]
+        if ($item.LinkType -and $currentTarget -and
+            ($currentTarget.TrimEnd('\') -ieq $dir.FullName.TrimEnd('\'))) {
+            [System.IO.Directory]::Delete($link, $false)   # removes the junction, never its target
+            Write-Host "[removed] $link"
+            $removed++
+        }
+    }
+    Write-Host "Unlink done: $removed link(s) removed."
+    exit 0
 }
 
 if (-not (Test-Path $targetRoot)) {

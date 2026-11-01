@@ -2,7 +2,30 @@
 
 Skills globaux [Claude Code](https://code.claude.com/docs) personnels, versionnés pour être réutilisés sur plusieurs machines (Windows / Linux / macOS).
 
-## Installation
+## Installer
+
+Deux voies coexistent pendant la version 2.0.x. **Ne pas utiliser les deux ensemble** : chaque skill apparaîtrait deux fois.
+
+**Voie 1 — plugin `harness` (recommandée).** Le dépôt est sa propre marketplace (`.claude-plugin/marketplace.json`, source `./`) :
+
+```bash
+claude plugin marketplace add <chemin-ou-url-du-depot>
+claude plugin install harness@harness
+```
+
+Les skills sont exposés sous `/harness:<skill>` ; la forme courte (`/ship-pr`) fonctionne aussi. Le cache du plugin est indexé par `version` (`.claude-plugin/plugin.json`) : tout changement sous `skills/` exige une hausse de `version`, sinon `claude plugin update` répond « already at the latest version ». Une garde le vérifie (`harness.py plugin version-guard`, scénario `plugin-guard` de `ci/test-harness.*`). Pour développer : `claude --plugin-dir <dépôt>`. `ripgrep` n'est pas installé d'avance : `code-index` propose lui-même son installation.
+
+**Voie 2 — liens (dépréciée, retirée à la version suivante).** `install_skills.*` affiche un avertissement de retrait. Pour passer au plugin, retirer d'abord les liens, **seulement ceux que l'installeur a créés vers ce dépôt** (un lien étranger ou un dossier réel n'est jamais touché) :
+
+```powershell
+.\install_skills.ps1 -Unlink
+```
+
+```bash
+./install_skills.sh --unlink
+```
+
+### Installation par liens
 
 Cloner le dépôt puis lier les skills dans `~/.claude/skills` :
 
@@ -255,6 +278,9 @@ Deux niveaux de tests :
 | --- | --- |
 | `install-fresh` | installation à neuf de `/software-factory` sur un projet Python |
 | `install-skills` | `install_skills.sh` / `.ps1` vers un `HOME` temporaire (liens, idempotence, conflit) |
+| `install-unlink` | `--unlink` / `-Unlink` dans un `HOME` temporaire : seuls les liens vers ce dépôt sont retirés |
+| `plugin-guard` | garde de version du plugin (changement sous `skills/` sans hausse de `version`), nom effectif d'un skill dans les deux modes |
+| `plugin-validate` | `claude plugin validate .` (SKIP sans `claude`) |
 | `upgrade-legacy` | `--upgrade` d'un projet installé à l'ancienne, personnalisations hors bloc conservées |
 | `factory-auto` | cycle `factory-run` complet en `auto` jusqu'au Verifier, et contre-épreuve d'une question bloquante |
 | `stop-iteration3` | arrêt propre à la 3e itération (`STOP-*.md`) |

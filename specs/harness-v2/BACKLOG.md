@@ -344,6 +344,10 @@ Spec : `specs/SPEC-phase1-fin-L8-L14.md` (APPROUVEE), qui renvoie aux sections �
 - `test_fb04_a_spec_whose_dependency_is_in_the_batch_waits_for_its_merge` : un échec isolé sous charge (`git worktree add failed`), qui ne se reproduit pas seul.
 - Essai réel de `/audit` (hello world) : le chemin `_core/harness.py` cité par le skill n'existe pas dans le projet, et l'agent s'est rabattu sur `.claude/harness/harness.py`.
 - Essai réel de `/audit` : après une erreur de nommage de champ (`difficulty` au lieu de la taille), un run `vibecode-audit` est resté orphelin dans `.harness/runs/`.
+- Phase 7 : la garde de version se repère sur `-G '"version"'` : un commit qui modifie une autre ligne du manifeste contenant `"version"` déplace la base. Une baisse de version passe aussi pour une hausse.
+- Phase 7 : la détection du mode plugin suppose que `CLAUDE_SKILL_DIR` reste le chemin du lien, non résolu (recette R1). Si Claude Code le résolvait un jour, une installation par liens rendrait `harness:<skill>`.
+- Phase 7 : `test_repo_factory` ne teste plus l'idempotence du bloc modèle (`harness.model`), car ce bloc a disparu au passage en core 4.0.
+- Corrigé en Phase 7 : `queue.scan` plantait quand le worktree d'une spec mergée était retiré pendant le parcours. C'était la cause des échecs intermittents de fb02, fb04 et fb05.
 
 ## 9. Phase 3 — état (2026-11-01)
 
@@ -382,3 +386,12 @@ Points d'attention pour la suite :
 - La suite unitaire complète dure plus de 10 minutes sur cette machine (754 tests) : à lancer par tranches de modules sous un délai d'outil de 10 minutes.
 - Recettes R12 (`--live`) et R13 (`ship-pr` réel sur un dépôt jetable) restent à faire par l'utilisateur.
 - Mineurs du Verifier à consigner ici.
+
+## 12. Phase 7 — plugin `harness`, étapes M1 à M3 (2026-11-01)
+
+- Livré : `.claude-plugin/plugin.json` (`harness` 2.0.0) et `marketplace.json` (source `./`) ; garde de version `harness.py plugin version-guard` (scénario `plugin-guard`) ; scénario `plugin-validate` (SKIP sans `claude`) ; nom effectif `harness.py plugin skill-name` (alias AX-01/AX-04, `ai-lab`, `harness-doctor`) ; version du tampon lue dans `plugin.json` avec repli sur git (VS-05) ; `install_skills.*` avec avertissement de retrait et `--unlink` / `-Unlink` (scénario `install-unlink`) ; README « Installer ».
+- Garde : sans commit antérieur de `plugin.json`, elle passe (`no_baseline`). Une fois ce fichier commité, tout changement sous `skills/` exige de relever `version`.
+- Le tampon d'un projet équipé note désormais la `version` du plugin (p. ex. `2.0.0`) au lieu du hash git ; les anciens tampons (hash git) restent reconnus par leur commit.
+- Les chaînes `claude -p "/factory-run …"` et le corps de l'orchestrateur généré gardent la forme courte (P3 : elle fonctionne en headless) ; le nom effectif n'est pas propagé dans les copies projet, qui ne connaissent pas le mode d'installation.
+- Échecs préexistants de `test_repo_factory` (6 tests, `.claude/agents`, `ci/factory.sh`), antérieurs à cette phase (commit c3c3f3d) ; ils ne dépendent pas des fichiers modifiés ici.
+- `history.json` régénéré, `.claude/harness/` rafraîchi. M4 reste hors périmètre.

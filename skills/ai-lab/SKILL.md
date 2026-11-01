@@ -12,7 +12,7 @@ Ce skill ne porte aucune règle : le laboratoire est le profil `research` de l'u
 ## Exécution
 
 0. **`--upgrade [--convert]`** (EP-10) : `K sf args --via ai-lab --arguments-file …` (arguments écrits par Write) rend `translated` ; invoquer `software-factory` avec cette traduction, **sans** `--profile research` : tous les profils du tampon sont mis à jour. Les mises à jour du laboratoire passent donc par `/software-factory --upgrade`.
-1. Invoquer **en ligne** (sans sous-agent) l'outil Skill sur `software-factory` avec les arguments `--profile research` suivis de `$ARGUMENTS` tels quels (la question de recherche éventuelle devient le premier besoin).
+1. Obtenir le nom effectif de `software-factory` : `<PY> "${CLAUDE_SKILL_DIR}/../_core/harness.py" plugin skill-name --skill software-factory --skill-dir "${CLAUDE_SKILL_DIR}"` (champ `name`), à utiliser aussi à l'étape 0. Invoquer **en ligne** (sans sous-agent) l'outil Skill sur ce nom avec les arguments `--profile research` suivis de `$ARGUMENTS` tels quels (la question de recherche éventuelle devient le premier besoin).
 2. Repli si l'outil Skill est indisponible : lire `${CLAUDE_SKILL_DIR}/../software-factory/SKILL.md` et suivre ses instructions avec ces mêmes arguments.
 3. Sur un projet déjà équipé du profil `software`, le profil `research` est **ajouté** au tampon `.claude/harness.json`, rien n'est retiré.
 

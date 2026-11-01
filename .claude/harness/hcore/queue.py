@@ -85,7 +85,10 @@ def scan(run: Run, root: Path, target: str, fetch: bool = True, now: Optional[fl
     rows: Dict[str, Dict[str, Any]] = {}
 
     def add(path: Path, worktree: Optional[str]) -> None:
-        text = path.read_text(encoding="utf-8-sig", errors="replace")
+        try:
+            text = path.read_text(encoding="utf-8-sig", errors="replace")
+        except FileNotFoundError:
+            return          # removed meanwhile (a merged worktree cleaned up by a batch slot)
         parsed = specfile.parse(text)
         name = path.name
         if name in rows and rows[name]["worktree"] is None:

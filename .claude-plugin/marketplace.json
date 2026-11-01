@@ -1,0 +1,14 @@
+{
+  "name": "harness",
+  "description": "Marketplace of the harness plugin (software factory skills).",
+  "owner": {
+    "name": "Jean LE QUELLEC"
+  },
+  "plugins": [
+    {
+      "name": "harness",
+      "source": "./",
+      "description": "Software factory harness: build and verify cycles, audits, PR shipping, code index and harness doctor."
+    }
+  ]
+}

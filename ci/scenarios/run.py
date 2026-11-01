@@ -24,7 +24,8 @@ if HERE not in sys.path:                      # -I does not put the script folde
 
 import common  # noqa: E402
 
-MODULES = ("sc_install_fresh", "sc_install_skills", "sc_upgrade_legacy", "sc_factory_auto", "sc_stop_iteration3",
+MODULES = ("sc_install_fresh", "sc_install_skills", "sc_install_unlink", "sc_plugin",
+           "sc_plugin_validate", "sc_upgrade_legacy", "sc_factory_auto", "sc_stop_iteration3",
            "sc_shippr_automerge", "sc_hook_diff", "sc_models_absent", "sc_models_legacy", "live")
 
 

@@ -23,15 +23,12 @@ HARNESS = REPO / ".claude" / "harness"
 IN_REPO = (SKILLS_DIR / "_core" / "harness.py").is_file() and FACTORY_RUN.is_file()
 ROLES = {"factory-planner": "factory.planner", "factory-builder": "factory.builder",
          "factory-verifier": "factory.verifier"}
-UNITTEST = "cd skills/_core/tests && <PY> -B -m unittest discover -s . -t ."
-# D5: the three interpreters the detection can retain (a Linux or macOS CI runs python3).
-WHITELIST = ("Read,Glob,Grep,Write,Edit,Bash(git *),Bash(python *),Bash(python3 *),Bash(py *),Bash(bash *),"
-             "Bash(bats *),Bash(shellcheck *),Bash(pwsh *)")
-# D5 in headless mode: three simple commands the CI whitelist allows (a shell
-# loop is not an allowed command).
-INTERP_COMMANDS = ("python .claude/harness/harness.py interp", "python3 .claude/harness/harness.py interp",
-                   "py -3 .claude/harness/harness.py interp")
-DETECTION = INTERP_COMMANDS[0]
+# Since the core 4.0 conversion (c3c3f3d) the generated files carry the interpreter
+# retained at generation time (`py -3` here) and the repository house rules sit
+# outside the regenerable blocks.
+UNITTEST = "cd skills/_core/tests && py -3 -B -m unittest discover -s . -t ."
+WHITELIST = "Read,Glob,Grep,Write,Edit,Bash(git *),Bash(py *)"
+CORE_COMMANDS = ("py -3 .claude/harness/harness.py factory-run start", "py -3 .claude/harness/harness.py gate decide")
 
 
 def allowed(command: str, script_text: str) -> bool:
@@ -77,71 +74,69 @@ def frontmatter(path: Path) -> str:
 @unittest.skipUnless(IN_REPO, "not the claude-skills repository (core copied into a project)")
 class RepoFactoryTest(unittest.TestCase):
     def test_uf01_generated_from_the_template_with_model_blocks(self):
-        """UF-01: the three agents carry the regenerable harness.model block (X1), with
-        the model of their role from .claude/models.json (absent -> inherit), and
-        installing them again changes nothing; factory-run has the template frontmatter."""
+        """UF-01: the three agents carry the model of their role from .claude/models.json
+        (absent -> inherit) inside the regenerable harness.frontmatter block, with the
+        template fields; factory-run has the template frontmatter."""
         expected = models.resolve_root(REPO, models.FACTORY_ROLES)["roles"]
         for name, role in ROLES.items():
             path = AGENTS / ("%s.md" % name)
             body = text(path)
-            self.assertTrue(models.has_block(body), name)
-            self.assertEqual(models.model_in_block(body), expected[role]["model"], name)
-            self.assertEqual(models.with_model_block(models.without_model_block(body), expected[role]["model"]), body)
-            self.assertIn("name: %s\n" % name, frontmatter(path))
+            fm = frontmatter(path)
+            self.assertIn("# >>> harness.frontmatter >>>", body, name)
+            self.assertIn("name: %s\n" % name, fm)
+            if expected[role]["model"] == "inherit":
+                self.assertNotRegex(fm, r"(?m)^model:", name)
+            else:
+                self.assertIn("model: %s\n" % expected[role]["model"], fm, name)
         self.assertIn("tools: Read, Glob, Grep\n", frontmatter(AGENTS / "factory-planner.md"))
         self.assertIn("tools: Read, Glob, Grep, Bash\n", frontmatter(AGENTS / "factory-verifier.md"))
         self.assertNotIn("tools:", frontmatter(AGENTS / "factory-builder.md"))
         fm = frontmatter(FACTORY_RUN)
-        self.assertEqual(fm.splitlines(), [
-            "name: factory-run",
-            "description: Lance un cycle de l'usine logicielle (Planner → gate humaine sur la spec → Builder → "
-            "Verifier avec boucle de correction) sur un besoin ou une spec approuvée.",
-            "disable-model-invocation: true",
-            'argument-hint: "<besoin | chemin d\'une spec approuvée> [--models \\"role=modele;...\\"]"'])
+        self.assertIn("name: factory-run\n", fm + "\n")
+        self.assertIn("disable-model-invocation: true", fm)
+        self.assertRegex(fm, r'(?m)^argument-hint: ".*--models ')
 
-    def test_uf02_ca31_planner_lists_the_eight_skills_and_core_is_not_one(self):
-        """UF-02, CA-31: the Planner names every skill of skills/ (twelve since Phase 4) and says that _core is not a skill (C1)."""
+    def test_uf02_ca31_planner_describes_the_layout_and_core_is_not_a_skill(self):
+        """UF-02, CA-31: the Planner house rules describe the skills layout and the core
+        under skills/_core/ (the per-skill list was dropped in the 4.0 conversion, so the
+        skill inventory is no longer duplicated there); _core is not a skill (C1)."""
         planner = text(AGENTS / "factory-planner.md")
         names = sorted(p.name for p in SKILLS_DIR.iterdir() if (p / "SKILL.md").is_file())
         self.assertEqual(len(names), 12)
-        for name in names:
-            self.assertIn("`%s`" % name, planner)
-        self.assertRegex(planner, r"`skills/_core/` : \*\*[^*]*qui n'est pas un skill\*\*")
+        self.assertNotIn("_core", names)
+        self.assertIn("`skills/<nom>/SKILL.md`", planner)
+        self.assertIn("`skills/_core/`", planner)
         self.assertFalse((SKILLS_DIR / "_core" / "SKILL.md").exists())
 
     def test_uf03_ca31_builder_and_verifier_gates(self):
-        """UF-03, CA-31: bash -n, frontmatter check, the unittest command of the core
-        with the detected interpreter, and no __pycache__ left, for both roles."""
+        """UF-03, CA-31: the house-rule gates of both roles: the unittest command of the
+        core with the retained interpreter, bash -n, ci/test-harness, no __pycache__."""
         for name in ("factory-builder", "factory-verifier"):
             body = text(AGENTS / ("%s.md" % name))
             self.assertIn("bash -n install_skills.sh", body, name)
-            self.assertIn("`name` correspond au nom du dossier parent" if name == "factory-builder"
-                          else "`name` identique au nom du dossier parent", body, name)
-            self.assertIn(UNITTEST, body, name)
-            for command in INTERP_COMMANDS:
-                self.assertIn("`%s`" % command, body, name)
+            self.assertIn("`%s`" % UNITTEST, body, name)
+            self.assertIn("bash ci/test-harness.sh", body, name)
+            self.assertIn("__pycache__", body, name)
             self.assertNotIn("command -v timeout", body, name)
-            self.assertIn("unittest discover", body, name)
-            self.assertIn("find skills .claude -name __pycache__ -o -name '*.pyc'", body, name)
+        self.assertIn("`name` égal au nom du dossier", text(AGENTS / "factory-builder.md"))
+        self.assertIn("frontmatter valide des `SKILL.md`", text(AGENTS / "factory-verifier.md"))
 
     def test_uf04_ca11_factory_run_rebranched_on_the_core(self):
-        """UF-04, CA-11 (factory-run.need), CA-31: FR-01 to FR-04 through the core copy,
-        journal, gates factory-run.need / questions / approval with their options, the
-        'Verifier muet' rule, and --models."""
+        """UF-04, CA-31: factory-run driven through the core copy, journal, gates
+        factory-run.questions / approval with their options, the 'Verifier muet' rule,
+        --models, and the house rule that this repository is never self-delivered.
+        (The 4.0 template dropped the FR-xx labels, the need gate and the approved-line
+        wording, so they are no longer asserted.)"""
         body = text(FACTORY_RUN)
-        self.assertIn("`H` désigne `<PY> .claude/harness/harness.py`", body)
-        for command in INTERP_COMMANDS:
-            self.assertIn("`%s`" % command, body)
+        self.assertIn("`H` désigne `py -3 .claude/harness/harness.py`", body)
         self.assertNotIn("command -v timeout", body)
         for needle in (".claude/harness/harness.py", "H factory-run start --arguments-file",
                        "H factory-run record --run <run> --agent <nom>", ".harness/runs/factory-run-<horodatage>.jsonl",
                        "H journal amend", "H begin --run <run> --slot <nom>", "`success`", "`fix`", "`relaunch`",
                        "`fail`", "Un Verifier muet n'est pas un Verifier satisfait", "Ne jamais approuver par épuisement",
-                       "`pass_param`", "--headless", factory.APPROVED_LINE, "Ne jamais commiter à sa place"):
+                       "`pass_param`", "--headless", "--no-ship", "jamais de `factory-run deliver`"):
             self.assertIn(needle, body)
-        for rule in ("FR-01", "FR-02", "FR-03", "FR-04"):
-            self.assertIn(rule, body)
-        for gid in ("factory-run.need", "factory-run.questions", "factory-run.approval"):
+        for gid in ("factory-run.questions", "factory-run.approval"):
             gate = gates.get(gid)
             self.assertIn(gid, body)
             for option in gate.options:
@@ -163,19 +158,16 @@ class RepoFactoryTest(unittest.TestCase):
         self.assertEqual(res.returncode, 0, res.stderr)
 
     def test_uf06_ca31_ci_whitelist_and_syntax(self):
-        """UF-06, CA-31: --allowedTools = the template base, the core interpreter
-        (Bash(py *)), git, bash, bats, shellcheck, pwsh, in both scripts; bash -n and
-        the PowerShell parser accept them."""
+        """UF-06, CA-31: --allowedTools = the template base plus git and the core
+        interpreter retained at generation time (Bash(py *)), in both scripts; bash -n
+        and the PowerShell parser accept them."""
         sh, ps1 = REPO / "ci" / "factory.sh", REPO / "ci" / "factory.ps1"
         self.assertIn('--allowedTools "%s"' % WHITELIST, text(sh))
         self.assertIn("'--allowedTools', '%s'" % WHITELIST, text(ps1))
-        self.assertRegex(text(sh), r"Bash\((py|python3?) ")
-        for interpreter in ("python", "python3", "py"):
-            self.assertIn("Bash(%s *)" % interpreter, text(sh))
-        # The D5 detection of <PY> and the core calls run in headless mode.
+        self.assertIn("Bash(py *)", text(sh))
+        # The core calls run in headless mode.
         for script in (sh, ps1):
-            for command in INTERP_COMMANDS + ("py -3 .claude/harness/harness.py factory-run start",
-                                              "python3 .claude/harness/harness.py gate decide"):
+            for command in CORE_COMMANDS:
                 self.assertTrue(allowed(command, text(script)), (script.name, command))
             self.assertFalse(allowed('t=; command -v timeout >/dev/null && t="timeout 5"', text(script)))
         for script in (sh, ps1):
@@ -197,15 +189,14 @@ class RepoFactoryTest(unittest.TestCase):
             self.assertEqual(res.returncode, 0, res.stderr)
 
     def test_uf07_ca31_repository_rules_kept(self):
-        """UF-07, CA-31: never run install_skills.*, keep .sh / .ps1 equivalent, no
-        accents in the installation messages: in the Builder and the Verifier."""
+        """UF-07, CA-31: never run install_skills.* (Builder and Verifier house rules); the
+        Verifier judges the .sh / .ps1 pair by reading. The 4.0 house rules replaced the
+        accent and equivalence wording with the English-code rule."""
         for name in ("factory-builder", "factory-verifier"):
             body = text(AGENTS / ("%s.md" % name))
-            self.assertIn("install_skills", body, name)
-            self.assertRegex(body, r"[Nn]e \*\*jamais\*\* exécuter `install_skills\.sh` ni `install_skills\.ps1`"
-                             if name == "factory-verifier" else r"exécuter `install_skills\.sh` / `install_skills\.ps1`")
-            self.assertRegex(body, r"équivalen")
-            self.assertRegex(body, r"accents dans les messages")
+            self.assertRegex(body, r"[Nn]e \*\*jamais\*\* exécuter `install_skills\.sh` ni `install_skills\.ps1`", name)
+        self.assertIn("cohérence entre les deux", text(AGENTS / "factory-verifier.md"))
+        self.assertIn("Code, commentaires et chaînes en anglais", text(AGENTS / "factory-builder.md"))
 
 
 class CoreCopyTest(helpers.TempDirCase):

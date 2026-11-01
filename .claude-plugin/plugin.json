@@ -1,0 +1,8 @@
+{
+  "name": "harness",
+  "version": "2.0.0",
+  "description": "Software factory harness: spec-driven build and verify cycles, audits, PR shipping, code index and harness doctor.",
+  "author": {
+    "name": "Jean LE QUELLEC"
+  }
+}

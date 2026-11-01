@@ -74,6 +74,22 @@ class ListTest(helpers.TempDirCase):
         self.assertEqual(queue_mod.next_spec(listing, set())["file"], "SPEC-dep-a.md")
         self.assertEqual(queue_mod.next_spec(listing, {"SPEC-dep-a.md"})["file"], "SPEC-solo.md")      # b waits for a: merged
 
+    def test_fq02_a_spec_removed_during_the_scan_is_skipped(self):
+        """FQ-02: a worktree cleaned up by a batch slot while the coordinator scans must not crash the scan."""
+        from pathlib import Path
+        from unittest import mock
+        work, _ = phase4.project(self.tmp, specs())
+        real = Path.read_text
+
+        def vanishing(path, *a, **kw):
+            if path.name == "SPEC-solo.md":
+                raise FileNotFoundError(str(path))
+            return real(path, *a, **kw)
+
+        with mock.patch.object(Path, "read_text", vanishing):
+            listing = queue_mod.scan(Runner(cwd=str(work)), work, "main")
+        self.assertEqual([r["file"] for r in listing["specs"]], ["SPEC-dep-a.md", "SPEC-dep-b.md"])
+
     def test_fq02_the_cli_lists_and_proposes(self):
         """FQ-02: `queue list` and `queue next` answer JSON; a failed fetch is a warning that falls back to the local ref."""
         work, remote = phase4.project(self.tmp, specs())
