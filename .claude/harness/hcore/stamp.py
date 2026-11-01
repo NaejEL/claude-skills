@@ -13,13 +13,22 @@
 # - HJ-05: the skill writes the stamp last (nothing here writes it earlier).
 # - EP-03: `compare` of the stamp with a scout verdict: added / kept / vanished
 #   (vanished is reported, never removed).
+#
+# Phase 3 (schema_version 1, documented in STAMP.md):
+# - HJ-07, HJ-10, HJ-13: `compose` builds the complete stamp (autonomy, profiles,
+#   skills.<skill>, migrations[], inferred_from) from an existing one.
+# - HJ-08: every existing key is kept, unknown ones included, in their order; new
+#   keys come after. HJ-09: `autonomy` absent -> "auto", an existing value is never modified.
+# - HJ-12: `validate_data` refuses absolute paths and `rg_path` (the stamp is versioned).
+# - HJ-15: `show`, `validate_file`. DT-01, DT-02: `resolve_full`.
 
 from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -123,3 +132,141 @@ def compare(root: Path, verdict: Dict[str, Any]) -> Dict[str, List[str]]:
     return {"added": [n for n in retained if n not in stamped],
             "kept": [n for n in stamped if n in retained],
             "vanished": [n for n in stamped if status.get(n) == "rejected"]}
+
+
+# ------------------------------------------------------------- Phase 3
+
+SCHEMA_VERSION = 1
+SKILL_NAMES = ("software-factory", "code-index")
+_ABSOLUTE = re.compile(r"^(?:[A-Za-z]:[\\/]|/)")
+
+
+def now_iso(now: Optional[datetime] = None) -> str:
+    """HJ-11: local time with offset, to the second."""
+    return (now or datetime.now()).astimezone().replace(microsecond=0).isoformat()
+
+
+def dumps(data: Dict[str, Any]) -> str:
+    return json.dumps(data, indent=2, ensure_ascii=False) + "\n"
+
+
+def _walk_strings(value: Any, path: str = ""):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield from _walk_strings(child, path + "." + str(key))
+    elif isinstance(value, list):
+        for i, child in enumerate(value):
+            yield from _walk_strings(child, "%s[%d]" % (path, i))
+    elif isinstance(value, str):
+        yield path, value
+
+
+def _keys(value: Any):
+    if isinstance(value, dict):
+        for key, child in value.items():
+            yield key
+            yield from _keys(child)
+    elif isinstance(value, list):
+        for child in value:
+            yield from _keys(child)
+
+
+def validate_data(data: Any) -> List[str]:
+    """HJ-07, HJ-12."""
+    if not isinstance(data, dict):
+        return ["the stamp must be a JSON object"]
+    errors: List[str] = []
+    if "schema_version" in data and data["schema_version"] != SCHEMA_VERSION:
+        errors.append("unknown schema_version: %r" % (data["schema_version"],))
+    for key in set(_keys(data)):
+        if key == "rg_path":
+            errors.append("key rg_path is machine specific and must not be versioned")
+    for where, text in _walk_strings(data):
+        if _ABSOLUTE.match(text):
+            errors.append("%s: absolute path %r (the stamp is versioned: nothing machine specific)" % (where, text))
+    skills = data.get("skills")
+    if skills is not None and not isinstance(skills, dict):
+        errors.append("`skills` must be an object")
+    return errors
+
+
+def validate_file(path: Path) -> List[str]:
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        return ["%s is not readable JSON: %s" % (path, exc)]
+    return validate_data(data)
+
+
+def show(root: Path) -> Dict[str, Any]:
+    data = _read(root)
+    return {"present": data is not None, "stamp": data}
+
+
+def compose(existing: Optional[Dict[str, Any]], skill: str, entry: Dict[str, Any],
+            profile_names: Sequence[str] = (), by: str = "inferred", today: Optional[str] = None,
+            migrations: Sequence[Dict[str, Any]] = (), inferred_from: Optional[str] = None) -> Dict[str, Any]:
+    """HJ-07 to HJ-10, HJ-13: the stamp after an upgrade or an installation (pure)."""
+    data: Dict[str, Any] = json.loads(json.dumps(existing)) if existing else {}
+    data.setdefault("schema_version", SCHEMA_VERSION)
+    data.setdefault("autonomy", "auto")
+    present = [e["name"] for e in data.setdefault("profiles", [])]
+    stamp_date = today or date.today().isoformat()
+    for name in profile_names:
+        if name not in present:
+            data["profiles"].append({"name": name, "added": stamp_date, "by": by})
+            present.append(name)
+    skills = data.setdefault("skills", {})
+    skills[skill] = entry
+    if migrations:
+        data["migrations"] = list(data.get("migrations", [])) + [dict(m) for m in migrations]
+    if inferred_from and "inferred_from" not in data and not existing:
+        data["inferred_from"] = inferred_from
+    return data
+
+
+def markers_of_code_index(root: Path) -> bool:
+    root = Path(root)
+    if (root / ".claude" / "rgkb" / "rgkb.py").is_file() or (root / ".knowledge" / "manifest.json").is_file():
+        return True
+    try:
+        mcp = json.loads((root / ".mcp.json").read_text(encoding="utf-8-sig"))
+        return isinstance(mcp.get("mcpServers"), dict) and "rgkb" in mcp["mcpServers"]
+    except (OSError, UnicodeDecodeError, ValueError, AttributeError):
+        return False
+
+
+def inferred_skills(root: Path) -> List[str]:
+    """DT-01."""
+    found = []
+    if inferred(root):
+        found.append("software-factory")
+    if markers_of_code_index(root):
+        found.append("code-index")
+    return found
+
+
+def resolve_full(root: Path) -> Dict[str, Any]:
+    """HJ-04 extended by DT-01 and DT-02: profiles, skills and estimated generation."""
+    from . import history  # local: history reads the core tree, stamp is imported by everything
+    base = resolve(root)
+    data = _read(root) or {}
+    stamped = [s for s in SKILL_NAMES if s in (data.get("skills") or {})]
+    found = inferred_skills(root)
+    base["skills"] = [s for s in SKILL_NAMES if s in stamped or s in found]
+    if base["source"] == "none" and not base["skills"]:
+        base["generation"] = None
+    elif base["source"] == "none":
+        base["generation"] = "pre-core" if not (Path(root) / ".claude" / "harness").is_dir() else "core-unknown"
+    elif base["source"] == "stamp":
+        base["generation"] = "stamp" if data.get("schema_version") else "stamp-phase2"
+    else:
+        dest = Path(root) / ".claude" / "harness"
+        if not dest.is_dir():
+            base["generation"] = "pre-core"
+        else:
+            info = history.installed_core(dest, history.load(history.CORE_DIR))
+            base["generation"] = ("core-%s" % info["core_version"]) if info.get("core_version") else "core-unknown"
+            if info.get("mixed"):
+                base["generation"] = "core-mixed"
+    return base

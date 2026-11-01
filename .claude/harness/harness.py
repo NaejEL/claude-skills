@@ -25,9 +25,9 @@ if str(HERE) not in sys.path:
     sys.path.insert(0, str(HERE))
 
 from hcore import CORE_VERSION  # noqa: E402
-from hcore import (aliases, audit, blocks, bs, counters, cx, factory, findings, fusion, gates,  # noqa: E402
-                   ghflow, interp, journal, lab, labrun, loop, models, profiles, registry, runs, scout,
-                   shippr, stack, stamp, tshirt, unified, verdicts)
+from hcore import (aliases, audit, blocks, bs, counters, cx, doctor, factory, findings, fusion, gates,  # noqa: E402
+                   ghflow, history, interp, journal, lab, labrun, loop, models, profiles, registry, runs,
+                   scan, scout, shippr, stack, stamp, tshirt, unified, upgrade, verdicts, version)
 from hcore import proc  # noqa: E402
 from hcore.proc import Runner  # noqa: E402
 
@@ -151,7 +151,24 @@ def _existing_run(args: argparse.Namespace) -> Optional[Path]:
 # ------------------------------------------------------------------- generic
 
 def cmd_version(args: argparse.Namespace) -> int:
-    emit({"core_version": CORE_VERSION})
+    emit(version.report(HERE))                                  # VS-01, VS-02
+    return 0
+
+
+def cmd_core_history(args: argparse.Namespace) -> int:
+    """CO-01: --rebuild regenerates history.json from git; --check is exit 0 when the tree is an entry."""
+    if args.rebuild == args.check:
+        raise Usage("core history expects --rebuild or --check")
+    if args.rebuild:
+        entries = history.rebuild(HERE, HERE.parent.parent)
+        with open(str(HERE / history.HISTORY), "w", encoding="utf-8", newline="\n") as fh:
+            fh.write(history.dumps(entries))
+        emit({"entries": len(entries), "file": history.HISTORY})
+        return 0
+    result = history.check(HERE)
+    emit(result)
+    if not result["ok"]:
+        raise ghflow.Stop("skills/_core differs from history.json (rebuild it): %s" % ", ".join(result["files"]))
     return 0
 
 
@@ -269,7 +286,20 @@ def cmd_stamp_add(args: argparse.Namespace) -> int:
 
 
 def cmd_stamp_resolve(args: argparse.Namespace) -> int:
-    emit(stamp.resolve(Path(args.root)))
+    emit(stamp.resolve_full(Path(args.root)))
+    return 0
+
+
+def cmd_stamp_validate(args: argparse.Namespace) -> int:
+    errors = stamp.validate_file(Path(args.file))
+    emit({"valid": not errors, "errors": errors})
+    if errors:
+        raise Usage("; ".join(errors))
+    return 0
+
+
+def cmd_stamp_show(args: argparse.Namespace) -> int:
+    emit(stamp.show(Path(args.root)))
     return 0
 
 
@@ -373,7 +403,8 @@ def cmd_audit_alias_args(args: argparse.Namespace) -> int:
 
 def cmd_gate_list(args: argparse.Namespace) -> int:
     emit({"gates": [{"id": g.id, "kind": g.kind, "default": g.default, "rationale": g.rationale,
-                     "headless": g.headless, "phase2_auto": g.phase2_auto}
+                     "headless": g.headless, "phase2_auto": g.phase2_auto,
+                     "phase3_auto": g.phase3_auto}
                     for g in gates.all_gates().values()]})
     return 0
 
@@ -515,6 +546,13 @@ def cmd_sf_args(args: argparse.Namespace) -> int:
         text = read_file(args.arguments_file) if args.arguments_file else ""
     finally:
         _remove_transit(root, args.arguments_file)
+    if args.via == "ai-lab":
+        emit({"translated": upgrade.ailab_translate(text)})                     # EP-10
+        return 0
+    parsed = upgrade.parse_arguments(text)                                      # EP-08
+    if parsed:
+        emit(dict(parsed, profiles=[], rescan=False, need=""))
+        return 0
     rest, forced = loop.extract_profile_option(text)
     rescan = re.search(r"(?:(?<=\s)|^)--rescan(?=\s|$)", rest) is not None
     if rescan:
@@ -552,8 +590,68 @@ def cmd_sf_copy_core(args: argparse.Namespace) -> int:
     if not result["copied"]:
         raise ghflow.Stop("core not copied: .claude/harness/ holds a different core (customized or another "
                           "version): %s; nothing was copied, the generated factory-run would not work. "
-                          "Restore or remove .claude/harness/, then run the installation again."
+                          "Restore or remove .claude/harness/, then run the installation again, "
+                          "or update the copy with /software-factory --upgrade."
                           % ", ".join(result["blocked_by"]))
+    return 0
+
+
+# ------------------------------------------------------------ upgrade, doctor
+
+def _repo_path(args: argparse.Namespace) -> Dict[str, Any]:
+    """The version of the repository that holds this core (VS-01), or the manifest of a copy (VS-02)."""
+    repo = dict(version.report(HERE)["repo"])
+    repo.setdefault("path", str(HERE.parent.parent))
+    return repo
+
+
+def cmd_upgrade_plan(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    params: Dict[str, Any] = {}
+    if args.params_file:
+        try:
+            params = json.loads(read_file(args.params_file))
+        finally:
+            _remove_transit(root, args.params_file)
+        if not isinstance(params, dict):
+            raise Usage("--params-file must hold a JSON object")
+    requested = [n.strip() for n in (args.profiles or "").split(";") if n.strip()]
+    plan = upgrade.build_plan(root, args.skill, _repo_path(args), HERE, None, params, args.convert,
+                              args.interpreter, requested, args.by)
+    if plan["action"] == "fill_params":
+        emit(plan)
+        return 0
+    files = upgrade.write_plan(root, plan)
+    emit(dict(upgrade.public(plan), **files))
+    return 0
+
+
+def cmd_upgrade_apply(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    decisions = None
+    if args.decisions_file:
+        try:
+            decisions = json.loads(read_file(args.decisions_file))
+        finally:
+            _remove_transit(root, args.decisions_file)
+    emit(upgrade.apply_plan(root, root / args.plan, decisions))
+    return 0
+
+
+def cmd_doctor(args: argparse.Namespace) -> int:
+    root = Path(args.root)
+    if args.action == "scan":
+        rows = scan.scan(root, scan.parse_depth(args.depth), _repo_path(args), HERE)
+        for row in rows:
+            sys.stdout.write(json.dumps(row, ensure_ascii=False) + "\n")
+        return 0
+    if args.depth is not None:
+        raise Usage("--depth goes with 'doctor scan' only")
+    rep = doctor.report(root, _repo_path(args), HERE)
+    rep["proposal"] = doctor.proposal(rep, gates.read_policy(root)) if rep["equipped"] != "none" else None
+    if not args.no_journal:
+        rep["journal"] = doctor.write_journal(root, rep)
+    emit(rep)
     return 0
 
 
@@ -1283,6 +1381,12 @@ def cmd_cx_args(args: argparse.Namespace) -> int:
         text = read_file(args.arguments_file) if args.arguments_file else ""
     finally:
         _remove_transit(Path(args.root), args.arguments_file)
+    parsed = upgrade.parse_arguments(text)                                      # CX-17
+    if parsed:
+        if "--reindex" in text.split():
+            raise Usage("--upgrade excludes --reindex")
+        emit(dict(parsed, reindex=False, no_wire=False, extra=""))
+        return 0
     emit(cx.parse_arguments(text))
     return 0
 
@@ -1313,12 +1417,16 @@ def cmd_cx_scope(args: argparse.Namespace) -> int:
 
 
 def cmd_cx_wire(args: argparse.Namespace) -> int:
-    try:
-        contents = _json_text("--blocks-file", read_file(args.blocks_file))
-    finally:
-        _remove_transit(Path(args.root), args.blocks_file)
-    if not isinstance(contents, dict):
-        raise Usage("--blocks-file expects a JSON object {name: block text}")
+    if args.blocks_file is None:                 # RD-06: the blocks are templates
+        command = cx.interpreter(args.interp.split())
+        contents = upgrade.rgkb_contents(Path(args.root), command, _repo_path(args)["describe"])
+    else:
+        try:
+            contents = _json_text("--blocks-file", read_file(args.blocks_file))
+        finally:
+            _remove_transit(Path(args.root), args.blocks_file)
+        if not isinstance(contents, dict):
+            raise Usage("--blocks-file expects a JSON object {name: block text}")
     emit(cx.wire(Path(args.root), contents, args.interp.split()))
     return 0
 
@@ -1637,6 +1745,41 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--root", default=".")
     q.add_argument("--verdict", required=True)
     q.set_defaults(func=cmd_stamp_compare)
+    q = stsub2.add_parser("validate", help="exit 0 if the stamp file is conform (HJ-07, HJ-12), 2 otherwise")
+    q.add_argument("file")
+    q.set_defaults(func=cmd_stamp_validate)
+    q = stsub2.add_parser("show", help="the stamp of a project (HJ-15)")
+    q.add_argument("--root", default=".")
+    q.set_defaults(func=cmd_stamp_show)
+    p = sub.add_parser("core", help="the core itself (CO-01)")
+    csub0 = p.add_subparsers(dest="corecmd", required=True)
+    q = csub0.add_parser("history", help="history.json: --rebuild from git (development), --check the tree")
+    q.add_argument("--rebuild", action="store_true")
+    q.add_argument("--check", action="store_true")
+    q.set_defaults(func=cmd_core_history)
+    p = sub.add_parser("upgrade", help="upgrade of an equipped project (UP-01 to UP-13)")
+    usub = p.add_subparsers(dest="upcmd", required=True)
+    q = usub.add_parser("plan", help="computes every change and writes the plan and the diff under .harness/runs/")
+    q.add_argument("--root", default=".")
+    q.add_argument("--skill", required=True, choices=(upgrade.SF, upgrade.CI))
+    q.add_argument("--params-file", default=None, help="JSON of the judgement parameters, written by Write (consumed)")
+    q.add_argument("--convert", action="store_true", help="converts the files with local changes (CV-04)")
+    q.add_argument("--interpreter", default=None, help="interpreter command, e.g. 'py -3'")
+    q.add_argument("--profiles", default=None, help="p[;p]: profiles of a fresh installation (EP-11)")
+    q.add_argument("--by", default="scout", choices=stamp.BY_VALUES)
+    q.set_defaults(func=cmd_upgrade_plan)
+    q = usub.add_parser("apply", help="applies a plan: all or nothing, the stamp last (UP-05)")
+    q.add_argument("--root", default=".")
+    q.add_argument("--plan", required=True, help="plan file, relative to the root")
+    q.add_argument("--decisions-file", default=None,
+                   help='JSON {"files": {path: "keep"|"convert"}, "source": "user|headless|default"}')
+    q.set_defaults(func=cmd_upgrade_apply)
+    p = sub.add_parser("doctor", help="state of the installation of a project, or 'doctor scan' of a tree (DR, SN)")
+    p.add_argument("action", nargs="?", choices=("scan",), default=None)
+    p.add_argument("--root", default=".")
+    p.add_argument("--depth", default=None)
+    p.add_argument("--no-journal", action="store_true")
+    p.set_defaults(func=cmd_doctor)
     p = sub.add_parser("scout", help="profile scout (SC-01 to SC-08)")
     scsub = p.add_subparsers(dest="sccmd", required=True)
     q = scsub.add_parser("signals", help="deterministic signals of every profile and the judgement criteria")
@@ -1680,6 +1823,7 @@ def build_parser() -> argparse.ArgumentParser:
     q = ssub.add_parser("args", help="entry point arguments: --profile, --rescan, first need (EP-01)")
     q.add_argument("--root", default=".")
     q.add_argument("--arguments-file", default=None, help="file holding $ARGUMENTS, written by Write (consumed)")
+    q.add_argument("--via", default=None, choices=("ai-lab",), help="translation of the arguments of /ai-lab (EP-10)")
     q.set_defaults(func=cmd_sf_args)
     q = ssub.add_parser("copy-core", help="copies the core under .claude/harness/ (D1); exit 1 if blocked")
     q.add_argument("--root", default=".")
@@ -1731,7 +1875,8 @@ def build_parser() -> argparse.ArgumentParser:
     q = csub.add_parser("wire", help="blocks, tools and CI allow lists (CX-12 to CX-14)")
     q.add_argument("--root", default=".")
     q.add_argument("--interp", required=True)
-    q.add_argument("--blocks-file", required=True, help="JSON {target: block text}, written by Write (consumed)")
+    q.add_argument("--blocks-file", default=None,
+                   help="JSON {target: block text}, written by Write (consumed); absent: the templates (RD-06)")
     q.set_defaults(func=cmd_cx_wire)
 
     p = sub.add_parser("lab", help="ai-lab installation rules (AL-01 to AL-09)")
@@ -1852,7 +1997,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         sys.stderr.write("STOP: %s\n" % exc)
         return 1
     except (Usage, ValueError, factory.RunOver, labrun.RunOver, shippr.LoopError, fusion.FusionError,
-            blocks.BlockError, FileNotFoundError, KeyError) as exc:
+            blocks.BlockError, FileNotFoundError, KeyError, upgrade.UpgradeError) as exc:
         sys.stderr.write("ERROR: %s\n" % exc)
         return 2
 

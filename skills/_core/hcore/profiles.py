@@ -12,6 +12,7 @@
 #   journal names, forbidden status strings, deny rules, tasks, .gitignore
 #   lines are read from the profiles found next to the core.
 # - HJ-06: cumulated profiles merge by union (roles, lenses, deny, tasks).
+# - RD-03: `params[]` of a manifest ({name, source, required}) is validated by PF-03.
 # - AD-03, AD-04, AD-09: lens selection, waves of auditors and caps.
 
 from __future__ import annotations
@@ -73,6 +74,8 @@ def _fragment_paths(data: Dict[str, Any]) -> List[str]:
     for role in data.get("roles") or []:
         if isinstance(role, dict) and isinstance(role.get("mission"), str):
             paths.append(role["mission"])
+        if isinstance(role, dict) and isinstance(role.get("body"), str):
+            paths.append(role["body"])
     for lens in data.get("lenses") or []:
         if isinstance(lens, dict):
             for key in ("fragment", "critical_definition"):
@@ -127,6 +130,10 @@ def validate_manifest(data: Dict[str, Any], folder: Path) -> List[str]:
     for crit in criteria or []:
         if crit.get("kind") not in CRITERION_KINDS:
             errors.append("detection criterion %r: unknown kind %r" % (crit.get("id"), crit.get("kind")))
+    for spec in data.get("params", []):       # RD-03
+        if not (isinstance(spec, dict) and isinstance(spec.get("name"), str)
+                and spec.get("source") in ("detected", "judgement") and isinstance(spec.get("required"), bool)):
+            errors.append("params: each entry is {name, source: detected|judgement, required: bool}: %r" % (spec,))
     agent_files = [r.get("agent_file") for r in data["roles"]]
     if len(set(agent_files)) != len(agent_files):
         errors.append("two roles share an agent file")

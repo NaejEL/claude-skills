@@ -631,5 +631,32 @@
   ],
   "entry_keywords": [
     "suivant"
+  ],
+  "params": [
+    {
+      "name": "stacks",
+      "source": "detected",
+      "required": false
+    },
+    {
+      "name": "interpreter",
+      "source": "detected",
+      "required": true
+    },
+    {
+      "name": "test_command",
+      "source": "judgement",
+      "required": false
+    },
+    {
+      "name": "conventions",
+      "source": "judgement",
+      "required": false
+    },
+    {
+      "name": "extra_tools",
+      "source": "judgement",
+      "required": false
+    }
   ]
 }

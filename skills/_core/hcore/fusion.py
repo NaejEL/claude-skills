@@ -33,6 +33,8 @@
 #   unreadable file makes the whole operation fail without modifying anything.
 # - D1: copy of _core into the project under .claude/harness/, never mixed
 #   with a different existing core (nothing is copied in that case).
+# - CO-02: the copy carries MANIFEST.json (version of the repository that produced it).
+#   The upgrade of a copy (CO-03 to CO-06) lives in history.py and upgrade.py.
 # - X1: a generated agent file carries its model in the harness.model block
 #   of its frontmatter (install_agent). The block is regenerated in place even
 #   in a customized file, which is then "bloc-mis-à-jour" (written, its text
@@ -495,7 +497,7 @@ def _tree(folder: Path) -> List[str]:
     paths = []
     for src in sorted(folder.rglob("*")):
         rel = src.relative_to(folder)
-        if src.is_dir() or "__pycache__" in rel.parts or src.suffix in (".pyc", ".pyo"):
+        if src.is_dir() or "__pycache__" in rel.parts or src.suffix in (".pyc", ".pyo")                 or rel.as_posix() == "MANIFEST.json":
             continue
         paths.append(rel.as_posix())
     return paths
@@ -538,6 +540,14 @@ def check_core_copy(core_dir: Path, root: Path) -> Dict[str, Any]:
             "differs": differs, "missing": missing, "extra": extra}
 
 
+def write_manifest(core_dir: Path, root: Path, repo: Optional[Dict[str, Any]] = None) -> None:
+    """CO-02: MANIFEST.json of the copy (core version, repository version, hashes)."""
+    from . import history, version   # local: both read the core tree this module copies
+    repo = repo if repo is not None else version.report(Path(core_dir))["repo"]
+    text = history.manifest_text(Path(core_dir), repo, history.load(Path(core_dir)))
+    _write(Path(root) / ".claude" / "harness" / "MANIFEST.json", text)
+
+
 def refresh_core(core_dir: Path, root: Path, force: bool = False) -> Dict[str, Any]:
     """Replaces a recognized core copy by the current core: every core file is
     written, byte for byte (created or replaced); a file that is not a core
@@ -573,6 +583,7 @@ def refresh_core(core_dir: Path, root: Path, force: bool = False) -> Dict[str, A
         tmp.write_bytes(content)
         os.replace(str(tmp), str(target))
     foreign = sorted((Path(".claude/harness") / r).as_posix() for r in present - set(source))
+    write_manifest(core_dir, root)
     return {"refreshed": True, "files": states, "foreign": foreign}
 
 
@@ -600,5 +611,6 @@ def copy_core(core_dir: Path, root: Path) -> Dict[str, Any]:
     for shown, dest, content, state in plan:
         if state == CREATED:
             _write(dest, content)
+    write_manifest(core_dir, root)
     return {"copied": True, "blocked_by": [], "not_copied": [],
             "files": {shown: state for shown, _, _, state in plan}}

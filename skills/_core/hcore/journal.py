@@ -14,6 +14,8 @@
 # - JR-02: typed events. A line without "event" is an agent line (backward
 #   compatible with existing journals); "event": "gate" follows the GT-07
 #   schema (hcore/gates.py). Any other event type is invalid.
+# - JR-04: `harness-doctor` is a journal name; typed events `upgrade`
+#   ({file, kind, from, to}, UP-10) and `doctor` ({checks: {check: status}}).
 
 from __future__ import annotations
 
@@ -27,10 +29,11 @@ from . import gates, profiles
 
 # PF-05: the names of the profiles' skills come from the profiles.
 _CORE_SKILLS = ("software-factory", "ship-pr", "code-index", "ai-lab-audit", "legacy-audit",
-                "vibecode-audit", "brainstorm", "audit")
+                "vibecode-audit", "brainstorm", "audit", "harness-doctor")
 SKILLS = _CORE_SKILLS + tuple(n for n in profiles.journal_names() if n not in _CORE_SKILLS)
 NAME_RE = re.compile(r"^(%s)-[0-9]{8}-[0-9]{6}\.jsonl$" % "|".join(re.escape(s) for s in SKILLS))
-EVENTS = ("gate", "alias")
+EVENTS = ("gate", "alias", "upgrade", "doctor")
+UPGRADE_KINDS = ("header", "block", "merge", "copy", "create", "convert", "migrate", "stamp", "local")
 REQUIRED = ("agent", "model", "duration_ms", "iteration", "verdict", "findings", "tokens")
 FINDING_KEYS = ("produced", "validated", "rejected")
 FALLBACK_TEXT = "unknown"   # fallback value of an invalid text field (sanitize)
@@ -71,6 +74,18 @@ def validate_record(obj: Any) -> List[str]:
         if obj["event"] == "alias":
             bad = [k for k in ("alias", "target") if not isinstance(obj.get(k), str) or not obj[k].strip()]
             return ["alias event: %s must be a non-empty string" % k for k in bad]
+        if obj["event"] == "upgrade":
+            errors = ["upgrade event: file must be a non-empty string"
+                      for _ in (0,) if not isinstance(obj.get("file"), str) or not obj["file"].strip()]
+            if obj.get("kind") not in UPGRADE_KINDS:
+                errors.append("upgrade event: kind must be one of %s" % "|".join(UPGRADE_KINDS))
+            errors += ["upgrade event: %s must be a string or null" % k for k in ("from", "to")
+                       if k not in obj or not (obj[k] is None or isinstance(obj[k], str))]
+            return errors
+        if obj["event"] == "doctor":
+            checks = obj.get("checks")
+            ok = isinstance(checks, dict) and all(v in ("ok", "warn", "error") for v in checks.values())
+            return [] if ok else ["doctor event: checks must map each check to ok|warn|error"]
         return gates.validate_event(obj)
     errors = ["missing field: %s" % k for k in REQUIRED if k not in obj]
     if errors:

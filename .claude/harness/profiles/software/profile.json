@@ -5,7 +5,8 @@
   "fragments": {
     "orchestrator": "orchestrator.md",
     "install": "install.md",
-    "scout": "scout.md"
+    "scout": "scout.md",
+    "orchestrator_body": "bodies/orchestrator.md"
   },
   "roles": [
     {
@@ -15,7 +16,9 @@
       "tools": "Read, Glob, Grep",
       "model_role": "factory.planner",
       "model_default": "inherit",
-      "agent_file": ".claude/agents/factory-planner.md"
+      "agent_file": ".claude/agents/factory-planner.md",
+      "description": "Analyse un besoin et le code existant pour rédiger un brouillon de spécification avec critères d'acceptation testables et questions ouvertes. Lecture seule.",
+      "body": "bodies/factory-planner.md"
     },
     {
       "name": "factory-builder",
@@ -24,7 +27,9 @@
       "tools": null,
       "model_role": "factory.builder",
       "model_default": "inherit",
-      "agent_file": ".claude/agents/factory-builder.md"
+      "agent_file": ".claude/agents/factory-builder.md",
+      "description": "Implémente strictement une spécification approuvée — architecture, code et tests dans un même contexte — puis exécute build et tests avant de rendre la main.",
+      "body": "bodies/factory-builder.md"
     },
     {
       "name": "factory-verifier",
@@ -33,7 +38,9 @@
       "tools": "Read, Glob, Grep, Bash",
       "model_role": "factory.verifier",
       "model_default": "inherit",
-      "agent_file": ".claude/agents/factory-verifier.md"
+      "agent_file": ".claude/agents/factory-verifier.md",
+      "description": "Vérification adversariale d'une implémentation par rapport à sa spec — exécute les tests, cherche à casser, rend un verdict JSON strict. Ne modifie jamais le code.",
+      "body": "bodies/factory-verifier.md"
     }
   ],
   "model_roles": [
@@ -170,7 +177,9 @@
   },
   "orchestrator": {
     "name": "factory-run",
-    "alias_of": null
+    "alias_of": null,
+    "description": "Lance un cycle de l'usine logicielle (Planner → gate humaine sur la spec → Builder → Verifier avec boucle de correction) sur un besoin ou une spec approuvée.",
+    "argument_hint": "<besoin | chemin d'une spec approuvée> [--models \"role=modele;...\"]"
   },
   "gate_namespaces": [],
   "gates": [
@@ -735,5 +744,42 @@
     "roadmap",
     "attack",
     "detail"
+  ],
+  "params": [
+    {
+      "name": "stacks",
+      "source": "detected",
+      "required": false
+    },
+    {
+      "name": "interpreter",
+      "source": "detected",
+      "required": true
+    },
+    {
+      "name": "build_command",
+      "source": "judgement",
+      "required": false
+    },
+    {
+      "name": "test_command",
+      "source": "judgement",
+      "required": false
+    },
+    {
+      "name": "lint_command",
+      "source": "judgement",
+      "required": false
+    },
+    {
+      "name": "conventions",
+      "source": "judgement",
+      "required": false
+    },
+    {
+      "name": "extra_tools",
+      "source": "judgement",
+      "required": false
+    }
   ]
 }

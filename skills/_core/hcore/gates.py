@@ -21,6 +21,8 @@
 # - AR-02: the gates marked phase2_auto apply `auto` from Phase 2 on: a clear
 #   proposal takes the default, an ambiguous one stops (GT-05); every other gate
 #   keeps the GT-03 guard.
+# - GT-09: the gates marked phase3_auto (harness-doctor.upgrade-blocks) are exempted
+#   from GT-03 as well; upgrade.* gates are journaled with software-factory.
 # - Closed options: a user answer to a gate with closed options must be one of
 #   its options. A gate asking several questions in one call ("questions",
 #   separated by " ; " in the catalog) takes exactly one valid option per
@@ -82,23 +84,29 @@ class Gate(NamedTuple):
     questions: Tuple[Tuple[str, ...], ...] = ()
     repeat: int = 1
     phase2_auto: bool = False
+    phase3_auto: bool = False
 
     @property
     def skill(self) -> str:
-        return self.id.split(".", 1)[0]
+        head = self.id.split(".", 1)[0]
+        return SKILL_OF.get(head, head)
 
     @property
     def multi(self) -> bool:
         return len(self.questions) > 1 or self.repeat > 1
 
 
+# GT-09: the journal of an `upgrade.*` gate is the one of the skill that upgrades.
+SKILL_OF = {"upgrade": "software-factory"}
+
+
 def _g(gid: str, source: str, kind: str, options: str, default: Optional[str], rationale: str,
        headless: str, dialogue: bool = False, free: bool = False, repeat: int = 1,
-       phase2_auto: bool = False) -> Gate:
+       phase2_auto: bool = False, phase3_auto: bool = False) -> Gate:
     questions = tuple(tuple(o.strip() for o in q.split(" / ")) for q in options.split(" ; "))
     flat = tuple(o for q in questions for o in q)
     return Gate(gid, source, kind, flat, default, rationale, headless, dialogue, free, questions, repeat,
-                phase2_auto)
+                phase2_auto, phase3_auto)
 
 
 CATALOG: Dict[str, Gate] = {g.id: g for g in (
@@ -170,6 +178,14 @@ CATALOG: Dict[str, Gate] = {g.id: g for g in (
        "security is the priority axis", DEFAULT),
     _g("audit.final", "SPEC-phase2 AD-08", "c", "Écrire AUDIT.md (+ specs) / Réajuster / Abandonner",
        "Écrire AUDIT.md (+ specs)", "the deliverable the audit was run for", STOP),
+    # Phase 3: upgrade and doctor (CV-04, PR-02, PR-03, GT-09).
+    _g("upgrade.convert", "SPEC-phase3 CV-04", "b", "Conserver tel quel / Convertir (sauvegarde)",
+       "Conserver tel quel", "a file with local changes is converted to blocks only when asked", DEFAULT),
+    _g("harness-doctor.upgrade-blocks", "SPEC-phase3 PR-02", "b", "Lancer l'upgrade / Ne rien faire",
+       "Lancer l'upgrade", "roadmap 4.2: a diff that only touches harness blocks is applied", DEFAULT,
+       phase3_auto=True),
+    _g("harness-doctor.upgrade-other", "SPEC-phase3 PR-03", "b", "Lancer l'upgrade / Ne rien faire",
+       "Ne rien faire", "roadmap 4.2 reserves the automatic launch to diffs of blocks", DEFAULT),
     _g("brainstorm.subject", "brainstorm:16", "c", "saisie libre", None,
        "a subject cannot be guessed", STOP, dialogue=True, free=True),
     _g("brainstorm.round", "brainstorm:67", "b", "Creuser / Écarter / Amender / continuer / converger", None,
@@ -241,7 +257,7 @@ def decide(gate_id: str, policy: str, auto_as_gate: bool = AUTO_APPLIED_AS_GATE,
     gate = get(gate_id)
     warnings: List[str] = []
     applied = policy
-    if policy == "auto" and auto_as_gate and not gate.phase2_auto:
+    if policy == "auto" and auto_as_gate and not (gate.phase2_auto or gate.phase3_auto):
         applied = "gate"
         warnings.append(AUTO_WARNING)
     choice = ASK if gate.dialogue else decision(gate.kind, applied)

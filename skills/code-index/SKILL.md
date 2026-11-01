@@ -3,7 +3,7 @@ name: code-index
 description: Installe dans le projet courant un serveur de connaissance local adossé à ripgrep — index de code (symboles, graphe, notes, cache sqlite) versionné sous .knowledge/ pour se transmettre d'un utilisateur à l'autre par git — exposé aux agents par un serveur MCP stdio et par une CLI équivalente. Détecte une usine logicielle (/factory-run) ou un laboratoire IA (/lab-run) déjà installé et branche leurs agents dessus sans les réécrire. À utiliser quand l'utilisateur veut ajouter la recherche indexée et la base de connaissance partagée à un dépôt, neuf ou déjà équipé.
 context: fork
 user-invocable: true
-argument-hint: "[--reindex] [--no-wire]"
+argument-hint: "[--reindex] [--no-wire] [--upgrade]"
 ---
 
 # Code Index — serveur de connaissance local adossé à ripgrep
@@ -31,6 +31,14 @@ Les règles déterministes sont du code Python (bibliothèque standard, **≥ 3.
 - **Rien de propre à une machine dans un fichier versionné** : `.mcp.json` et `.knowledge/config.json` ne portent que des commandes résolues par le PATH, jamais un chemin absolu. Tout réglage local (chemin de `rg`, exclusions personnelles) va dans `.knowledge/config.local.json`.
 - **Ne jamais commiter.** Le rapport final dit quoi commiter, l'utilisateur décide.
 - **Idempotence** : relancer sur un projet équipé ne détruit rien ; chaque fichier est rapporté avec l'état rendu par le noyau (créé / fusionné / identique / personnalisé-conservé, CX-16).
+
+## Mode `--upgrade` (CX-17 à CX-22)
+
+`/code-index --upgrade` met à jour une installation existante, sans reconstruire l'index. Il exclut `--reindex` (exit 2) ; `no_wire` est lu dans le tampon (ou déduit des blocs présents), jamais redemandé. `K cx args --arguments-file …` rend `upgrade`.
+
+1. `K upgrade plan --root . --skill code-index --interpreter "<PY>"` : `rgkb.py` suit CX-05 (un `TOOL_VERSION` du projet plus récent est conservé et rapporté), les blocs `rgkb` des fichiers câblés sont **rendus depuis les gabarits** `assets/blocks/{read-only,builder,orchestrator}.md` (RD-06) et remplacés en place, les fusions CX-06 à CX-08 et CX-15 sont complétées, `config.json` ne reçoit que la fusion CX-08 (jamais réécrit), les hooks git déclarés (`auto` ou `commit`) mais absents sont réinstallés (classe `local`), et `contributes` (les 7 outils `mcp__rgkb__*` et la CLI) est mis à jour au tampon. Les listes d'outils des fichiers dans la mise en page du harnais viennent de `contributes` (rendu par `/software-factory --upgrade`) ; les fichiers `legacy` reçoivent l'union FU-05 et FU-06 comme à l'installation.
+2. **Afficher le diff complet** du plan, puis `K upgrade apply --root . --plan <plan>`. Un second passage donne un plan vide.
+3. L'index `.knowledge/` n'est pas reconstruit (c'est `--reindex`) : rapporter l'état `stale` de `R status`.
 
 ## Phase 1 — Prérequis et état du dépôt
 
@@ -69,7 +77,7 @@ La contre-règle `!.knowledge/**` est posée par `K cx scope` (CX-10) ; rien d'a
 
 ## Phase 6 — Câblage des agents et skills existants (CX-12 à CX-14)
 
-Sautée si `--no-wire`. **Rédiger** le contenu des blocs (jugement : rédigé pour l'agent concerné), l'écrire avec Write en JSON `{"<nom>": "<texte>"}` — un texte par cible présente dans `survey` (`factory-planner`, `factory-verifier`, `lab-director`, `lab-neuro`, `lab-math`, `lab-verifier`, `factory-builder`, `lab-builder`, `factory-run`, `lab-run`) — dans `.harness/runs/rgkb-blocks.json`, puis `K cx wire --root . --interp "<PY>" --blocks-file .harness/runs/rgkb-blocks.json`. Le noyau pose un bloc `<!-- rgkb:debut -->` … `<!-- rgkb:fin -->` réentrant par cible (le remplace s'il existe), complète `tools` des agents à liste limitative avec les 7 outils de lecture (un agent ne voit pas les outils MCP qui n'y figurent pas nommément ; sans champ `tools`, rien n'est ajouté) et la liste `--allowedTools` de `ci/factory.*` et `ci/lab.*`, sans rien retirer.
+Sautée si `--no-wire`. Le contenu des blocs vient des **gabarits** `assets/blocks/{read-only,builder,orchestrator}.md` (RD-06, paramétrés par l'interpréteur et le nom de l'agent : plus rien n'est rédigé pour l'agent concerné, ce qui rend `--upgrade` idempotent) : `K cx wire --root . --interp "<PY>"`, sans `--blocks-file` (cibles présentes dans `survey` : `factory-planner`, `factory-verifier`, `lab-director`, `lab-neuro`, `lab-math`, `lab-verifier`, `factory-builder`, `lab-builder`, `factory-run`, `lab-run`). Le noyau pose un bloc `<!-- rgkb:debut -->` … `<!-- rgkb:fin -->` réentrant par cible (le remplace s'il existe), complète `tools` des agents à liste limitative avec les 7 outils de lecture (un agent ne voit pas les outils MCP qui n'y figurent pas nommément ; sans champ `tools`, rien n'est ajouté) et la liste `--allowedTools` de `ci/factory.*` et `ci/lab.*`, sans rien retirer.
 
 **6a. Agents en lecture seule** (`factory-planner`, `factory-verifier`, `lab-director`, `lab-neuro`, `lab-math`, `lab-verifier`) — le bloc impose : commencer par `mcp__rgkb__status` (index périmé : en tenir compte et le dire, sans réindexer) ; demander la fiche d'un fichier (`mcp__rgkb__file_card`) avant de le lire en entier ; avant de conclure qu'un symbole n'existe pas ou n'est utilisé nulle part, `mcp__rgkb__definition` puis `mcp__rgkb__neighbors` (un `Grep` vide ne prouve rien) ; consulter `mcp__rgkb__notes` **avant** de formuler un avis et citer l'identifiant `n-…` d'une note sur laquelle il repose. Ces agents n'écrivent jamais de note.
 

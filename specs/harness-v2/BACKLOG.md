@@ -49,7 +49,7 @@ Ordre repris de l'annexe de `specs/SPEC-noyau-core-journal.md`, qui fait foi.
 | Q3 | Sort de `/lab-run` : alias, orchestrateur distinct, ou orchestrateur générique ? | **tranchée en Phase 2** : seconde instance du gabarit commun, profil `research` imposé (LP-06) |
 | Q4 | Enchaînements malgré `disable-model-invocation` (D3) | ouverte, incrément 5 |
 | Q5 | Gate de pré-enregistrement du labo : reste-t-elle (a) ? | ouverte, incrément 5 |
-| Q6 | Premier `--upgrade` d'un projet sans blocs (D5) | ouverte, incrément 7 |
+| Q6 | Premier `--upgrade` d'un projet sans blocs (D5) | **tranchée** (Phase 3, CV) : conversion automatique si le fichier est `pristine` ou `suffix` par rapport à sa base git, sinon gate `upgrade.convert` (défaut : conserver) ; `--convert` pour forcer |
 | Q8 | Registre versionné ou local : ce dépôt ignore déjà `AUDIT-*.md` | fusionnée dans Q-registre |
 | Q9 | Schéma de finding unique, avec `occurrences[]` | ouverte, incréments 1 et 4 |
 | Q10 | Format des profils : JSON, car la stdlib n'a pas de YAML | **tranchée en Phase 2** : `profile.json` plus fragments Markdown (PF-01) |
@@ -325,3 +325,25 @@ Spec : `specs/SPEC-phase1-fin-L8-L14.md` (APPROUVEE), qui renvoie aux sections �
 - Mineur (relecture Phase 2) : le test des écarts attendus (`expected-gaps.json`) ne vérifie que les identifiants.
 - Mineur (relecture Phase 2) : `loop.route --models` avec un rôle hors profil rend un exit 2 peu explicite.
 - Mineur (relecture Phase 2) : `cmd_sf_args` appelle `profiles.discover()` deux fois.
+
+---
+
+### Revue de code Phase 3 : mineurs à reprendre (2026-11-01)
+
+- `union_tools` sur un agent en lecture seule `legacy` touche la ligne `tools:` hors bloc (`upgrade.py:434-440`).
+- Le candidat de conversion n'est pas revérifié contre le sha du plan à l'application (`upgrade.py:719-729`).
+- Le `TOOL_VERSION` de code-index est comparé à `CORE_VERSION` dans la garde UP-08 (`upgrade.py:232`).
+- Un fichier `*.upgrade-tmp` peut rester après une exception (`upgrade.py:666`).
+- `migrate` réécrit tout `findings.jsonl` (`migrate.py:61-65`).
+- `_set_header` reconnaît une ligne d'en-tête hors de la zone d'en-tête (`render.py:200-211`).
+
+## 9. Phase 3 — état (2026-11-01)
+
+Spec : `specs/SPEC-phase3-upgrade-doctor.md` (détail) et `specs/SPEC-phase3-run.md` (périmètre du run). Livré dans l'arbre de travail, non commité : version du dépôt (`hcore/version.py`), tampon complet (`stamp.py`, `STAMP.md`), historique du noyau et MANIFEST (`history.py`), rendu déterministe et en-têtes (`render.py`), conversion Q6 (`convert.py`), migrations (`migrate.py`), moteur d'upgrade (`upgrade.py`), `doctor.py`, `scan.py`, skill `harness-doctor`, `--upgrade` sur `software-factory`, `ai-lab` et `code-index`.
+
+Points d'attention pour la suite :
+- **Fragments de corps** : les profils `software` ont des fragments de corps dédiés (`profiles/software/bodies/`) ; ceux du profil `research` sont dérivés de leurs fragments de mission (`render.mission_parts`), à réécrire en vrais prompts.
+- **Recettes** R12 à R16 restent à faire par l'utilisateur (lien installé, commentaires YAML dans le frontmatter, invocation de skill par le doctor, upgrade d'un vrai projet, scan de la machine).
+- **Contributions** : `code-index --upgrade` pose `contributes` au tampon ; la liste `tools:` des agents dans la mise en page du harnais n'est mise à jour que par le `--upgrade` suivant de `software-factory` (UP-12).
+- **`history.json`** doit être régénéré (`harness.py core history --rebuild`) après chaque commit qui touche `skills/_core/` ; `core history --check` est une porte du Builder.
+- Mineurs du Verifier à consigner ici.

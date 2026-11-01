@@ -176,6 +176,16 @@ class ProjectRegistry:
     def dumps(entries: Dict[str, Dict[str, Any]]) -> str:
         return "".join(json.dumps(entries[k], ensure_ascii=False, sort_keys=True) + "\n" for k in sorted(entries))
 
+    @staticmethod
+    def entry_of(e: Dict[str, Any], source: str, run: str) -> Dict[str, Any]:
+        """RG-03: the project entry of a run registry event."""
+        status = e.get("verdict") or e.get("status")
+        entry = {"key": e["key"], "status": status, "source": source, "run": run,
+                 "title": e.get("title"), "file": e.get("file"), "line": e.get("line"),
+                 "reason": e.get("reason"), "fix_commit": e.get("commit") or e.get("fix_commit"),
+                 "settled_by": e.get("settled_by")}
+        return {k: v for k, v in entry.items() if v is not None}
+
     def publish(self, run_entries: Iterable[Dict[str, Any]], source: str, run: str,
                 deliverable_written: bool = False, exclude: bool = True) -> Dict[str, Any]:
         """RG-03, RG-05, RG-06: publishes the last state of each finding of a run.
@@ -185,11 +195,7 @@ class ProjectRegistry:
         for e in run_entries:
             status = e.get("verdict") or e.get("status")
             if status in PUBLISHED or (status == "CONFIRMED" and deliverable_written):
-                entry = {"key": e["key"], "status": status, "source": source, "run": run,
-                         "title": e.get("title"), "file": e.get("file"), "line": e.get("line"),
-                         "reason": e.get("reason"), "fix_commit": e.get("commit") or e.get("fix_commit"),
-                         "settled_by": e.get("settled_by")}
-                chosen[e["key"]] = {k: v for k, v in entry.items() if v is not None}
+                chosen[e["key"]] = self.entry_of(e, source, run)
         excluded = git_exclude(self.root, PROJECT_EXCLUDE) if exclude else None
         if not chosen:
             return {"file": PROJECT_FILE.as_posix(), "published": 0, "changed": False,

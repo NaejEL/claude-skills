@@ -40,6 +40,7 @@ Point d'entrée **unique** de l'installation d'une usine multi-agents dans n'imp
 /software-factory
 /software-factory --profile "software;research"
 /software-factory --rescan
+/software-factory --upgrade
 ```
 
 `--profile` force les profils et saute le scout ; `--rescan` relance le scout et ne propose que des **ajouts** (un profil disparu est rapporté, jamais retiré). Sans option, un projet déjà équipé est relu depuis `.claude/harness.json` (ou déduit de ses fichiers générés) sans nouveau scout.
@@ -68,6 +69,17 @@ Cycle d'un besoin :
 4. **Verifier** (contexte vierge, adversarial) exécute les tests et rend un verdict JSON ; en cas de `CHANGES_REQUESTED`, ses issues sont réinjectées au Builder — **3 itérations maximum**, puis échec explicite.
 
 En CI : `ci/factory.sh specs/SPEC-x.md` (mode sûr `--permission-mode acceptEdits` + liste blanche d'outils) ou `--yolo` pour `--dangerously-skip-permissions`.
+
+### `harness-doctor`
+
+Diagnostique l'installation du harnais d'un projet, ou d'une arborescence de projets. Dans un projet, il compare la version installée à celle du dépôt claude-skills (retard en commits), signale les blocs divergents (`edited`, `outdated`), les fichiers manquants, les hooks rgkb déclarés mais absents, un `models.json` absent, un `gh` non authentifié et les profils nouveaux (il **propose** `--rescan`, sans le lancer), puis propose `--upgrade` : il le lance (par l'outil Skill, `software-factory` puis `code-index`) quand le diff ne touche que des blocs et que la politique d'autonomie l'autorise.
+
+```text
+/harness-doctor
+/harness-doctor --scan ~/projets --depth 3
+```
+
+Avec `--scan <racine>`, une ligne par projet équipé : version installée, retard, dernier cycle, commande d'upgrade. Le scan est en lecture seule et ne lance jamais d'upgrade.
 
 ### `ship-pr`
 
@@ -184,9 +196,21 @@ Un **profil** est un dossier de données sous `skills/_core/profiles/<nom>/` (ma
 
 Un agent `harness-scout` (sous-agent Explore en lecture seule, modèle économique) détecte les profils applicables : le noyau relève les signaux déterministes et vérifie les preuves de l'agent. Les profils retenus sont notés dans `.claude/harness.json` (clé `profiles`) ; le noyau ne fait qu'ajouter. Une proposition nette est prise par défaut en autonomie `auto`, une proposition ambiguë arrête avec la commande de reprise `--profile`.
 
+## Mettre à jour un projet équipé
+
+Chaque projet équipé porte un tampon **versionné** `.claude/harness.json` : version du dépôt claude-skills qui l'a produit (tag git ou hash), date, skills installés et leurs options, politique d'autonomie, profils actifs, fichiers générés avec le hachage de leurs blocs (`skills/_core/STAMP.md`). Chaque fichier généré commence par un en-tête `harness: claude-skills <version>`, suivi de **blocs délimités** (`harness.frontmatter`, `harness.body`, `harness.profile.<nom>`, `harness.ci`, `rgkb`) ; tout ce qui est hors bloc appartient à l'utilisateur.
+
+```text
+/software-factory --upgrade [--convert]
+/code-index --upgrade
+/harness-doctor
+```
+
+`--upgrade` ne régénère que les blocs, préserve tout le hors-bloc (invariant vérifié avant l'écriture), migre les formats (`lab-models.json` vers `models.json`, anciens registres de run vers `.claude/findings.jsonl`), met à jour la copie du noyau `.claude/harness/` dans le même plan que les blocs de tous les profils, **montre le diff complet** puis l'applique, tout ou rien, avec sauvegarde sous `.harness/runs/upgrade-<horodatage>/backup/`. Il est idempotent : relancé sans changement, il ne produit aucun diff. Un fichier généré avant le noyau (sans bloc) est converti sans perte s'il est resté tel que généré ou s'il n'a reçu qu'un ajout en fin de fichier ; sinon la gate `upgrade.convert` propose de le conserver (défaut) ou de le convertir avec sauvegarde (`--convert` pour tous). Un projet sans tampon est détecté par ses fichiers générés, et le tampon est créé à la première mise à jour. Pas de retour en arrière : un projet installé par un harnais plus récent que le dépôt est refusé.
+
 ## Noyau `skills/_core/`
 
-`skills/_core/` n'est pas un skill (il n'a pas de `SKILL.md`) : c'est le noyau déterministe partagé, en Python de bibliothèque standard (≥ 3.9), exposé par une CLI unique `harness.py` et testé par `py -3 -B -m unittest discover -s skills/_core/tests` (ou `python3`). Il porte ce qui ne relève pas du jugement — parsing des blocs JSON de verdict, compteurs d'itérations et de rondes, relance d'un agent mort, fusions de fichiers, séquences `gh`/`git` de `ship-pr`, et pour tous les skills : la primitive de **gate** (politique d'autonomie, catalogue des gates, repli headless), le schéma unique de **finding** (adaptateurs, validateur, conversions en spec, note ou commentaire) avec son registre projet local **`.claude/findings.jsonl`** (exclu de git, une ligne par finding), la détection de **stack** et ses bornes, les tailles et tris **tshirt**, les modèles par rôle (`.claude/models.json`, avec migration de `lab-models.json`), le moteur commun des audits — et écrit le journal de cycle `.harness/runs/<skill>-<horodatage>.jsonl`, exclu de git. Le script d'installation le lie comme les skills, en `~/.claude/skills/_core`, où `ship-pr` l'appelle par `${CLAUDE_SKILL_DIR}/../_core` ; `software-factory` le copie dans chaque projet équipé sous `.claude/harness/`, que le `/factory-run` généré et la CI appellent.
+`skills/_core/` n'est pas un skill (il n'a pas de `SKILL.md`) : c'est le noyau déterministe partagé, en Python de bibliothèque standard (≥ 3.9), exposé par une CLI unique `harness.py` et testé par `py -3 -B -m unittest discover -s skills/_core/tests` (ou `python3`). Il porte ce qui ne relève pas du jugement — parsing des blocs JSON de verdict, compteurs d'itérations et de rondes, relance d'un agent mort, fusions de fichiers, séquences `gh`/`git` de `ship-pr`, et pour tous les skills : la primitive de **gate** (politique d'autonomie, catalogue des gates, repli headless), le schéma unique de **finding** (adaptateurs, validateur, conversions en spec, note ou commentaire) avec son registre projet local **`.claude/findings.jsonl`** (exclu de git, une ligne par finding), la détection de **stack** et ses bornes, les tailles et tris **tshirt**, les modèles par rôle (`.claude/models.json`, avec migration de `lab-models.json`), le moteur commun des audits — et écrit le journal de cycle `.harness/runs/<skill>-<horodatage>.jsonl`, exclu de git. Le script d'installation le lie comme les skills, en `~/.claude/skills/_core`, où `ship-pr` l'appelle par `${CLAUDE_SKILL_DIR}/../_core` ; `software-factory` le copie dans chaque projet équipé sous `.claude/harness/` (avec un `MANIFEST.json`, et `history.json` qui reconnaît ses états successifs : `harness.py core history --check`), que le `/factory-run` généré et la CI appellent.
 
 ## Ajouter un skill
 

@@ -81,6 +81,47 @@ def remove_block(text: str, name: str, style: str) -> str:
     return before + after
 
 
+# RD-07: the "out of block" part of a file is the text deprived of every harness
+# block (`harness.*`, `rgkb`) and of the version header line (EN-02).
+HEADER_PREFIX = "# harness: claude-skills "
+_MD_BLOCK = re.compile(r"<!-- (harness\.[A-Za-z0-9_.-]+|rgkb):debut -->.*?<!-- \1:fin -->(?:\r?\n)?", re.S)
+_HASH_BLOCK = re.compile(r"# >>> (harness\.[A-Za-z0-9_.-]+|rgkb) >>>.*?# <<< \1 <<<(?:\r?\n)?", re.S)
+_HEADER_LINE = re.compile(r"^" + re.escape(HEADER_PREFIX) + r"[^\r\n]*(?:\r?\n)?", re.M)
+_FOREIGN_BLOCK = re.compile(r"<!-- rgkb:debut -->.*?<!-- rgkb:fin -->", re.S)
+
+
+def strip_blocks(text: str) -> str:
+    """RD-07."""
+    text = _MD_BLOCK.sub("", text)
+    text = _HASH_BLOCK.sub("", text)
+    return _HEADER_LINE.sub("", text)
+
+
+def has_harness_blocks(text: str) -> bool:
+    return bool(re.search(r"<!-- harness\.[A-Za-z0-9_.-]+:debut -->|# >>> harness\.[A-Za-z0-9_.-]+ >>>", text))
+
+
+LAYOUT_BLOCKS = ("harness.frontmatter", "harness.body", "harness.ci")
+
+
+def has_layout_blocks(text: str) -> bool:
+    """RD-01: True when the file is written in the Phase 3 layout (frontmatter, body or ci block).
+    The `harness.model` block (X1) and the `harness.profile.*` block (EP-06) of Phases 1 and 2 do
+    not make a layout: such a file still goes through the conversion (MI-04, CV)."""
+    return any(name in LAYOUT_BLOCKS for name in harness_block_names(text))
+
+
+def foreign_spans(text: str) -> list:
+    """(start, end) of the `rgkb` blocks of a text (blocks owned by another skill)."""
+    return [m.span() for m in _FOREIGN_BLOCK.finditer(text)]
+
+
+def harness_block_names(text: str) -> list:
+    names = re.findall(r"<!-- (harness\.[A-Za-z0-9_.-]+):debut -->", text)
+    names += re.findall(r"# >>> (harness\.[A-Za-z0-9_.-]+) >>>", text)
+    return names
+
+
 def upsert_rgkb(text: str, content: str) -> str:
     """BK-01: inserts or replaces the <!-- rgkb:debut --> ... <!-- rgkb:fin --> block."""
     return upsert_block(text, RGKB, content, "md")

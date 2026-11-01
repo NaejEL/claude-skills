@@ -30,3 +30,18 @@
 Les fichiers de configuration n'y portent pas leur nom pointe (`.gitignore`, `.claude/`)
 pour ne pas agir sur ce depot ; les tests les copient sous leur vrai nom dans un dossier
 temporaire.
+
+## Phase 3 (versioning, `--upgrade`, `/harness-doctor`)
+
+Les projets de la Phase 3 (`upgrade-legacy`, `upgrade-blocks`, `upgrade-stamp-phase2`, copies de noyau
+anciennes, arbres de `--scan`) ne sont pas stockes ici : ils ont besoin d'un historique git, et leurs
+fichiers generes porteraient des noms pointes. Ils sont fabriques dans un dossier temporaire par
+`skills/_core/tests/upgrade_fixtures.py` (`make_legacy` : projet installe a l'ancienne, deux commits dont
+des personnalisations hors bloc, plus un fichier non commite ; `blocks_project` : projet rendu par le profil
+v1 avec des personnalisations de chaque type de fichier ; `make_profiles` : profil v1 et v2 ; `make_repo` :
+un depot claude-skills jetable a N commits). Les arbres attendus sont calcules par le rendu lui-meme
+(installation neuve du profil v2) plutot que figes.
+
+Ecart documente a la Phase 2 (risque I7) : un fichier genere est desormais rendu de facon deterministe, avec
+en-tete de version, blocs `harness.*` et `MANIFEST.json` ; les fichiers attendus d'une installation de la
+Phase 2 ne sont plus compares octet pour octet a une redaction du LLM.

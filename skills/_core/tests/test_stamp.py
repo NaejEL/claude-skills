@@ -71,7 +71,8 @@ class StampTest(helpers.TempDirCase):
         agent.write_text("x", encoding="utf-8")
         self.assertEqual(stamp.resolve(self.tmp)["profiles"], ["research", "software"])
         stamp.add(self.tmp, ["research"], "inferred")
-        self.assertEqual(json.loads(h(self.tmp, "stamp", "resolve", "--root", str(self.tmp)).stdout),
+        resolved = json.loads(h(self.tmp, "stamp", "resolve", "--root", str(self.tmp)).stdout)
+        self.assertEqual({k: resolved[k] for k in ("source", "profiles")},      # DT-01: + skills, generation
                          {"source": "stamp", "profiles": ["research"]})
 
     def test_hj04_resolve_on_the_toy_project_with_an_older_factory(self):

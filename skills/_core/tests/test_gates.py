@@ -82,10 +82,10 @@ class PolicyTest(helpers.TempDirCase):
 
 
 class CatalogTest(unittest.TestCase):
-    def test_gt08_catalog_has_the_32_core_gates(self):
+    def test_gt08_catalog_has_the_35_core_gates(self):
         """GT-08: the catalog (27 gates of Phase 1, 5 of Phase 2 in the core, the rest declared by
         the profiles, PF-05), every entry complete."""
-        self.assertEqual(len(gates.CATALOG), 32)
+        self.assertEqual(len(gates.CATALOG), 35)   # GT-09: + 3 gates of Phase 3
         for gate in gates.all_gates().values():
             self.assertIn(gate.kind, gates.KINDS, gate.id)
             self.assertIn(gate.headless, gates.HEADLESS, gate.id)

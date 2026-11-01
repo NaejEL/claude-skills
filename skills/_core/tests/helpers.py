@@ -129,3 +129,20 @@ def validator_block(verdict: str, reason: str = "reason") -> str:
 def finding(file: str = "src/a.py", line: int = 3, title: str = "Bug", severity: str = "major") -> dict:
     return {"file": file, "line": line, "side": "RIGHT", "severity": severity, "title": title,
             "description": "scenario", "fix": "fix it"}
+
+
+def bash_check(script: str):
+    """`bash -n` on a script text: True/False for a verdict, None when no working bash exists
+    (a missing or broken WSL bash is an environment problem, not a defect of the script)."""
+    candidates = ["C:/Program Files/Git/bin/bash.exe", "C:/Program Files (x86)/Git/bin/bash.exe", "bash"]
+    for exe in candidates:
+        try:
+            res = subprocess.run([exe, "-n"], input=script.encode("utf-8"), capture_output=True, timeout=60)
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+        err = res.stderr.decode("utf-8", "replace")
+        if res.returncode == 0:
+            return True
+        if "syntax error" in err or "unexpected" in err:
+            return False
+    return None
