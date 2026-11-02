@@ -99,12 +99,12 @@ def _families(debt: str) -> Dict[str, str]:
 LEGACY_FAMILIES = _families("accumulation")
 VIB_FAMILIES = _families("generation")
 
-# FD-11, PF-05: built from the ready statuses of the profiles ("Statut : <X>" -> any accent of E).
-FORBIDDEN = re.compile(r"Statut[ \t]*:[ \t]*(%s)" % "|".join(
+# FD-11, PF-05: built from the ready statuses of the profiles ("Status: <X>" or "Statut : <X>" -> any accent of E).
+FORBIDDEN = re.compile(r"Stat(?:us|ut)[ \t]*:[ \t]*(%s)" % "|".join(
     re.escape(s.split(":", 1)[1].strip()).replace("E", "[EÉ]") for s in profiles.ready_statuses()))
 TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 SPEC_TEMPLATE = TEMPLATES / "spec-factory.md"
-# French deliverable texts (shared format) are data, not code strings.
+# Deliverable texts (shared format) are data, not code strings.
 DELIVERABLES = TEMPLATES / "deliverables.json"
 
 
@@ -599,18 +599,18 @@ def to_spec(f: Dict[str, Any], sections: Dict[str, Any], prefix: str, number: in
     clause = texts["secrets_out_of_scope"]
     if secrets and clause.lower() not in out_of_scope.lower():
         out_of_scope = "%s ; %s" % (clause, out_of_scope)
-    # BQ-11: `Dépend de` (spec names) and `Priorité` (rank in the PZ order) follow `Questions bloquantes`.
+    # BQ-11: `Depends on` (spec names) and `Priority` (rank in the PZ order) follow `Blocking questions`.
     extra = ""
     depends = sections.get("depends_on")
     if depends:
         if not isinstance(depends, list) or not all(isinstance(d, str) and d.strip() for d in depends):
             raise FindingError("spec section depends_on must be a list of spec names")
-        extra += "\nDépend de : " + ", ".join(d.strip() for d in depends)
+        extra += "\nDepends on: " + ", ".join(d.strip() for d in depends)
     priority = sections.get("priority")
     if priority is not None:
         if not isinstance(priority, int) or isinstance(priority, bool) or priority < 1:
             raise FindingError("spec section priority must be an integer >= 1")
-        extra += "\nPriorité : %d" % priority
+        extra += "\nPriority: %d" % priority
     text = Template(SPEC_TEMPLATE.read_text(encoding="utf-8")).substitute(
         extra_header=extra,
         prefix=prefix, number="%02d" % number, title=(sections.get("title") or f["title"]).strip(),

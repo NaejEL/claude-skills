@@ -104,7 +104,7 @@ class RepoFactoryTest(unittest.TestCase):
         names = sorted(p.name for p in SKILLS_DIR.iterdir() if (p / "SKILL.md").is_file())
         self.assertEqual(len(names), 12)
         self.assertNotIn("_core", names)
-        self.assertIn("`skills/<nom>/SKILL.md`", planner)
+        self.assertIn("`skills/<name>/SKILL.md`", planner)
         self.assertIn("`skills/_core/`", planner)
         self.assertFalse((SKILLS_DIR / "_core" / "SKILL.md").exists())
 
@@ -118,8 +118,9 @@ class RepoFactoryTest(unittest.TestCase):
             self.assertIn("bash ci/test-harness.sh", body, name)
             self.assertIn("__pycache__", body, name)
             self.assertNotIn("command -v timeout", body, name)
-        self.assertIn("`name` égal au nom du dossier", text(AGENTS / "factory-builder.md"))
-        self.assertIn("frontmatter valide des `SKILL.md`", text(AGENTS / "factory-verifier.md"))
+        self.assertRegex(text(AGENTS / "factory-builder.md"), "`name` equal to the folder name")
+        self.assertRegex(text(AGENTS / "factory-verifier.md"),
+                         "valid frontmatter of the touched `SKILL.md`")
 
     def test_uf04_ca11_factory_run_rebranched_on_the_core(self):
         """UF-04, CA-31: factory-run driven through the core copy, journal, gates
@@ -128,14 +129,16 @@ class RepoFactoryTest(unittest.TestCase):
         (The 4.0 template dropped the FR-xx labels, the need gate and the approved-line
         wording, so they are no longer asserted.)"""
         body = text(FACTORY_RUN)
-        self.assertIn("`H` désigne `py -3 .claude/harness/harness.py`", body)
+        self.assertIn("`H` stands for `py -3 .claude/harness/harness.py`", body)
         self.assertNotIn("command -v timeout", body)
         for needle in (".claude/harness/harness.py", "H factory-run start --arguments-file",
-                       "H factory-run record --run <run> --agent <nom>", ".harness/runs/factory-run-<horodatage>.jsonl",
-                       "H journal amend", "H begin --run <run> --slot <nom>", "`success`", "`fix`", "`relaunch`",
-                       "`fail`", "Un Verifier muet n'est pas un Verifier satisfait", "Ne jamais approuver par épuisement",
-                       "`pass_param`", "--headless", "--no-ship", "jamais de `factory-run deliver`"):
+                       "H factory-run record --run <run> --agent <name>", ".harness/runs/factory-run-<timestamp>.jsonl",
+                       "H journal amend", "H begin --run <run> --slot <name>", "`success`", "`fix`", "`relaunch`",
+                       "`fail`", "A silent Verifier is not a satisfied Verifier", "Never approve by exhaustion",
+                       "`pass_param`", "--headless", "--no-ship"):
             self.assertIn(needle, body)
+        # house rules (out of the generated blocks, owned by the repository)
+        self.assertRegex(body, "never `factory-run deliver`")
         for gid in ("factory-run.questions", "factory-run.approval"):
             gate = gates.get(gid)
             self.assertIn(gid, body)
@@ -194,9 +197,10 @@ class RepoFactoryTest(unittest.TestCase):
         accent and equivalence wording with the English-code rule."""
         for name in ("factory-builder", "factory-verifier"):
             body = text(AGENTS / ("%s.md" % name))
-            self.assertRegex(body, r"[Nn]e \*\*jamais\*\* exécuter `install_skills\.sh` ni `install_skills\.ps1`", name)
-        self.assertIn("cohérence entre les deux", text(AGENTS / "factory-verifier.md"))
-        self.assertIn("Code, commentaires et chaînes en anglais", text(AGENTS / "factory-builder.md"))
+            self.assertRegex(body, r"\*\*Never\*\* run `install_skills\.sh` or `install_skills\.ps1`", name)
+        self.assertRegex(text(AGENTS / "factory-verifier.md"), "consistency between the two")
+        self.assertRegex(text(AGENTS / "factory-builder.md"),
+                         "Code, comments, strings and Markdown prose in English")
 
 
 class CoreCopyTest(helpers.TempDirCase):

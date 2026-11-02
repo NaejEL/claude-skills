@@ -51,7 +51,7 @@ class InstallTest(helpers.TempDirCase):
                           "Lab: nouvelle expérience (session)"])
         self.assertEqual(tasks["tasks"][0]["windows"]["command"], "pwsh -File ci/lab.ps1 ${input:labProtocol}")
         self.assertEqual(tasks["tasks"][1]["windows"]["command"], "pwsh -File ci/lab.ps1 ${input:labProtocol} -Yolo")
-        self.assertEqual(read(self.tmp / ".gitignore"), "lab-logs/\nexperiments/results/\n.harness/runs/\n")
+        self.assertEqual(read(self.tmp / ".gitignore"), "lab-logs/\nexperiments/results/\n.harness/runs/\n.harness/tmp/\n")
         snapshot = {p.name: read(p) for p in self.tmp.rglob("*") if p.is_file()}
         self.assertEqual(set(lab.apply(self.tmp, "py -3 -m pytest -q", "py -3 -m pytest -q").values()), {fusion.IDENTICAL})
         self.assertEqual(snapshot, {p.name: read(p) for p in self.tmp.rglob("*") if p.is_file()})
@@ -64,7 +64,7 @@ class InstallTest(helpers.TempDirCase):
         settings = read(self.tmp / ".claude" / "settings.json")
         self.assertIn("// mine", settings)
         self.assertEqual(settings.count("Read(./.venv/**)"), 1)
-        self.assertEqual(read(self.tmp / ".gitignore"), "node_modules\nlab-logs/\nexperiments/results/\n.harness/runs/\n")
+        self.assertEqual(read(self.tmp / ".gitignore"), "node_modules\nlab-logs/\nexperiments/results/\n.harness/runs/\n.harness/tmp/\n")
 
     def test_al02_without_a_test_command_there_is_no_test_task(self):
         """AL-02: the test task exists only with a detected test command."""
@@ -324,7 +324,7 @@ class MachineTest(unittest.TestCase):
 
     def test_lr04_08_status_values_and_gates(self):
         """LR-04, LR-08: the three lab-run gates exist; consignation falls back to its default headless."""
-        self.assertEqual(gates.get("lab-run.consignation").default, "approbation")
+        self.assertEqual(gates.get("lab-run.consignation").default, "approval")
         self.assertEqual(gates.get("lab-run.preregistration").kind, "a")
 
     def test_lr09_lab_verifier_schema(self):

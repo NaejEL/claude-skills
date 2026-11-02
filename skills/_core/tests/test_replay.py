@@ -483,10 +483,10 @@ class UntrustedContentTest(helpers.TempDirCase):
             self.assertFalse(forbidden in ship, forbidden)
         for required in ("--summary-file .harness/runs/", "--not-fixed-file .harness/runs/",
                          "--title-file .harness/runs/", "K drop --run <run> --finding <id> --of <id>",
-                         '--trailer "', '--slot "reviewer:<thème>"', '--slot "validator:<id>"', "journal amend"):
+                         '--trailer "', '--slot "reviewer:<theme>"', '--slot "validator:<id>"', "journal amend"):
             self.assertTrue(required in ship, required)
         sf = (SKILLS_DIR / "software-factory" / "SKILL.md").read_text(encoding="utf-8")
-        for required in ("journal amend", "exit 1", "fichier de transit"):
+        for required in ("journal amend", "exit 1", "transit file"):
             self.assertTrue(required in sf, required)
         self.assertLessEqual(len(ship.splitlines()), 118)
         self.assertLessEqual(len(sf.splitlines()), 96)
@@ -503,17 +503,17 @@ class UntrustedContentTest(helpers.TempDirCase):
             texts[name] = text
             lines = text.split("\n")[:-1] if text.endswith("\n") else text.split("\n")
         ship = texts["ship-pr"]
-        self.assertEqual(ship.count("le réécrire avant chaque appel"), 1)
-        core = ship[ship.index("## Noyau déterministe"):ship.index("## Règles impératives")]
-        self.assertIn("le réécrire avant chaque appel, dans toutes les phases", core)
-        for required in ("--models", "pass_param", "shippr.reviewer", "shippr.validator", "jamais pour `inherit`"):
+        self.assertEqual(ship.count("rewrite it before each call"), 1)
+        core = ship[ship.index("## Deterministic core"):ship.index("## Mandatory rules")]
+        self.assertIn("rewrite it before each call, in all phases", core)
+        for required in ("--models", "pass_param", "shippr.reviewer", "shippr.validator", "never for `inherit`"):
             self.assertIn(required, ship, required)
         sf = texts["software-factory"]
         for required in ("--model-role factory.planner", "harness.model", "pass_param", "--models",
-                         "jamais pour `inherit`", "factory.verifier"):
+                         "never for `inherit`", "factory.verifier"):
             self.assertIn(required, sf, required)
         for text in texts.values():
-            self.assertNotIn("--model <modèle ou inherit>", text)
+            self.assertNotIn("--model <model or inherit>", text)
 
     def test_sf04_generated_file_transits_by_file_unchanged(self):
         """SF-04: an agent or script containing $ARGUMENTS, $1, $(date), backticks and

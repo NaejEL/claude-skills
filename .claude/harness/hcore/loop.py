@@ -58,7 +58,7 @@ def extract_profile_option(arguments: str) -> Tuple[str, Optional[str]]:
 
 def _status_line(path: Path) -> Optional[str]:
     for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if line.strip().startswith("Statut"):
+        if line.strip().lower().startswith(("status", "statut")):
             return line.strip()
     return None
 
@@ -85,6 +85,7 @@ def _artefact(candidate: str, root: Path, active: Sequence[Dict[str, Any]]) -> O
             # BQ-07: a proposed, blocked or delivered spec is routed to its profile as well.
             lines = [art[k] for k in ("status_ready", "status_proposed", "status_blocked", "status_delivered")
                      if art.get(k)]
+            lines += [v for v in (art.get("status_legacy") or {}).values() if v]
             if any(line == s or line.startswith(s + " ") for s in lines):
                 return {"profile": prof["name"], "mode": "build", "artefact": rel.as_posix()}
     return None

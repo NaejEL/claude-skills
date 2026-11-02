@@ -119,7 +119,7 @@ class HooksTest(helpers.TempDirCase):
         res = self.edit("docs/readme.md")
         self.assertEqual(res.returncode, 2)
         self.assertEqual(res.stderr.strip(), "Blocked: docs/readme.md is outside the scope declared by specs/SPEC-a.md "
-                         "(Périmètre fichiers: src/**, tests/**). Stay within the spec; if the spec is wrong, stop and report it.")
+                         "(Files scope: src/**, tests/**). Stay within the spec; if the spec is wrong, stop and report it.")
 
     def test_hp01_no_perimeter_or_no_marker_lets_everything_pass(self):
         """HP-01, CA-30: a spec without the field, or no marker, or another session -> exit 0."""

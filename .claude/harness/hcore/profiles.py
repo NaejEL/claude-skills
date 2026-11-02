@@ -1,7 +1,7 @@
 # Profiles: data folders that carry everything specific to a kind of project.
 #
 # - PF-01: a profile is a folder profiles/<name>/ with a strict JSON manifest
-#   (profile.json) and French Markdown fragments referenced by relative path.
+#   (profile.json) and Markdown fragments referenced by relative path.
 #   No .py file in a profile.
 # - PF-02: manifest keys, documented in profiles/SCHEMA.md.
 # - PF-03: `validate` lists every error (missing key, missing fragment, unknown
@@ -268,9 +268,19 @@ def ready_statuses(profiles_dir: Optional[Path] = None) -> List[str]:
     out: List[str] = []
     for prof in discover(profiles_dir).values():
         for art in prof.get("artefacts", []):
-            if art.get("status_ready") and art["status_ready"] not in out:
-                out.append(art["status_ready"])
+            for line in ready_lines(art):
+                if line not in out:
+                    out.append(line)
     return out
+
+
+def ready_lines(art: Dict[str, Any]) -> List[str]:
+    """The ready status line of an artefact, then its legacy (French) one when declared."""
+    lines = [art["status_ready"]] if art.get("status_ready") else []
+    legacy = (art.get("status_legacy") or {}).get("ready")
+    if legacy:
+        lines.append(legacy)
+    return lines
 
 
 def role_names(profiles_dir: Optional[Path] = None, read_only: Optional[bool] = None) -> List[str]:
@@ -381,6 +391,11 @@ def loop_agents(prof: Dict[str, Any]) -> Dict[str, Any]:
 
 def ready_status(prof: Dict[str, Any]) -> Optional[str]:
     return next((a["status_ready"] for a in prof["artefacts"] if a.get("status_ready")), None)
+
+
+def ready_status_lines(prof: Dict[str, Any]) -> List[str]:
+    """Every accepted spelling (English, then legacy) of the ready status line of a profile."""
+    return next((ready_lines(a) for a in prof["artefacts"] if a.get("status_ready")), [])
 
 
 def files_of(prof: Dict[str, Any]) -> List[str]:

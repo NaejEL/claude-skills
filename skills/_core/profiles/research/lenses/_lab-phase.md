@@ -1,16 +1,16 @@
-## Phase 2 — Audit parallèle par lentilles
+## Phase 2 — Parallel audit by lens
 
-Lancer **en un seul message** les auditeurs (lecture seule, AA-05), un par lentille retenue :
+Launch the auditors **in a single message** (read-only, AA-05), one per retained lens:
 
-Chaque prompt contient : la carte, sa lentille **et rien d'autre**, le budget de lecture, la phrase « **zéro finding est une réponse normale et acceptable** », l'interdiction d'écrire et d'exécuter, la preuve vérifiable, la distinction des deux natures, et un unique bloc JSON final (AA-07) :
+Each prompt contains: the map, its lens **and nothing else**, the reading budget, the sentence "**zero findings is a normal and acceptable answer**", the ban on writing and executing, verifiable evidence, the distinction between the two natures, and a single final JSON block (AA-07):
 
 ```json
 {"findings": [{"id": "VAL-01", "lens": "validite", "nature": "correction|question",
-  "severity": "critical|major|minor", "title": "résumé court",
-  "location": {"file": "chemin/relatif ou null", "line": 12, "journal_date": "AAAA-MM-JJ ou null"},
-  "evidence": "extrait ≤ 3 lignes ou citation", "impact": "ce que ça change pour les conclusions du projet",
-  "proposal": "correction en une phrase, OU question de recherche falsifiable en une phrase",
+  "severity": "critical|major|minor", "title": "short summary",
+  "location": {"file": "relative/path or null", "line": 12, "journal_date": "YYYY-MM-DD or null"},
+  "evidence": "excerpt ≤ 3 lines or citation", "impact": "what it changes for the project's conclusions",
+  "proposal": "one-sentence fix, OR one-sentence falsifiable research question",
   "size": "XS|S|M|L|XL", "depends_on": []}]}
 ```
 
-`correction` = quelque chose de faux ou d'incohérent à réparer ; `question` = quelque chose d'inconnu que seule une expérience tranche. `critical` est réservé aux fuites qui invalident un résultat publié dans le tableau, aux violations d'une contrainte non négociable et aux conclusions-titre reposant sur une preuve insuffisante. `size` : barème XS < 30 min, S < 2 h, M demi-journée, L 1-2 jours, XL à découper ; pour une question, coût de l'expérience sur le matériel déclaré (XS quelques minutes GPU, S < 1 h, M demi-journée de runs, L plusieurs jours, XL hors de portée). Chaque retour : `K audit auditor --run <run> --unit <lentille> --output <fichier> [--dead] --duration-ms <ms> --tokens <n>` (`relaunch` : une fois ; `not-audited` ; `validate` avec `to_validate` ; doublons — AA-08 : même fichier et ligne, ou même document et date, et même lentille, y compris REJECTED, `TRANCHEE` et audit préexistant — écartés **sans validateur**).
+`correction` = something wrong or inconsistent to repair; `question` = something unknown that only an experiment settles. `critical` is reserved for leaks that invalidate a result published in the table, violations of a non-negotiable constraint, and headline conclusions resting on insufficient evidence. `size`: scale XS < 30 min, S < 2 h, M half a day, L 1-2 days, XL to be split; for a question, cost of the experiment on the declared hardware (XS a few GPU minutes, S < 1 h, M half a day of runs, L several days, XL out of reach). Each return: `K audit auditor --run <run> --unit <lens> --output <file> [--dead] --duration-ms <ms> --tokens <n>` (`relaunch`: once; `not-audited`; `validate` with `to_validate`; duplicates — AA-08: same file and line, or same document and date, and same lens, including REJECTED, `TRANCHEE` and pre-existing audit — discarded **without a validator**).

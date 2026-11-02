@@ -7,7 +7,7 @@
 #   1 force-push, 2 branch deletion (remote or local), 3 history rewrite,
 #   4 destruction of work, 5 file deletion (allowed only when EVERY target is
 #   generated: artefact folder, created during the active cycle, or inside the
-#   `Périmètre fichiers` of the active spec - decided by the `deletable` callback).
+#   `Files scope` of the active spec - decided by the `deletable` callback).
 # - HG-03: the command is split on ; && || | & and newlines, recursion into
 #   $( ), backticks, `bash -c`, `sh -c`, `env`, `sudo`, `command`, `xargs`;
 #   tokens by shlex; `git -C` and `-c` are skipped; PowerShell syntax for the

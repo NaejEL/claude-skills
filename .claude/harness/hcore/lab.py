@@ -30,13 +30,13 @@ PYTHON_DENY = ["Read(./.venv/**)", "Read(./venv/**)", "Read(./**/__pycache__/**)
 GENERIC_DENY = ["Read(./lab-logs/**)", "Read(./experiments/results/**)", "Read(./.git/objects/**)"]
 DATA_DIRS = ("data", "checkpoints", "models", "wandb", "runs")
 WEIGHT_SUFFIXES = (".safetensors", ".pt", ".bin")
-GITIGNORE_LINES = ["lab-logs/", "experiments/results/", ".harness/runs/"]
+GITIGNORE_LINES = ["lab-logs/", "experiments/results/", ".harness/runs/", ".harness/tmp/"]
 SKIP_WALK = {".git", ".venv", "venv", "node_modules", "__pycache__", "lab-logs"}
 WALK_LIMIT = 20000
 
 LAB_INPUT = {"id": "labProtocol", "type": "promptString",
-             "description": "Chemin du protocole pré-enregistré (experiments/EXP-*.md)"}
-REMINDER = 'Ouvrir Claude Code et taper : /lab-run "<votre question>"  ou  /lab-run suivant'
+             "description": "Path of the pre-registered protocol (experiments/EXP-*.md)"}
+REMINDER = 'Open Claude Code and type: /lab-run "<your question>"  or  /lab-run suivant'
 
 
 def present_rules(root: Path) -> List[str]:

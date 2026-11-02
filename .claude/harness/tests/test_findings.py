@@ -294,25 +294,25 @@ class ConversionTest(helpers.TempDirCase):
         the order of LA-11, FD-11 finds nothing; imposed clauses (secrets, fuites)."""
         f = findings.adapt("legacy-auditor", dict(LEGACY, id="HYG-03", category="gitignore-absent", size="XS"))
         text = findings.to_spec(f, self.sections(), "leg", 3)
-        self.assertTrue(text.startswith("Statut : PROPOSEE\nQuestions bloquantes : aucune\n\n# SPEC-leg-03 — Secret in config.py\n"))
+        self.assertTrue(text.startswith("Status: PROPOSED\nBlocking questions: none\n\n# SPEC-leg-03 — Secret in config.py\n"))
         heads = [line for line in text.splitlines() if line.startswith("## ")]
-        self.assertEqual(heads, ["## Contexte", "## Périmètre", "## Critères d'acceptation", "## Hors-périmètre",
-                                 "## Risques", "## Questions ouvertes"])
-        self.assertIn("Finding HYG-03 (critical, XS) : aucun .gitignore.", text)
+        self.assertEqual(heads, ["## Context", "## Scope", "## Acceptance criteria", "## Out of scope",
+                                 "## Risks", "## Open questions"])
+        self.assertIn("Finding HYG-03 (critical, XS): aucun .gitignore.", text)
         self.assertIn("1. Un `.gitignore` existe.\n2. git status est propre.", text)
-        self.assertTrue(text.rstrip().endswith("## Questions ouvertes\nAucune"))
+        self.assertTrue(text.rstrip().endswith("## Open questions\nNone"))
         self.assertEqual(findings.check_forbidden(text), [])
         secret = findings.to_spec(findings.adapt("legacy-auditor", LEGACY), self.sections(), "leg", 1)
-        self.assertIn("## Hors-périmètre\nRéécriture d'historique ; .gitignore par sous-dossier.", secret)
+        self.assertIn("## Out of scope\nHistory rewriting ; .gitignore par sous-dossier.", secret)
         leak = findings.adapt("lab-audit-auditor", dict(LAB_AUDIT, id="LEAK-01", lens="fuites", nature="correction"))
         spec = findings.to_spec(leak, self.sections(), "lab", 1)
         # Full text of both imposed criteria (ai-lab-audit:134), numbered after the skill's own.
-        self.assertIn("\n3. La baseline et la condition testée sont exécutées par la même commande "
-                      "à la variable manipulée près.\n", spec)
-        self.assertIn("\n4. Les résultats du tableau dépendant de cette éval sont marqués *à re-mesurer* "
-                      "dans l'audit.\n", spec)
+        self.assertIn("\n3. The baseline and the tested condition are run by the same command, "
+                      "apart from the manipulated variable.\n", spec)
+        self.assertIn("\n4. The results of the table that depend on this eval are marked *to be re-measured* "
+                      "in the audit.\n", spec)
         with self.assertRaises(FindingError):
-            findings.to_spec(f, self.sections(risks="Statut : APPROUVEE trop tôt"), "leg", 3)
+            findings.to_spec(f, self.sections(risks="Status: APPROVED too soon"), "leg", 3)
 
     def test_fd08_cli_spec_never_overwrites(self):
         """FD-08 through the CLI: written once, an existing spec kept (SF-04)."""
@@ -334,9 +334,9 @@ class ConversionTest(helpers.TempDirCase):
         out of scope, leak criteria, no open question) come from
         templates/deliverables.json, never from code strings."""
         texts = findings.deliverable_texts()
-        self.assertEqual(texts["secrets_out_of_scope"], "Réécriture d'historique")
+        self.assertEqual(texts["secrets_out_of_scope"], "History rewriting")
         self.assertEqual(len(texts["leak_criteria"]), 2)
-        self.assertEqual(texts["no_questions"], "Aucune")
+        self.assertEqual(texts["no_questions"], "None")
         source = (helpers.CORE / "hcore" / "findings.py").read_text(encoding="utf-8")
         for text in [texts["secrets_out_of_scope"], texts["no_questions"]] + texts["leak_criteria"]:
             self.assertNotIn('"%s' % text, source)

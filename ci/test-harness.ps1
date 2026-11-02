@@ -1,24 +1,24 @@
 <#
 .SYNOPSIS
-    Lance les scenarios de bout en bout du harnais (lanceur mince de ci/scenarios/run.py).
+    Runs the harness end-to-end scenarios (thin launcher for ci/scenarios/run.py).
 .DESCRIPTION
-    Detecte l'interpreteur par la regle D5 (premier de python, python3, py -3 qui repond en moins
-    de 5 s avec une version >= 3.9), transmet les options au runner et propage son code de sortie :
-    0 = tout PASS ou SKIP motive, 1 = un FAIL (ou -Live sans claude), 2 = option ou scenario inconnu.
+    Detects the interpreter with rule D5 (the first of python, python3, py -3 that answers within
+    5 s with a version >= 3.9), forwards the options to the runner and propagates its exit code:
+    0 = all PASS or justified SKIP, 1 = a FAIL (or -Live without claude), 2 = unknown option or scenario.
 .PARAMETER List
-    Liste les scenarios (avec -Details : sous-commandes du noyau et fichiers qui les prescrivent).
+    Lists the scenarios (with -Details: core subcommands and the files that prescribe them).
 .PARAMETER Details
-    Avec -List : sous-commandes du noyau et fichiers qui les prescrivent (equivalent de --verbose).
+    With -List: core subcommands and the files that prescribe them (equivalent of --verbose).
 .PARAMETER Scenario
-    Ne lance que ce scenario ; plusieurs separes par des virgules.
+    Runs only this scenario; several can be given, separated by commas.
 .PARAMETER Live
-    Lance aussi les scenarios live-* (vrai claude, consomme des tokens).
+    Also runs the live-* scenarios (real claude, consumes tokens).
 .PARAMETER Keep
-    Garde les dossiers temporaires et affiche leur chemin.
+    Keeps the temporary folders and prints their path.
 .PARAMETER Fixtures
-    Dossier des fixtures (defaut : ci/fixtures).
+    Fixtures folder (default: ci/fixtures).
 .PARAMETER Report
-    Fichier du rapport JSON (defaut : dossier temporaire).
+    JSON report file (default: temporary folder).
 #>
 param(
     [switch]$List,
@@ -37,7 +37,7 @@ param(
 $ErrorActionPreference = 'Stop'
 
 function Test-Interpreter {
-    # Vrai si la commande repond en moins de 5 s avec une version >= 3.9.
+    # True if the command answers within 5 s with a version >= 3.9.
     param([string[]]$Command)
     $found = Get-Command $Command[0] -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
     if (-not $found) { return $false }
@@ -68,7 +68,7 @@ foreach ($candidate in @(@('python'), @('python3'), @('py', '-3'))) {
     if (Test-Interpreter -Command $candidate) { $python = $candidate; break }
 }
 if (-not $python) {
-    [Console]::Error.WriteLine('Aucun interpreteur Python >= 3.9 trouve (python, python3, py -3).')
+    [Console]::Error.WriteLine('No Python >= 3.9 interpreter found (python, python3, py -3).')
     exit 1
 }
 
@@ -91,6 +91,6 @@ if ($Rest) { $forward += $Rest }
 $prefix = @()
 if ($python.Count -gt 1) { $prefix = $python[1..($python.Count - 1)] }
 $env:HTS_LAUNCHER = 'pwsh'
-$ErrorActionPreference = 'Continue'   # le stderr natif du runner n'est pas une erreur du lanceur
+$ErrorActionPreference = 'Continue'   # the runner's native stderr is not a launcher error
 & $python[0] @prefix -B -I -S $runner @forward
 exit $LASTEXITCODE

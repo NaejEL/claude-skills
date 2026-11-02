@@ -7,11 +7,12 @@
 #   session id falls back to `active/project.json`, with a warning (Q17).
 # - HK-07: paths are normalised: `\` and `/`, case ignored for Windows paths, `..`
 #   resolved, relative to the root of the context.
-# - HP-01 to HP-03: the perimeter of the spec (`Périmètre fichiers`) during the
+# - HP-01 to HP-03: the perimeter of the spec (`Files scope`) during the
 #   build; `.harness/runs/**`, the active spec and paths outside the root pass.
 # - HD-01: during ship-pr only the files of `git diff --name-only origin/<target>...HEAD`.
 # - HR-01: drifts are counted per run, under the run lock; the second one stops the cycle.
-# - HG-02 (5): `deletable` decides whether a deletion target is generated.
+# - HG-02 (5): `deletable` decides whether a deletion target is generated
+#   (`.harness/tmp/`, the agents' scratch folder, always is).
 
 from __future__ import annotations
 
@@ -31,7 +32,8 @@ STALE_SECONDS = 12 * 3600
 CONTEXT_SKILLS = ("factory-run", "lab-run", "ship-pr")
 ARTEFACT_DIRS = ("factory-logs", "lab-logs", "experiments/results", ".harness/runs", "__pycache__", "node_modules",
                  "dist", "bin", "obj", ".venv", ".pytest_cache", "build", "target")
-SECRET_PATTERNS = (".env", ".env.*", "*.pem", "*.key", "id_rsa*", "*.p12", "*.pfx")
+SCRATCH_DIR = ".harness/tmp"
+SECRET_PATTERNS =(".env", ".env.*", "*.pem", "*.key", "id_rsa*", "*.p12", "*.pfx")
 SECRET_ALLOWED = (".env.example",)
 WIN_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
 
@@ -91,6 +93,11 @@ def matches(pattern: str, rel: str, fold: bool = False) -> bool:
 
 def in_runs_dir(rel: str) -> bool:
     return rel == ".harness/runs" or rel.startswith(".harness/runs/")
+
+
+def in_scratch_dir(rel: str) -> bool:
+    """Agent scratch files live under `<root>/.harness/tmp/` (git-ignored): always deletable."""
+    return rel == SCRATCH_DIR or rel.startswith(SCRATCH_DIR + "/")
 
 
 # ------------------------------------------------------------------- markers
@@ -189,7 +196,7 @@ def build_violation(root: Path, ctx: Dict[str, Any], rel: str) -> Optional[str]:
     fold = _windows_style(str(root))
     if in_runs_dir(rel) or rel == ctx.get("spec") or any(matches(g, rel, fold) for g in perimeter):
         return None
-    return ("Blocked: %s is outside the scope declared by %s (Périmètre fichiers: %s). Stay within the spec; "
+    return ("Blocked: %s is outside the scope declared by %s (Files scope: %s). Stay within the spec; "
             "if the spec is wrong, stop and report it." % (rel, ctx.get("spec"), ", ".join(perimeter)))
 
 
@@ -229,6 +236,8 @@ def deletable_factory(root: Path, ctx: Optional[Dict[str, Any]]) -> Callable[[st
         rel = normalize(target, str(root))
         if rel is None or rel == ".":
             return False
+        if in_scratch_dir(rel):
+            return True
         if any(("/" + d + "/") in ("/" + rel + "/") for d in ARTEFACT_DIRS):
             return True
         if ctx is None:

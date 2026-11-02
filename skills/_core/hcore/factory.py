@@ -3,7 +3,7 @@
 # - FR-01: entry on an existing spec under specs/ whose status line is
 #   exactly the ready status line of the profile's artefact -> Build phase;
 #   otherwise Plan phase.
-#   (The status line is part of the French spec format and is kept as is.)
+#   (The French forms of the status line are still accepted.)
 # - FR-02: success if and only if verdict == APPROVED and tests_passed is true.
 # - FR-03: at most 3 iterations; after the 3rd non-approved iteration, explicit
 #   failure with the remaining issues. Never an approval by exhaustion.

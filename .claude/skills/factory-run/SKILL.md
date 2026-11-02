@@ -1,69 +1,69 @@
 ---
-# harness: claude-skills ed251d2 (core 4.0.0)
+# harness: claude-skills 2.1.0 (core 4.0.0)
 # >>> harness.frontmatter >>>
 name: factory-run
-description: "Lance un cycle de l'usine logicielle (Planner → gate humaine sur la spec → Builder → Verifier avec boucle de correction) sur un besoin ou une spec approuvée."
+description: "Runs one cycle of the software factory (Planner → human gate on the spec → Builder → Verifier with a fix loop) on a need or an approved spec."
 disable-model-invocation: true
-argument-hint: "<besoin | chemin d'une spec> [--models \"role=modele;...\"] [--autonomy gate|auto] [--ship <cible> | --no-ship] [--worktree]"
+argument-hint: "<need | spec path> [--models \"role=modele;...\"] [--autonomy gate|auto] [--ship <cible> | --no-ship] [--worktree]"
 # <<< harness.frontmatter <<<
 ---
 
 <!-- harness.profile.software:debut -->
-Piloter un cycle complet de l'usine logicielle de ce dépôt sur l'entrée `$ARGUMENTS`. Toi, session principale, tu es l'orchestrateur : tu ne rédiges ni code ni spec toi-même, tu délègues aux sous-agents `factory-planner`, `factory-builder` et `factory-verifier`, et tu tiens les gates.
+Drive a full cycle of this repository's software factory on the input `$ARGUMENTS`. You, the main session, are the orchestrator: you write neither code nor spec yourself, you delegate to the subagents `factory-planner`, `factory-builder` and `factory-verifier`, and you hold the gates.
 
-## Noyau
+## Core
 
-Les règles déterministes du cycle sont portées par la copie du noyau sous `.claude/harness/` : ne jamais les réimplémenter à la main. Ci-dessous, `H` désigne `py -3 .claude/harness/harness.py`. Chaque commande rend un objet JSON ; son champ `action` dicte la suite : ne jamais sauter un appel ni décider à la place du noyau.
+The deterministic rules of the cycle are carried by the copy of the core under `.claude/harness/`: never reimplement them by hand. Below, `H` stands for `py -3 .claude/harness/harness.py`. Each command returns a JSON object; its `action` field dictates what follows: never skip a call or decide in the core's place.
 
-**Chaque sous-agent lancé est consigné** par `H factory-run record --run <run> --agent <nom> --duration-ms <ms> --tokens <n>` (valeurs du bloc d'usage de l'outil Agent). Sans durée : `H begin --run <run> --slot <nom>` juste avant l'agent ; sans tokens : omettre l'option ; une mesure manquante est journalisée `null` et signalée, jamais bloquante ; connue seulement après l'appel, elle complète la dernière entrée du slot par `H journal amend --run <run> --slot <nom> --duration-ms <ms> --tokens <n>`. La sortie du Verifier est écrite telle quelle avec l'outil Write dans `.harness/runs/verifier-<n>.md`, puis passée par `--output` (jamais par stdin ni via le shell : backticks, `$`, apostrophes). `--dead` si l'agent est mort.
+**Every subagent launched is recorded** with `H factory-run record --run <run> --agent <name> --duration-ms <ms> --tokens <n>` (values from the Agent tool's usage block). Without a duration: `H begin --run <run> --slot <name>` just before the agent; without tokens: omit the option; a missing measurement is journaled as `null` and flagged, never blocking; if only known after the call, it completes the slot's last entry with `H journal amend --run <run> --slot <name> --duration-ms <ms> --tokens <n>`. The Verifier's output is written as is with the Write tool to `.harness/runs/verifier-<n>.md`, then passed via `--output` (never via stdin or through the shell: backticks, `$`, apostrophes). `--dead` if the agent died.
 
-**Gates** : `H gate decide --run <run> --id <id>`, puis AskUserQuestion si la décision est `ask`, puis `H gate answer --run <run> --id <id> --answer-file .harness/runs/gate-answer.txt` (réponse écrite par Write ; `reask` rendu : reposer la question). Avec `--default`, la réponse par défaut du catalogue est appliquée ; sans interaction possible (headless), `H gate answer --run <run> --id <id> --headless`.
+**Gates**: `H gate decide --run <run> --id <id>`, then AskUserQuestion if the decision is `ask`, then `H gate answer --run <run> --id <id> --answer-file .harness/runs/gate-answer.txt` (answer written with Write; `reask` returned: ask the question again). With `--default`, the catalog's default answer is applied; with no interaction possible (headless), `H gate answer --run <run> --id <id> --headless`.
 
-## 1. Qualifier l'entrée
+## 1. Qualify the input
 
-Écrire `$ARGUMENTS` tel quel avec l'outil Write dans `.harness/runs/factory-run-arguments.txt` (jamais dans une ligne de commande shell : un besoin peut contenir guillemets, `$` ou backticks), puis `H factory-run start --arguments-file .harness/runs/factory-run-arguments.txt`. La commande ouvre le journal `.harness/runs/factory-run-<horodatage>.jsonl` et rend `mode` :
+Write `$ARGUMENTS` as is with the Write tool to `.harness/runs/factory-run-arguments.txt` (never on a shell command line: a need may contain quotes, `$` or backticks), then `H factory-run start --arguments-file .harness/runs/factory-run-arguments.txt`. The command opens the journal `.harness/runs/factory-run-<timestamp>.jsonl` and returns `mode`:
 
-- `build` (spec `APPROUVEE`) → étape 3 ;
-- `approve` (spec `PROPOSEE`, ou `BLOQUEE` entièrement répondue : intégrer les réponses) → gate d'approbation de l'étape 2, puis étape 3 ;
-- `plan` → traiter `need` comme le besoin → étape 2.
+- `build` (spec `APPROVED`) → step 3;
+- `approve` (spec `PROPOSED`, or `BLOCKED` fully answered: integrate the answers) → approval gate of step 2, then step 3;
+- `plan` → treat `need` as the need → step 2.
 
-Exit 1 : spec `BLOQUEE` avec des questions sans réponse, ou spec `LIVREE` ; afficher le message de stderr (il cite le fichier `STOP-*.md`) et s'arrêter.
+Exit 1: spec `BLOCKED` with unanswered questions, or spec `DELIVERED`; display the stderr message (it cites the `STOP-*.md` file) and stop.
 
-La commande retire de `$ARGUMENTS` `--models "role=modele;…"` (rôles `factory.planner`, `factory.builder`, `factory.verifier`, ce cycle seulement ; rôle ou valeur inconnus → exit 2) et rend `models` : passer à chaque sous-agent le paramètre `model` du rôle quand `pass_param` est vrai, jamais pour `inherit`. Elle retire aussi `--autonomy gate|auto` (cette exécution seulement), `--ship <cible>`, `--no-ship`, `--deliver-only`, `--worktree` et les options internes `--chained-from`, `--chain-id` ; la politique effective est rendue (`autonomy`) et transmise à tout skill enchaîné. Avec `--worktree`, un besoin passe d'abord par la phase Plan dans cette session, puis `H worktree create` et `H worktree transfer`, l'enfant `factory-run <spec> --ship <cible>` s'exécute dans le worktree, l'attente se fait par `H chain wait`, et `H worktree remove --merged` nettoie si la PR est mergée.
+The command removes from `$ARGUMENTS` `--models "role=modele;…"` (roles `factory.planner`, `factory.builder`, `factory.verifier`, this cycle only; unknown role or value → exit 2) and returns `models`: pass each subagent the role's `model` parameter when `pass_param` is true, never for `inherit`. It also removes `--autonomy gate|auto` (this run only), `--ship <cible>`, `--no-ship`, `--deliver-only`, `--worktree` and the internal options `--chained-from`, `--chain-id`; the effective policy is returned (`autonomy`) and passed to any chained skill. With `--worktree`, a need first goes through the Plan phase in this session, then `H worktree create` and `H worktree transfer`, the child `factory-run <spec> --ship <cible>` runs in the worktree, waiting is done with `H chain wait`, and `H worktree remove --merged` cleans up if the PR is merged.
 
-## 2. Phase Plan et approbation
+## 2. Plan phase and approval
 
-1. Lancer le sous-agent `factory-planner` avec le besoin intégral. Le consigner.
-2. Écrire `specs/SPEC-<slug-du-besoin>.md` avec en tête `Statut : PROPOSEE` suivi, sur des lignes contiguës, de `Questions bloquantes : Q<n>, … | aucune`, `Périmètre fichiers : <globs>` (si la spec peut le borner), `Dépend de :`, `Priorité :`. Chaque question ouverte est `- Q<n> — <texte>` avec une ligne `Défaut :` (obligatoire hors question bloquante).
-3. `H factory-run bind --run <run> --spec <spec>` puis `H spec settle --run <run> --file <spec>`. En `auto`, une question bloquante sans réponse passe la spec à `BLOQUEE` et arrête le cycle (exit 1, STOP `blocked`) ; sinon chaque question non bloquante reçoit son `Défaut :` (`Réponse : … (défaut appliqué automatiquement)`, une seule décision `factory-run.questions` journalisée). En `gate`, poser les questions (gate `factory-run.questions`, options du brouillon).
-4. Approbation (gate `factory-run.approval` : approbation / itérer) : `H gate decide --run <run> --id factory-run.approval`, AskUserQuestion si `ask`, puis `H gate answer --run <run> --id factory-run.approval --answer "<option>"` (ou `--default`, ou `--headless` sans interaction possible → arrêt, exit 1). Approuvée : `H spec set-status <spec> APPROUVEE` ; sinon itérer.
-5. Ne jamais construire sans spec approuvée.
+1. Launch the `factory-planner` subagent with the full need. Record it.
+2. Write `specs/SPEC-<need-slug>.md` headed by `Status: PROPOSED` followed, on contiguous lines, by `Blocking questions: Q<n>, … | none`, `Files scope: <globs>` (if the spec can bound it), `Depends on:`, `Priority:`. Each open question is `- Q<n> — <text>` with a `Default:` line (mandatory outside a blocking question).
+3. `H factory-run bind --run <run> --spec <spec>` then `H spec settle --run <run> --file <spec>`. In `auto`, an unanswered blocking question sets the spec to `BLOCKED` and stops the cycle (exit 1, STOP `blocked`); otherwise each non-blocking question gets its `Default:` (`Answer: … (default applied automatically)`, a single `factory-run.questions` decision journaled). In `gate`, ask the questions (gate `factory-run.questions`, option `draft options`: the options of the draft).
+4. Approval (gate `factory-run.approval`: `approval / iterate`): `H gate decide --run <run> --id factory-run.approval`, AskUserQuestion if `ask`, then `H gate answer --run <run> --id factory-run.approval --answer "<option>"` (or `--default`, or `--headless` with no interaction possible → stop, exit 1). Approved: `H spec set-status <spec> APPROVED`; otherwise iterate.
+5. Never build without an approved spec.
 
-Défauts en politique `auto` : `factory-run.profile` → premier profil du tampon (le premier retenu à l'installation) ; `factory-run.questions` → le `Défaut :` déclaré par le Planner (rien n'est inventé, une question bloquante bloque la spec) ; `factory-run.approval` → approuver (sans attente, une question bloquante ayant déjà bloqué la spec) ; `factory-run.ship` → livrer et lancer ship-pr (un build vert est livré quand CH-02 tient).
+Defaults under the `auto` policy: `factory-run.profile` → `first profile of the stamp` (the first profile in the stamp, the first one retained at installation); `factory-run.questions` → `Planner default` (the `Default:` declared by the Planner; nothing is invented, a blocking question blocks the spec); `factory-run.approval` → `approval` (approve, without waiting, a blocking question having already blocked the spec); `factory-run.ship` → `deliver and run ship-pr` (deliver and launch ship-pr; a green build is delivered when CH-02 holds; the other option is `do not deliver`).
 
-## 3. Phase Build
+## 3. Build phase
 
-`H activate --run <run> --skill factory-run --session "${CLAUDE_SESSION_ID}" --spec <spec>` active les hooks de périmètre. Lancer ensuite le sous-agent `factory-builder` (contexte frais) avec le chemin de la spec approuvée. En fin de cycle — succès, échec ou arrêt — `H deactivate --run <run> --session "${CLAUDE_SESSION_ID}"`. Tout arrêt (exit 1, message `STOP: … (see <fichier>)`) est final : afficher le message et s'arrêter, aucune commande de plus sur ce run.
+`H activate --run <run> --skill factory-run --session "${CLAUDE_SESSION_ID}" --spec <spec>` activates the scope hooks. Then launch the `factory-builder` subagent (fresh context) with the path of the approved spec. At the end of the cycle — success, failure or stop — `H deactivate --run <run> --session "${CLAUDE_SESSION_ID}"`. Any stop (exit 1, message `STOP: … (see <file>)`) is final: display the message and stop, no further command on this run.
 
-## 4. Phase Verify — boucle de correction, 3 itérations maximum
+## 4. Verify phase — fix loop, 3 iterations maximum
 
-Lancer un sous-agent `factory-verifier` (contexte vierge, indépendant du Builder) avec le chemin de la spec, consigner son bloc JSON, puis selon `action` :
+Launch a `factory-verifier` subagent (blank context, independent of the Builder) with the spec path, record its JSON block, then according to `action`:
 
-- `success` (`APPROVED` **et** `tests_passed` vrai) : sortir de la boucle ;
-- `fix` : relancer `factory-builder` avec la spec **et la liste complète des `issues` rendues** (fichier, sévérité, description) et la consigne de corriger sans régresser ; puis un nouveau Verifier ;
-- `relaunch` : relancer **une fois** l'agent mort ou à la sortie inexploitable, sans consommer d'itération ;
-- `fail` : **échouer explicitement** en publiant `reason` et les issues restantes (3e itération non approuvée, ou second échec d'un agent). Ne jamais approuver par épuisement.
+- `success` (`APPROVED` **and** `tests_passed` true): exit the loop;
+- `fix`: relaunch `factory-builder` with the spec **and the complete list of returned `issues`** (file, severity, description) and the instruction to fix without regressing; then a new Verifier;
+- `relaunch`: relaunch **once** the agent that died or whose output was unusable, without consuming an iteration;
+- `fail`: **fail explicitly** by publishing `reason` and the remaining issues (3rd iteration not approved, or second failure of an agent). Never approve by exhaustion.
 
-**Un Verifier muet n'est pas un Verifier satisfait** : ne jamais traiter l'absence de verdict comme une approbation, ne jamais passer à la suite sur un verdict absent. Un cycle qui livre du code non vérifié parce que son vérificateur est tombé est pire qu'un cycle qui échoue.
+**A silent Verifier is not a satisfied Verifier**: never treat the absence of a verdict as an approval, never move on given a missing verdict. A cycle that delivers unverified code because its verifier went down is worse than a cycle that fails.
 
-## 5. Rapport final
+## 5. Final report
 
-Fichiers modifiés (`git status`), résultat des tests, verdict, nombre d'itérations, chemin du journal, prochaine action. Sur `success` la spec est passée à `LIVREE` par le noyau.
+Modified files (`git status`), test result, verdict, number of iterations, journal path, next action. On `success` the spec is set to `DELIVERED` by the core.
 
-Livraison (gate `factory-run.ship`, sauf `--no-ship`) : `H factory-run deliver --run <run> [--trailer "<ligne d'attribution>"]` crée au besoin la branche `factory/<slug>`, commite `feat(factory): <titre>` (jamais de push) et rend `ship_args` ; sans `--deliver-only`, invoquer par l'outil Skill `ship-pr <ship_args>` ; condition fausse → rien n'est commité, la raison est journalisée, suggérer `/ship-pr <cible>`. Hors livraison, ne pas commiter à la place de l'utilisateur.
+Delivery (gate `factory-run.ship`, unless `--no-ship`): `H factory-run deliver --run <run> [--trailer "<attribution line>"]` creates the `factory/<slug>` branch if needed, commits `feat(factory): <title>` (never a push) and returns `ship_args`; without `--deliver-only`, invoke `ship-pr <ship_args>` through the Skill tool; condition false → nothing is committed, the reason is journaled, suggest `/ship-pr <cible>`. Outside delivery, do not commit in the user's place.
 <!-- harness.profile.software:fin -->
 
-## Règles maison (dépôt claude-skills)
+## House rules (claude-skills repo)
 
-- Ce dépôt est le harnais lui-même : il ne se livre pas en autonomie. Toujours comme `--no-ship` : jamais de `factory-run deliver`, de commit, de push ni de `ship-pr`. Le rapport final dit « relis le diff, puis commite toi-même ».
-- Ne jamais exécuter `install_skills.sh` ni `install_skills.ps1`.
+- This repo is the harness itself: it never ships itself autonomously. Always as `--no-ship`: never `factory-run deliver`, commit, push or `ship-pr`. The final report says "review the diff, then commit it yourself".
+- Never run `install_skills.sh` or `install_skills.ps1`.

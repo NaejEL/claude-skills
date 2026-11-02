@@ -58,7 +58,7 @@ class DoctorTest(helpers.TempDirCase):
     def test_dr03_edited_and_outdated_blocks(self):
         """DR-03: edited = hash differs from the stamp; outdated = the repository renders it differently."""
         rel = ".claude/agents/factory-planner.md"
-        text = uf.read(self.root, rel).replace("Tu es le Planner", "Tu es le PLANNER MODIFIE", 1)
+        text = uf.read(self.root, rel).replace("You are the Planner", "You are the MODIFIED PLANNER", 1)
         uf.write(self.root, rel, text)
         rows = {(r["file"], r["block"]): r["state"] for r in self.report()["blocks"]}
         self.assertEqual(rows[(rel, "harness.body")], "edited")

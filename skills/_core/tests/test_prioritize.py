@@ -54,8 +54,8 @@ class RankTest(unittest.TestCase):
 
     def test_pz01_pz04_framing_and_research_questions(self):
         """PZ-01: the reliable-first criteria per set; PZ-04: severity decreasing then cost increasing."""
-        self.assertEqual(prioritize.FRAMING["vibecode"], {"order": "Gravité d'abord", "minor": "Les détailler"})
-        self.assertEqual(prioritize.FRAMING["legacy"]["order"], "risque d'abord")
+        self.assertEqual(prioritize.FRAMING["vibecode"], {"order": "Severity first", "minor": "Detail them"})
+        self.assertEqual(prioritize.FRAMING["legacy"]["order"], "risk first")
         qs = [f("Q1", "minor", "XS"), f("Q2", "critical", "L"), f("Q3", "critical", "S"), f("Q4", "major", "XS")]
         self.assertEqual(prioritize.rank_questions(qs), ["Q3", "Q2", "Q4", "Q1"])
 

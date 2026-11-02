@@ -35,6 +35,7 @@ BUILDER, VERIFIER = _AGENTS["build"], _AGENTS["verify"]
 AGENTS = (DIRECTOR, NEURO, MATH, BUILDER, VERIFIER)
 EXPERTS = {a: _MODEL_ROLES[a].rsplit(".", 1)[-1] for a in (NEURO, MATH)}
 PRE_REGISTERED_LINE = profiles.ready_status(_PROFILE)
+PRE_REGISTERED_LINES = tuple(profiles.ready_status_lines(_PROFILE))
 MODES = ("cadrage", "interpretation")
 
 
@@ -62,8 +63,8 @@ def entry(arguments: str, root: Path) -> Dict[str, Any]:
             is_protocol = False
         if is_protocol:
             for line in full.read_text(encoding="utf-8", errors="replace").splitlines():
-                if line.strip().startswith("Statut"):
-                    if line.strip() == PRE_REGISTERED_LINE:
+                if line.strip().lower().startswith(("status", "statut")):
+                    if line.strip() in PRE_REGISTERED_LINES:
                         return {"mode": "build", "protocol": rel.as_posix()}
                     break
     return {"mode": "cadrage", "protocol": None}

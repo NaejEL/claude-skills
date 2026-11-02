@@ -1,26 +1,26 @@
-# Schéma d'un profil
+# Profile schema
 
-Un profil est un dossier `skills/_core/profiles/<nom>/` : un manifeste `profile.json` (JSON strict, UTF-8) et des fragments Markdown en français référencés par chemin relatif. Aucun fichier `.py` n'y figure. Ajouter un profil = ajouter un dossier ; `harness.py profile validate <dossier>` rend exit 0 si le profil est conforme, exit 2 avec la liste des erreurs sinon.
+A profile is a folder `skills/_core/profiles/<name>/`: a manifest `profile.json` (strict JSON, UTF-8) and Markdown fragments in English referenced by relative path. No `.py` file appears in it. Adding a profile = adding a folder; `harness.py profile validate <folder>` returns exit 0 if the profile is valid, exit 2 with the list of errors otherwise.
 
-## Clés du manifeste
+## Manifest keys
 
-- `name` : identique au nom du dossier. `schema_version`. `fallback` : booléen, un seul profil à `true`.
-- `fragments` : `{orchestrator, install, scout}`, chemins de fragments.
-- `roles[]` : `{name, mission (fragment), read_only, tools, model_role, model_default, agent_file}`, plus `description` et `body` (fragment du corps de l'agent généré, RD-01) ; sans `body`, le corps est dérivé de `mission`. Deux profils ne déclarent jamais le même `agent_file`.
-- `model_roles[]`, `model_presets` : rôles de modèle et préréglages déclarés par le profil (extension de MD-01 et MD-08).
-- `loop` : `{max_iterations, entry_role, phases[]}`. Types de phase connus du moteur : `plan`, `consult`, `consolidate`, `gate`, `build`, `verify`, `interpret`, `record`. Un autre type est refusé.
-- `artefacts[]` : `{kind, dir, glob, status_proposed, status_ready, status_done}`. Les `status_ready` forment les chaînes interdites dans les livrables d'audit (FD-11).
-- `verifier` : `{required_true[], issue_kinds[]}`. `deterministic_checks[]`.
-- `settings` : `{deny_by_stack, deny_generic, deny_if_present}` ; `gitignore[]` ; `tasks` : `{inputs, tasks, test_task?}`.
-- `ci` : `{script, command, max_turns, status_line, logs_dir}`. `orchestrator` : `{name, alias_of}` ; `entry_keywords[]` (mots d'entrée qui routent vers ce profil).
-- `gates[]` : entrées au format du catalogue (`id`, `kind`, `options`, `default`, `rationale`, `headless`, …). Les ids restent dans l'espace de noms `<orchestrateur>.`, `gate_namespaces[]` ou `audit.<profil>.`.
-- `journal_names[]` : noms de journal (JR-01).
-- `params[]` (RD-03) : `{name, source: detected|judgement, required}`. Un paramètre `detected` est calculé par le noyau (stacks, interpréteur) ; un paramètre `judgement` est rédigé une fois par le skill et enregistré dans le tampon (`skills.software-factory.params`). Les fragments de corps les citent par `{{nom}}` ou `{{nom|valeur par défaut}}`. Un paramètre requis absent donne `action: fill_params` à la planification de l'upgrade.
-- `lens_sets[]` : `{name, lenses[], plan, deliverable_section, spec_prefix, cap_option, cap, cap_default, statuses[], gates[], fragment, map_fragment?, intro_fragment?, validator_fragment?}`.
-- `lenses[]` : `name`, `prefix`, `set`, `fragment`, et les propriétés LN : `debt`, `shape`, `ordering`, `axis`, `axis_rank`, `unauditable`, `no_run`, `no_protocol`, `allowed_exec`, `journal_check`, `nature`, `size_scale`, `critical_definition`, `subagent_type`, `model_role`, `stack_agnostic`, `dedup_key`, `evidence_kinds`, `receives`, `validator_fields`, `deliverable`.
-- `detection` : `{accept, reject, criteria[]}` ; un critère porte `{id, kind, weight, …}`, `kind` ∈ `glob`, `dir`, `dependency`, `content`, `judgement`. Score = somme des poids trouvés ; `retained` si score ≥ `accept`, `rejected` si score < `reject`, sinon `uncertain`.
-- `audit_sections[]` : sections de `AUDIT.md` du profil (gabarits sous `templates/`).
+- `name`: identical to the folder name. `schema_version`. `fallback`: boolean, only one profile is `true`.
+- `fragments`: `{orchestrator, install, scout}`, fragment paths.
+- `roles[]`: `{name, mission (fragment), read_only, tools, model_role, model_default, agent_file}`, plus `description` and `body` (fragment of the generated agent's body, RD-01); without `body`, the body is derived from `mission`. Two profiles never declare the same `agent_file`.
+- `model_roles[]`, `model_presets`: model roles and presets declared by the profile (extension of MD-01 and MD-08).
+- `loop`: `{max_iterations, entry_role, phases[]}`. Phase types known to the engine: `plan`, `consult`, `consolidate`, `gate`, `build`, `verify`, `interpret`, `record`. Any other type is refused.
+- `artefacts[]`: `{kind, dir, glob, status_proposed, status_ready, status_done}` plus the optional `status_legacy` (`{proposed, ready, blocked, delivered}`: the former French status lines, still accepted when reading a spec). The `status_ready` values (English and legacy) form the strings forbidden in audit deliverables (FD-11).
+- `verifier`: `{required_true[], issue_kinds[]}`. `deterministic_checks[]`.
+- `settings`: `{deny_by_stack, deny_generic, deny_if_present}`; `gitignore[]`; `tasks`: `{inputs, tasks, test_task?}`.
+- `ci`: `{script, command, max_turns, status_line, logs_dir}`. `orchestrator`: `{name, alias_of}`; `entry_keywords[]` (entry words that route to this profile).
+- `gates[]`: entries in the catalog format (`id`, `kind`, `options`, `default`, `rationale`, `headless`, …). Ids stay within the namespace `<orchestrator>.`, `gate_namespaces[]` or `audit.<profile>.`.
+- `journal_names[]`: journal names (JR-01).
+- `params[]` (RD-03): `{name, source: detected|judgement, required}`. A `detected` parameter is computed by the core (stacks, interpreter); a `judgement` parameter is written once by the skill and recorded in the stamp (`skills.software-factory.params`). Body fragments cite them as `{{name}}` or `{{name|default value}}`. A missing required parameter yields `action: fill_params` when the upgrade is planned.
+- `lens_sets[]`: `{name, lenses[], plan, deliverable_section, spec_prefix, cap_option, cap, cap_default, statuses[], gates[], fragment, map_fragment?, intro_fragment?, validator_fragment?}`.
+- `lenses[]`: `name`, `prefix`, `set`, `fragment`, and the LN properties: `debt`, `shape`, `ordering`, `axis`, `axis_rank`, `unauditable`, `no_run`, `no_protocol`, `allowed_exec`, `journal_check`, `nature`, `size_scale`, `critical_definition`, `subagent_type`, `model_role`, `stack_agnostic`, `dedup_key`, `evidence_kinds`, `receives`, `validator_fields`, `deliverable`.
+- `detection`: `{accept, reject, criteria[]}`; a criterion carries `{id, kind, weight, …}`, `kind` ∈ `glob`, `dir`, `dependency`, `content`, `judgement`. Score = sum of the weights found; `retained` if score ≥ `accept`, `rejected` if score < `reject`, otherwise `uncertain`.
+- `audit_sections[]`: sections of the profile's `AUDIT.md` (templates under `templates/`).
 
 ## Fragments
 
-`roles/<rôle>.md`, `bodies/<rôle>.md` (corps rendu des agents et de l'orchestrateur), `lenses/<lentille>.md` (les fragments commençant par `_` sont partagés par un jeu de lentilles), `orchestrator.md`, `install.md`, `scout.md`.
+`roles/<role>.md`, `bodies/<role>.md` (rendered body of the agents and the orchestrator), `lenses/<lens>.md` (fragments starting with `_` are shared by a lens set), `orchestrator.md`, `install.md`, `scout.md`.

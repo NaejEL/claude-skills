@@ -6,7 +6,7 @@
 # agent, gates, models per role, finding schema, stack detection, T-shirt sizes,
 # file merges, ship-pr gh/git sequences, shared audit engine). The prompts keep
 # only the judgment.
-# Deliverable templates (French, shared format) are data files under templates/.
+# Deliverable templates (shared format) are data files under templates/.
 #
 # Single entry point: harness.py (CLI), next to this package.
 

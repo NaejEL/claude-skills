@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Lance un cycle headless du laboratoire IA sur un protocole deja pre-enregistre.
-# Usage : ci/lab.sh <chemin-protocole> [--yolo]
+# Runs a headless AI-lab cycle on an already pre-registered protocol.
+# Usage: ci/lab.sh <protocol-path> [--yolo]
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -13,17 +13,17 @@ for arg in "$@"; do
             yolo=1
             ;;
         -h | --help)
-            echo "Usage : ci/lab.sh <chemin-protocole> [--yolo]"
+            echo "Usage: ci/lab.sh <protocol-path> [--yolo]"
             exit 0
             ;;
         -*)
-            echo "Option inconnue : $arg" >&2
-            echo "Usage : ci/lab.sh <chemin-protocole> [--yolo]" >&2
+            echo "Unknown option: $arg" >&2
+            echo "Usage: ci/lab.sh <protocol-path> [--yolo]" >&2
             exit 2
             ;;
         *)
             if [ -n "$protocol" ]; then
-                echo "Un seul chemin de protocole est attendu (recu en trop : $arg)" >&2
+                echo "A single protocol path is expected (extra argument received: $arg)" >&2
                 exit 2
             fi
             protocol="$arg"
@@ -32,19 +32,19 @@ for arg in "$@"; do
 done
 
 if [ -z "$protocol" ]; then
-    echo "Chemin du protocole pre-enregistre manquant." >&2
-    echo "Usage : ci/lab.sh <chemin-protocole> [--yolo]" >&2
+    echo "Path of the pre-registered protocol is missing." >&2
+    echo "Usage: ci/lab.sh <protocol-path> [--yolo]" >&2
     exit 2
 fi
 
 if [ ! -f "$protocol" ]; then
-    echo "Protocole introuvable : $protocol" >&2
+    echo "Protocol not found: $protocol" >&2
     exit 1
 fi
 
-if ! grep -q "Statut : PRE-ENREGISTRE" "$protocol"; then
-    echo "Protocole non pre-enregistre : '$protocol' ne contient pas 'Statut : PRE-ENREGISTRE'." >&2
-    echo "Un cycle CI exige un protocole approuve par le PI." >&2
+if ! grep -Eq "^[[:space:]]*(Status[[:space:]]*:[[:space:]]*PRE-REGISTERED|Statut[[:space:]]*:[[:space:]]*PRE-ENREGISTRE)" "$protocol"; then
+    echo "Protocol not pre-registered: '$protocol' does not contain 'Status: PRE-REGISTERED' (or the French 'Statut : PRE-ENREGISTRE')." >&2
+    echo "A CI cycle requires a protocol approved by the PI." >&2
     exit 1
 fi
 
@@ -62,14 +62,14 @@ else
     cmd+=(--allowedTools "@ALLOWED@")
 fi
 
-echo "Protocole : $protocol"
-echo "Mode      : $([ "$yolo" -eq 1 ] && echo 'YOLO (permissions ignorees)' || echo 'acceptEdits + liste blanche')"
-echo "Journal   : $log_file"
+echo "Protocol: $protocol"
+echo "Mode    : $([ "$yolo" -eq 1 ] && echo 'YOLO (permissions ignored)' || echo 'acceptEdits + allowlist')"
+echo "Log     : $log_file"
 
 set +e
 "${cmd[@]}" | tee "$log_file"
 status="${PIPESTATUS[0]}"
 set -e
 
-echo "Sortie claude : exit code $status"
+echo "claude exit: exit code $status"
 exit "$status"

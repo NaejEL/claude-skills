@@ -1,22 +1,22 @@
-Statut : PROPOSEE
-Questions bloquantes : aucune$extra_header
+Status: PROPOSED
+Blocking questions: none$extra_header
 
 # SPEC-$prefix-$number — $title
 
-## Contexte
-Finding $finding_id ($severity, $size) : $context
+## Context
+Finding $finding_id ($severity, $size): $context
 
-## Périmètre
+## Scope
 $scope
 
-## Critères d'acceptation
+## Acceptance criteria
 $criteria
 
-## Hors-périmètre
+## Out of scope
 $out_of_scope
 
-## Risques
+## Risks
 $risks
 
-## Questions ouvertes
+## Open questions
 $questions

@@ -34,8 +34,9 @@
 #   CLI returns action "reask" and logs nothing, the skill asks again. The
 #   gates declared "free" (free input, options of a draft) keep a free answer.
 #
-# Options are quoted as written in the French SKILL.md files (shared format,
-# kept as is); rationales are one line each.
+# Options are quoted as written in the SKILL.md files (closed answer tokens
+# shared with the skills, in English; the former French tokens are still accepted,
+# see FRENCH_TOKENS); rationales are one line each.
 
 from __future__ import annotations
 
@@ -56,6 +57,42 @@ HEADLESS = (STOP, DEFAULT, SKIP)
 SOURCES = ("user", "default", "headless")
 PHASES = ("decision", "answer")
 AUTONOMY_SOURCES = ("flag", "stamp", "absent")
+
+
+# Answer tokens are English. The former French tokens are still accepted from a user answer
+# (a skill or a script written before the translation): `canonical` maps them, option by
+# option, to the English token, so both forms give the same decision and the same journal.
+FRENCH_TOKENS = {
+    "approbation": "approval", "itérer": "iterate", "saisie": "input", "saisie libre": "free input",
+    "installer": "install", "refus": "refuse", "livrer et lancer ship-pr": "deliver and run ship-pr",
+    "ne pas livrer": "do not deliver", "commiter maintenant": "commit now", "abandonner": "abandon",
+    "résoudre maintenant": "resolve now", "continuer la revue quand même": "continue the review anyway",
+    "Merger": "Merge", "Laisser la PR ouverte": "Leave the PR open", "commande retenue": "chosen command",
+    "repli local": "local fallback", "Tout hérité": "All inherited", "interprétation": "interpretation",
+    "Sur-mesure": "Custom", "Questions pour le PI": "Questions for the PI", "risque d'abord": "risk first",
+    "fondations": "foundations", "ordre proposé": "proposed order", "Jalon 1": "Milestone 1",
+    "Jalon 2": "Milestone 2", "Jalon dernier": "Last milestone", "Exclure de la roadmap": "Exclude from roadmap",
+    "Générer roadmap + specs": "Generate roadmap + specs", "Réajuster": "Readjust", "Abandonner": "Abandon",
+    "lister": "list", "ignorer les mineures": "ignore minors", "fiabiliser": "make reliable",
+    "moins cher": "cheaper", "feuille de route": "roadmap", "Toutes": "All",
+    "Seulement la mieux classée": "Only the best ranked", "Aucune": "None",
+    "Écrire AUDIT-lab.md": "Write AUDIT-lab.md", "Écrire AUDIT-vibecode.md": "Write AUDIT-vibecode.md",
+    "Écrire AUDIT.md (+ specs)": "Write AUDIT.md (+ specs)", "confirmer le retrait": "confirm removal",
+    "garder": "keep", "Gravité d'abord": "Severity first", "Gains rapides": "Quick wins",
+    "Tout ce qui bloque": "Everything that blocks", "Garder l'ordre": "Keep the order",
+    "Les détailler": "Detail them", "Les lister en une ligne": "List them in one line",
+    "Les omettre": "Omit them", "profils proposés": "proposed profiles", "lancer la file": "run the queue",
+    "ne pas lancer": "do not run", "Conserver tel quel": "Keep as is",
+    "Convertir (sauvegarde)": "Convert (backup)", "Lancer l'upgrade": "Run the upgrade",
+    "Ne rien faire": "Do nothing", "Écrire la synthèse": "Write the synthesis",
+    "Ne rien écrire": "Write nothing", "Creuser": "Dig", "Écarter": "Discard", "Amender": "Amend",
+    "continuer": "continue", "converger": "converge",
+}
+
+
+def canonical(value: str) -> str:
+    """The answer with every former French option mapped to its English token (other text untouched)."""
+    return " / ".join(FRENCH_TOKENS.get(p.strip(), p.strip()) for p in value.split(" / "))
 
 
 class GateError(ValueError):
@@ -113,97 +150,97 @@ def _g(gid: str, source: str, kind: str, options: str, default: Optional[str], j
 
 
 CATALOG: Dict[str, Gate] = {g.id: g for g in (
-    _g("software-factory.code-index", "software-factory:92", "b", "installer / refus", "refus",
+    _g("software-factory.code-index", "software-factory:92", "b", "install / refuse", "refuse",
        "the knowledge base adds a versioned folder; installation stays possible at any time", SKIP),
-    _g("factory-run.questions", "software-factory:54", "b", "options du brouillon", "défaut du Planner",
+    _g("factory-run.questions", "software-factory:54", "b", "draft options", "Planner default",
        "the planner's declared default for each non-blocking question; nothing is invented, a blocking "
        "question blocks the spec", STOP, free=True),
-    _g("factory-run.approval", "software-factory:54", "c", "approbation / itérer", "approbation",
+    _g("factory-run.approval", "software-factory:54", "c", "approval / iterate", "approval",
        "roadmap 4.2: approved without waiting, a blocking question having blocked the spec before", STOP),
-    _g("factory-run.need", ".claude/skills/factory-run/SKILL.md:16", "c", "saisie libre", None,
+    _g("factory-run.need", ".claude/skills/factory-run/SKILL.md:16", "c", "free input", None,
        "a need cannot be guessed", STOP, free=True),
-    _g("factory-run.ship", "SPEC-phase4-5 CH-02", "c", "livrer et lancer ship-pr / ne pas livrer",
-       "livrer et lancer ship-pr", "roadmap 4.2: a green build is delivered when CH-02 holds", SKIP),
-    _g("ship-pr.target", "ship-pr:29", "c", "saisie", None,
+    _g("factory-run.ship", "SPEC-phase4-5 CH-02", "c", "deliver and run ship-pr / do not deliver",
+       "deliver and run ship-pr", "roadmap 4.2: a green build is delivered when CH-02 holds", SKIP),
+    _g("ship-pr.target", "ship-pr:29", "c", "input", None,
        "the target comes from ship_pr.target of the stamp, else it cannot be guessed", STOP, free=True),
-    _g("ship-pr.dirty", "ship-pr:46", "a", "commiter maintenant / stash / abandonner", "abandonner",
+    _g("ship-pr.dirty", "ship-pr:46", "a", "commit now / stash / abandon", "abandon",
        "committing or stashing changes the cycle did not make is outside the accepted scope: abandon, "
        "the only option that acts on nothing unknown", DEFAULT, stop_when="always"),
     _g("ship-pr.conflict", "ship-pr:53", "b",
-       "résoudre maintenant / continuer la revue quand même / abandonner", "continuer la revue quand même",
+       "resolve now / continue the review anyway / abandon", "continue the review anyway",
        "non destructive, condition C5 then leaves the PR open", DEFAULT),
-    _g("ship-pr.merge", "ship-pr:98", "a", "Merger / Laisser la PR ouverte", "Laisser la PR ouverte",
+    _g("ship-pr.merge", "ship-pr:98", "a", "Merge / Leave the PR open", "Leave the PR open",
        "decided by SM-01: merge if and only if the five conditions hold, never a stop", DEFAULT,
        stop_when="never"),
-    _g("code-index.rg-install", "code-index:38", "c", "commande retenue / repli local", "repli local",
+    _g("code-index.rg-install", "code-index:38", "c", "chosen command / local fallback", "local fallback",
        "a system dependency is not installed unasked; local fallback reported", SKIP),
-    _g("code-index.hooks", "code-index:113", "b", "hooks install / --with-commit / refus", "hooks install",
+    _g("code-index.hooks", "code-index:113", "b", "hooks install / --with-commit / refuse", "hooks install",
        "the default stated by code-index:113", SKIP),
-    _g("ai-lab.models", "ai-lab:137-142", "b", "Tout hérité / experts / interprétation / Sur-mesure",
-       "Tout hérité", "no extra cost", DEFAULT),
-    _g("ai-lab.code-index", "ai-lab:225", "b", "installer / refus", "refus",
+    _g("ai-lab.models", "ai-lab:137-142", "b", "All inherited / experts / interpretation / Custom",
+       "All inherited", "no extra cost", DEFAULT),
+    _g("ai-lab.code-index", "ai-lab:225", "b", "install / refuse", "refuse",
        "the knowledge base adds a versioned folder", SKIP),
-    _g("lab-run.pi-questions", "ai-lab:180", "b", "Questions pour le PI", None,
+    _g("lab-run.pi-questions", "ai-lab:180", "b", "Questions for the PI", None,
        "nothing to invent in the PI's place", STOP, free=True),
-    _g("lab-run.preregistration", "ai-lab:180", "a", "approbation / itérer", "approbation",
+    _g("lab-run.preregistration", "ai-lab:180", "a", "approval / iterate", "approval",
        "roadmap 4.2 applied to the research artefact: pre-registered unless the protocol declares an "
        "unanswered blocking question", STOP, stop_when="input:blocking_unanswered"),
-    _g("lab-run.consignation", "ai-lab:188", "c", "approbation", "approbation",
+    _g("lab-run.consignation", "ai-lab:188", "c", "approval", "approval",
        "logged, marked 'to be reviewed' (ai-lab:188)", DEFAULT),
     _g("legacy-audit.framing", "legacy-audit:84", "b",
-       "2 / 3 / 4 ; risque d'abord / quick wins / fondations / ordre proposé", "3 / risque d'abord",
+       "2 / 3 / 4 ; risk first / quick wins / foundations / proposed order", "3 / risk first",
        "close to 'make it reliable first' (roadmap 4.2)", STOP),
     _g("legacy-audit.assignment", "legacy-audit:85", "b",
-       "Jalon 1 / Jalon 2 / Jalon dernier / Exclure de la roadmap", None,
+       "Milestone 1 / Milestone 2 / Last milestone / Exclude from roadmap", None,
        "the computation belongs to Phase 4", STOP, repeat=4),
-    _g("legacy-audit.final", "legacy-audit:87", "c", "Générer roadmap + specs / Réajuster / Abandonner",
-       "Générer roadmap + specs", "the deliverable the audit was run for", STOP),
+    _g("legacy-audit.final", "legacy-audit:87", "c", "Generate roadmap + specs / Readjust / Abandon",
+       "Generate roadmap + specs", "the deliverable the audit was run for", STOP),
     _g("ai-lab-audit.framing", "ai-lab-audit:92", "b",
-       "specs / lister / ignorer les mineures ; fiabiliser / moins cher / feuille de route / ordre proposé",
-       "specs / fiabiliser", "specs when a factory is present, otherwise lister; make it reliable first",
+       "specs / list / ignore minors ; make reliable / cheaper / roadmap / proposed order",
+       "specs / make reliable", "specs when a factory is present, otherwise list; make it reliable first",
        STOP),
-    _g("ai-lab-audit.selection", "ai-lab-audit:93", "b", "Toutes / Seulement la mieux classée / Aucune",
-       "Toutes", "the cap applies afterwards", STOP, repeat=4),
-    _g("ai-lab-audit.final", "ai-lab-audit:95", "c", "Écrire AUDIT-lab.md / Réajuster / Abandonner",
-       "Écrire AUDIT-lab.md", "the deliverable the audit was run for", STOP),
-    _g("vibecode-audit.drop-security", "vibecode-audit:20", "b", "confirmer le retrait / garder", "garder",
+    _g("ai-lab-audit.selection", "ai-lab-audit:93", "b", "All / Only the best ranked / None",
+       "All", "the cap applies afterwards", STOP, repeat=4),
+    _g("ai-lab-audit.final", "ai-lab-audit:95", "c", "Write AUDIT-lab.md / Readjust / Abandon",
+       "Write AUDIT-lab.md", "the deliverable the audit was run for", STOP),
+    _g("vibecode-audit.drop-security", "vibecode-audit:20", "b", "confirm removal / keep", "keep",
        "security is the priority axis", DEFAULT),
     _g("vibecode-audit.order", "vibecode-audit:115-116", "b",
-       "Gravité d'abord / Gains rapides / Tout ce qui bloque / Garder l'ordre ; Les détailler / "
-       "Les lister en une ligne / Les omettre", "Gravité d'abord / Les détailler",
+       "Severity first / Quick wins / Everything that blocks / Keep the order ; Detail them / "
+       "List them in one line / Omit them", "Severity first / Detail them",
        "marked default at :115; detailing loses nothing", DEFAULT),
-    _g("vibecode-audit.final", "vibecode-audit:120", "c", "Écrire AUDIT-vibecode.md / Réajuster / Abandonner",
-       "Écrire AUDIT-vibecode.md", "the deliverable the audit was run for", DEFAULT),
+    _g("vibecode-audit.final", "vibecode-audit:120", "c", "Write AUDIT-vibecode.md / Readjust / Abandon",
+       "Write AUDIT-vibecode.md", "the deliverable the audit was run for", DEFAULT),
     # Phase 2: profiles, entry point and unified audit (AR-01, LP-05, AD-08).
-    _g("software-factory.profiles", "SPEC-phase2 AR-01", "b", "profils proposés / Abandonner", "proposition",
+    _g("software-factory.profiles", "SPEC-phase2 AR-01", "b", "proposed profiles / Abandon", "proposal",
        "a clear scout proposal is taken; an ambiguous one is never guessed", DEFAULT, free=True,
        proposal=True),
-    _g("factory-run.profile", "SPEC-phase2 LP-05", "b", "profil du besoin", "premier profil du tampon",
+    _g("factory-run.profile", "SPEC-phase2 LP-05", "b", "profile of the need", "first profile of the stamp",
        "the first profile of the stamp is the first one retained at installation", STOP, free=True),
-    _g("audit.profiles", "SPEC-phase2 AD-02", "b", "profils proposés / Abandonner", "proposition",
+    _g("audit.profiles", "SPEC-phase2 AD-02", "b", "proposed profiles / Abandon", "proposal",
        "read-only scout verdict, used for this audit and never written to the stamp", DEFAULT, free=True,
        proposal=True),
-    _g("audit.drop-security", "SPEC-phase2 AD-08", "b", "confirmer le retrait / garder", "garder",
+    _g("audit.drop-security", "SPEC-phase2 AD-08", "b", "confirm removal / keep", "keep",
        "security is the priority axis", DEFAULT),
-    _g("audit.final", "SPEC-phase2 AD-08", "c", "Écrire AUDIT.md (+ specs) / Réajuster / Abandonner",
-       "Écrire AUDIT.md (+ specs)", "the deliverable the audit was run for", STOP),
-    _g("audit.chain", "SPEC-phase4-5 CH-04", "c", "lancer la file / ne pas lancer", "lancer la file",
+    _g("audit.final", "SPEC-phase2 AD-08", "c", "Write AUDIT.md (+ specs) / Readjust / Abandon",
+       "Write AUDIT.md (+ specs)", "the deliverable the audit was run for", STOP),
+    _g("audit.chain", "SPEC-phase4-5 CH-04", "c", "run the queue / do not run", "run the queue",
        "roadmap 4.2: the specs written are queued when a software factory is present", SKIP),
     # Phase 3: upgrade and doctor (CV-04, PR-02, PR-03, GT-09).
-    _g("upgrade.convert", "SPEC-phase3 CV-04", "b", "Conserver tel quel / Convertir (sauvegarde)",
-       "Conserver tel quel", "a file with local changes is converted to blocks only when asked", DEFAULT),
-    _g("harness-doctor.upgrade-blocks", "SPEC-phase3 PR-02", "b", "Lancer l'upgrade / Ne rien faire",
-       "Lancer l'upgrade", "roadmap 4.2: a diff that only touches harness blocks is applied", DEFAULT),
-    _g("harness-doctor.upgrade-other", "SPEC-phase3 PR-03", "b", "Lancer l'upgrade / Ne rien faire",
-       "Ne rien faire", "roadmap 4.2 reserves the automatic launch to diffs of blocks", DEFAULT),
-    _g("harness-doctor.upgrade", "SPEC-phase4-5 UA-01", "b", "Lancer l'upgrade / Ne rien faire",
-       "Lancer l'upgrade", "applied when UA-01 holds (blocks, stamp or untouched core only), otherwise proposed",
+    _g("upgrade.convert", "SPEC-phase3 CV-04", "b", "Keep as is / Convert (backup)",
+       "Keep as is", "a file with local changes is converted to blocks only when asked", DEFAULT),
+    _g("harness-doctor.upgrade-blocks", "SPEC-phase3 PR-02", "b", "Run the upgrade / Do nothing",
+       "Run the upgrade", "roadmap 4.2: a diff that only touches harness blocks is applied", DEFAULT),
+    _g("harness-doctor.upgrade-other", "SPEC-phase3 PR-03", "b", "Run the upgrade / Do nothing",
+       "Do nothing", "roadmap 4.2 reserves the automatic launch to diffs of blocks", DEFAULT),
+    _g("harness-doctor.upgrade", "SPEC-phase4-5 UA-01", "b", "Run the upgrade / Do nothing",
+       "Run the upgrade", "applied when UA-01 holds (blocks, stamp or untouched core only), otherwise proposed",
        SKIP),
-    _g("brainstorm.subject", "brainstorm:16", "c", "saisie libre", None,
+    _g("brainstorm.subject", "brainstorm:16", "c", "free input", None,
        "a subject cannot be guessed", STOP, dialogue=True, free=True),
-    _g("brainstorm.round", "brainstorm:67", "b", "Creuser / Écarter / Amender / continuer / converger", None,
+    _g("brainstorm.round", "brainstorm:67", "b", "Dig / Discard / Amend / continue / converge", None,
        "the user steers every round", STOP, dialogue=True, free=True),
-    _g("brainstorm.write", "brainstorm:103", "c", "Écrire la synthèse / Ne rien écrire", "Ne rien écrire",
+    _g("brainstorm.write", "brainstorm:103", "c", "Write the synthesis / Write nothing", "Write nothing",
        "nothing is written unasked", STOP, dialogue=True),
 )}
 
@@ -344,7 +381,8 @@ def check_option(gate: Gate, value: str) -> str:
     in order, joined by " / " (OffOptions otherwise)."""
     if gate.free:
         return value
-    parts = [p.strip() for p in value.split(" / ")] if gate.multi else [value]
+    original, value = value, canonical(value)
+    parts =[p.strip() for p in value.split(" / ")] if gate.multi else [value]
     if gate.repeat > 1:
         expected = [gate.questions[0]] * len(parts) if 1 <= len(parts) <= gate.repeat else []
     else:
@@ -355,7 +393,7 @@ def check_option(gate: Gate, value: str) -> str:
             shape = "1 to %d of: %s" % (gate.repeat, shape)
         elif len(gate.questions) > 1:
             shape = "one per question, in order, joined by ' / ': " + shape
-        raise OffOptions("gate %s: answer %r is not one of the options (%s)" % (gate.id, value, shape))
+        raise OffOptions("gate %s: answer %r is not one of the options (%s)" % (gate.id, original, shape))
     return value
 
 
@@ -385,7 +423,7 @@ def answer(gate_id: str, last_decision: Optional[Dict[str, Any]], source: str,
         value = (text or "").strip()
         if not value:
             raise GateError("gate %s: empty answer" % gate.id)
-        check_option(gate, value)
+        value = check_option(gate, value)
     return dict(last_decision, phase="answer", answer=value, source=source)
 
 

@@ -17,7 +17,7 @@
 #   with its rank.
 # - BS-09: slug: lowercase, accents removed, non-alphanumeric -> "-", dashes
 #   merged, <= 40 characters, no trailing dash; path BRAINSTORM-<slug>.md.
-# - BS-10: resume: the "Angles écartés" section is loaded; a rewrite keeps all
+# - BS-10: resume: the "Discarded angles" section is loaded; a rewrite keeps all
 #   its lines.
 # - BS-11: the synthesis is rendered from templates/brainstorm.json.
 # - BS-12: the dialogue gates subject, round and write are in hcore/gates.py.
@@ -39,7 +39,8 @@ MAX_ANGLES_PER_LENS = 4
 SLUG_MAX = 40
 LENSES = ("hypotheses", "alternatives", "contre-exemples", "cout", "second-ordre")
 ORIGINS = ("enonce", "hors-enonce")
-DISCARDED_HEADING = "## Angles écartés"
+DISCARDED_HEADING = "## Discarded angles"
+LEGACY_DISCARDED_HEADING = "## Angles écartés"     # syntheses written before the English templates
 TEMPLATE = Path(__file__).resolve().parent.parent / "templates" / "brainstorm.json"
 
 
@@ -193,12 +194,12 @@ def cap_retained(ranked: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
 
 def discarded_rows(text: str) -> List[str]:
     """BS-10: the table lines (header and separator excluded) of the section
-    'Angles écartés' of an earlier synthesis, verbatim."""
+    'Discarded angles' (or the legacy 'Angles écartés') of an earlier synthesis, verbatim."""
     lines = text.splitlines()
     rows: List[str] = []
     inside = False
     for line in lines:
-        if line.strip() == DISCARDED_HEADING:
+        if line.strip() in (DISCARDED_HEADING, LEGACY_DISCARDED_HEADING):
             inside = True
             continue
         if inside and line.startswith("## "):
@@ -264,8 +265,8 @@ def render(data: Dict[str, Any], previous_rows: Sequence[str] = ()) -> str:
 # ------------------------------------------------- X5: journal and write at the final gate
 
 WRITE_GATE = "brainstorm.write"
-WRITE_ANSWER = "Écrire la synthèse"
-NO_WRITE_ANSWER = "Ne rien écrire"
+WRITE_ANSWER = "Write the synthesis"
+NO_WRITE_ANSWER = "Write nothing"
 
 
 def finish(root: Path, data: Dict[str, Any]) -> Dict[str, Any]:
@@ -275,7 +276,7 @@ def finish(root: Path, data: Dict[str, Any]) -> Dict[str, Any]:
     checked, the earlier 'Angles écartés' lines kept: BS-10)."""
     root = Path(root)
     path = synthesis_path(data["subject"])
-    answer = str(data.get("write_answer") or "").strip()
+    answer = gates.canonical(str(data.get("write_answer") or "").strip())
     if answer not in (WRITE_ANSWER, NO_WRITE_ANSWER):
         raise BsError("write_answer must be %r or %r" % (WRITE_ANSWER, NO_WRITE_ANSWER))
     text = None

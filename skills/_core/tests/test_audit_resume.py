@@ -12,19 +12,19 @@ from hcore import audit, findings, gates, registry
 from test_audit import (AUDIT_FIXTURES, EngineCase, block, check_ok, confirmed, legacy_item, replay,
                         vib_item)
 
-HEAD = "| ID | Finding | Sévérité | Taille | Dépend de | Spec | Statut |\n|---|---|---|---|---|---|---|\n"
-VIB = ("## Par où attaquer\nOrdre retenu : x.\n\n"
-       "| # | ID | Motif | Axe | Sév. | Occ. | Diff. | Risque rég. | Validé | Dépend de | Statut |\n"
+HEAD = "| ID | Finding | Severity | Size | Depends on | Spec | Status |\n|---|---|---|---|---|---|---|\n"
+VIB = ("## Where to attack\nOrder retained: x.\n\n"
+       "| # | ID | Pattern | Axis | Sev. | Occ. | Diff. | Reg. risk | Validated | Depends on | Status |\n"
        "|---|---|---|---|---|---|---|---|---|---|---|\n"
-       "| 1 | VIB-01 | Motif un | sécurité | critical | 3 | M | élevé | non validé | — | A_FAIRE |\n\n"
-       "## Motifs détaillés\n### VIB-01 — Motif un\n- **Occurrences** : `a.js:1`, `b.js:2`\n- **Statut** : A_FAIRE\n")
+       "| 1 | VIB-01 | Motif un | security | critical | 3 | M | high | not validated | — | A_FAIRE |\n\n"
+       "## Patterns in detail\n### VIB-01 — Motif un\n- **Occurrences**: `a.js:1`, `b.js:2`\n- **Status**: A_FAIRE\n")
 
 
 class ParseTest(EngineCase):
     def test_au09_unescaped_pipe_and_extra_column_are_read_by_the_header(self):
         """AU-09: columns are found by the header; an extra column is tolerated, an
         unescaped '|' in a title stays in the title; status and id are read."""
-        text = ("## Jalon 1 — A\n| ID | Finding | Note | Sévérité | Taille | Dépend de | Spec | Statut |\n"
+        text = ("## Milestone 1 — A\n| ID | Finding | Note | Severity | Size | Depends on | Spec | Status |\n"
                 "|---|---|---|---|---|---|---|---|\n"
                 "| LEG-01 | Gitignore | bis | perso | major | XS | — | — | FAIT |\n")
         e = audit.parse_deliverable("legacy-audit", text)["entries"][0]
@@ -37,18 +37,18 @@ class ParseTest(EngineCase):
         """AU-09: a finding line that cannot be read stops (exit 1) with its line
         number, never a silent loss; also a finding line outside the known
         sections and a table header without the expected columns."""
-        for text, number in (("## Jalon 1 — A\n" + HEAD + "| LEG-01 | trop court |\n", 4),
-                             ("## Jalon 1 — A\n" + HEAD + "| pas un id | a | major | S | — | — | FAIT |\n", 4),
-                             ("## Autre section\n| LEG-09 | perdu |\n", 2),
-                             ("## Jalon 1 — A\n| ID | Finding |\n|---|---|\n| LEG-01 | a |\n", 2)):
+        for text, number in (("## Milestone 1 — A\n" + HEAD + "| LEG-01 | trop court |\n", 4),
+                             ("## Milestone 1 — A\n" + HEAD + "| pas un id | a | major | S | — | — | FAIT |\n", 4),
+                             ("## Other section\n| LEG-09 | perdu |\n", 2),
+                             ("## Milestone 1 — A\n| ID | Finding |\n|---|---|\n| LEG-01 | a |\n", 2)):
             with self.assertRaises(audit.AuditStop, msg=text) as ctx:
                 audit.parse_deliverable("legacy-audit", text)
             self.assertIn("line %d" % number, str(ctx.exception))
         with self.assertRaises(audit.AuditStop):
-            audit.parse_deliverable("ai-lab-audit", "## Questions de recherche retenues (ordre recommandé)\n### Q-01 sans tiret\n")
+            audit.parse_deliverable("ai-lab-audit", "## Research questions retained (recommended order)\n### Q-01 sans tiret\n")
         repo = self.tmp / "repo"
         repo.mkdir()
-        (repo / "ROADMAP-legacy.md").write_text("## Jalon 1 — A\n" + HEAD + "| LEG-01 | x |\n", encoding="utf-8")
+        (repo / "ROADMAP-legacy.md").write_text("## Milestone 1 — A\n" + HEAD + "| LEG-01 | x |\n", encoding="utf-8")
         args = helpers.write_output(repo, "a.txt", "")
         res = helpers.harness(["audit", "start", "--skill", "legacy-audit", "--arguments-file", args], repo)
         self.assertEqual(res.returncode, 1, res.stderr)
@@ -58,12 +58,12 @@ class ParseTest(EngineCase):
     def test_au08_au09_numbering_from_every_id_of_the_text(self):
         """AU-08, AU-09: the numbering goes on from the highest id found anywhere in
         the text (a dependency cell included), not from the parsed lines only."""
-        text = "## Jalon 1 — A\n" + HEAD + "| LEG-02 | a | major | S | LEG-07 | — | FAIT |\n"
+        text = "## Milestone 1 — A\n" + HEAD + "| LEG-02 | a | major | S | LEG-07 | — | FAIT |\n"
         self.assertEqual(audit.parse_deliverable("legacy-audit", text)["numbering"], {"LEG": 7})
 
     def test_au09_resumed_ids_counted_once_and_unvalidated_kept(self):
         """AU-09: a row and a detail block of the same id are one finding (one
-        registry event); a resumed 'non validé' stays UNVALIDATED (never CONFIRMED,
+        registry event); a resumed 'not validated' stays UNVALIDATED (never CONFIRMED,
         never published)."""
         parsed = audit.parse_deliverable("vibecode-audit", VIB)
         self.assertEqual(len(parsed["entries"]), 2)
@@ -79,7 +79,7 @@ class ParseTest(EngineCase):
     def test_au06_duplicate_never_overwrites_a_resumed_final_state(self):
         """AU-06: a finding set aside as a duplicate of a resumed one leaves the run
         registry state of that key unchanged."""
-        text = ("## Findings rejetés à la validation\n| ID | Finding | Raison |\n|---|---|---|\n"
+        text = ("## Findings rejected at validation\n| ID | Finding | Reason |\n|---|---|---|\n"
                 "| HYG-07 | Gros fichier | fixture |\n")
         parsed = audit.parse_deliverable("legacy-audit", text)
         state, reg = self.start("legacy-audit", "--categories hygiene", resumed=parsed)
@@ -92,8 +92,8 @@ class ParseTest(EngineCase):
     def test_au06_lab_resumed_question_blocks_dedup(self):
         """AU-06: ai-lab-audit questions are blocks, not table rows: a new finding of
         the same title as a resumed question is set aside."""
-        text = ("## Questions de recherche retenues (ordre recommandé)\n### Q-02 — Seeds insuffisants\n"
-                "- **Question** : q ?\n- **Statut** : A_FAIRE\n")
+        text = ("## Research questions retained (recommended order)\n### Q-02 — Seeds insuffisants\n"
+                "- **Question**: q ?\n- **Status**: A_FAIRE\n")
         parsed = audit.parse_deliverable("ai-lab-audit", text)
         state, reg = self.start("ai-lab-audit", "--lenses validite", resumed=parsed)
         item = {"id": "VAL-01", "lens": "validite", "nature": "question", "severity": "major",
@@ -152,7 +152,7 @@ class BoundsTest(EngineCase):
         self.assertEqual([s["severity"] for s in state["surfaces"]], ["major"] * 3)
         data = {"name": "x", "date": "d", "axes": ["securite"], "path": "."}
         text = audit.render("vibecode-audit", audit.document(state, data))
-        rows = [l for l in text.splitlines() if l.startswith("| famille ")]
+        rows = [l for l in text.splitlines() if l.startswith("| family ")]
         self.assertEqual(len(rows), 3)
         self.assertTrue(all("major" in r for r in rows))
 
@@ -195,7 +195,7 @@ class HeadlessMinorsTest(EngineCase):
     def test_headless_minors_follow_the_default_of_the_order_gate(self):
         """VA-11 hook: in a headless run, the default of vibecode-audit.order details
         the minor patterns: a minor listed short is refused; an unvalidated
-        pattern is never listed short (it would lose its 'non validé' mark)."""
+        pattern is never listed short (it would lose its 'not validated' mark)."""
         state, reg = self.start("vibecode-audit", "--axes maintenabilite")
         audit.record_auditor(state, reg, "maintenabilite", block({"findings": [
             vib_item("MNT-01", "p1", (("a.js", 1),), "minor", "maintenabilite"),
@@ -270,10 +270,10 @@ class ResumeReplayTest(helpers.TempDirCase):
         self.assertEqual(ids[:4], ["VIB-07", "VIB-01", "VIB-02", "VIB-03"])
         self.assertIn("| 1 | VIB-07 |", second["deliverable"])
         self.assertIn("| 2 | VIB-01 |", second["deliverable"])
-        self.assertIn("**Validation.** 6 motifs sur 7", second["deliverable"])
-        self.assertIn(": VIB-07, VIB-03, VIB-04. Signalés", second["deliverable"])
-        self.assertIn(": VIB-02 (évolutivité). Remontée", second["deliverable"])
-        self.assertIn("7 motifs, 21 occurrences au total", second["deliverable"])
+        self.assertIn("**Validation.** 6 patterns out of 7", second["deliverable"])
+        self.assertIn(": VIB-07, VIB-03, VIB-04. Flagged", second["deliverable"])
+        self.assertIn(": VIB-02 (evolvability). Deliberate", second["deliverable"])
+        self.assertIn("7 patterns, 21 occurrences in total", second["deliverable"])
 
 
 class ModelsReadOnlyTest(helpers.TempDirCase):

@@ -1209,7 +1209,7 @@ def cmd_finding_forbidden(args: argparse.Namespace) -> int:
             found[path] = hits
     emit({"clean": not found, "hits": found})
     if found:
-        raise ghflow.Stop("forbidden string ('Statut :' followed by the ready status of an artefact) in: %s"
+        raise ghflow.Stop("forbidden string ('Status:' followed by the ready status of an artefact) in: %s"
                           % ", ".join(sorted(found)))
     return 0
 
@@ -1892,7 +1892,7 @@ def cmd_chain_exec(args: argparse.Namespace) -> int:
 
 
 def cmd_audit_prioritize(args: argparse.Namespace) -> int:
-    """PZ-05: milestones, ranks and `Priorité` from the CONFIRMED findings; the decision is journaled."""
+    """PZ-05: milestones, ranks and `Priority` from the CONFIRMED findings; the decision is journaled."""
     run, state, p, reg = _audit_ctx(args)
     confirmed = [f for f in state["findings"].values() if f["status"] == findings.CONFIRMED]
     result = prioritize.rank(confirmed)
@@ -2201,7 +2201,7 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--audit-date", required=True)
     q.add_argument("--entry-date", required=True)
     q.set_defaults(func=cmd_audit_settle)
-    q = asub.add_parser("prioritize", help="PZ-05: milestones, ranks and Priorité of the CONFIRMED findings")
+    q = asub.add_parser("prioritize", help="PZ-05: milestones, ranks and Priority of the CONFIRMED findings")
     q.add_argument("--run", required=True)
     q.add_argument("--autonomy", default=None)
     q.add_argument("--max-specs", type=int, default=None)
@@ -2463,7 +2463,7 @@ def build_parser() -> argparse.ArgumentParser:
     q = sbsub.add_parser("check", help="{status, blocking, unanswered, perimeter, depends_on, priority, errors}; exit 2 if malformed")
     q.add_argument("file")
     q.set_defaults(func=cmd_spec_check)
-    q = sbsub.add_parser("set-status", help="rewrites the `Statut :` line only, along the admitted transitions (BQ-08)")
+    q = sbsub.add_parser("set-status", help="rewrites the `Status:` line only, along the admitted transitions (BQ-08)")
     q.add_argument("file")
     q.add_argument("status")
     q.set_defaults(func=cmd_spec_set_status)

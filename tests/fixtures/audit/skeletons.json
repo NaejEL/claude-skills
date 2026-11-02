@@ -3,35 +3,35 @@
   "note": "structural lines (headings, table headers) of the deliverable skeleton of each SKILL.md at BASE1; placeholder headings (<...>, …) are left out",
   "skeletons": {
     "legacy-audit": [
-      "| ID | Finding | Sévérité | Taille | Dépend de | Spec | Statut |",
+      "| ID | Finding | Severity | Size | Depends on | Spec | Status |",
       "|---|---|---|---|---|---|---|",
-      "## Findings non retenus dans ce cycle",
-      "| ID | Finding | Raison (exclu par l'utilisateur / au-delà du plafond de specs) |",
-      "## Findings rejetés à la validation",
-      "| ID | Finding | Raison |"
+      "## Findings not retained in this cycle",
+      "| ID | Finding | Reason (excluded by the user / beyond the spec cap) |",
+      "## Findings rejected at validation",
+      "| ID | Finding | Reason |"
     ],
     "ai-lab-audit": [
-      "## Corrections à faire",
-      "| ID | Finding | Lentille | Sévérité | Taille | Dépend de | Spec | Statut |",
+      "## Corrections to make",
+      "| ID | Finding | Lens | Severity | Size | Depends on | Spec | Status |",
       "| --- | --- | --- | --- | --- | --- | --- | --- |",
-      "## Questions de recherche retenues (ordre recommandé)",
-      "## Questions non retenues dans ce cycle",
-      "| ID | Question | Raison (exclue par l'utilisateur / au-delà du plafond) |",
-      "## Findings rejetés à la validation",
-      "| ID | Finding | Raison |"
+      "## Research questions retained (recommended order)",
+      "## Questions not retained in this cycle",
+      "| ID | Question | Reason (excluded by the user / beyond the cap) |",
+      "## Findings rejected at validation",
+      "| ID | Finding | Reason |"
     ],
     "vibecode-audit": [
-      "## Surfaces non auditables",
-      "| Surface | Pourquoi | Ce qu'il faudrait pour la couvrir |",
-      "## Par où attaquer",
-      "| # | ID | Motif | Axe | Sév. | Occ. | Diff. | Risque rég. | Validé | Dépend de | Statut |",
+      "## Unauditable surfaces",
+      "| Surface | Why | What it would take to cover it |",
+      "## Where to attack",
+      "| # | ID | Pattern | Axis | Sev. | Occ. | Diff. | Reg. risk | Validated | Depends on | Status |",
       "|---|---|---|---|---|---|---|---|---|---|---|",
-      "## Motifs détaillés",
-      "## Motifs non détaillés dans ce cycle",
-      "| ID | Motif | Axe | Sévérité | Occ. | Raison (mineur / au-delà du plafond) |",
-      "## Motifs rejetés à la validation",
-      "| ID | Motif | Raison |",
-      "## Suite"
+      "## Patterns in detail",
+      "## Patterns not detailed in this cycle",
+      "| ID | Pattern | Axis | Severity | Occ. | Reason (minor / beyond the cap) |",
+      "## Patterns rejected at validation",
+      "| ID | Pattern | Reason |",
+      "## Next"
     ]
   }
 }

@@ -38,7 +38,7 @@
 # - AU-16: gate call bounds: 4 themes at most per call, a maximal number of
 #   calls per skill.
 #
-# The French deliverable texts are data (templates/audits.json), not code.
+# The deliverable texts are data (templates/audits.json), not code.
 
 from __future__ import annotations
 
@@ -55,6 +55,7 @@ from . import findings, fusion, gates, models, profiles, registry, relaunch, tsh
 
 TEMPLATES = Path(__file__).resolve().parent.parent / "templates"
 AUDIT_TEXTS = TEMPLATES / "audits.json"
+LEGACY_AUDIT_TEXTS = TEMPLATES / "audits-legacy-fr.json"
 
 NOT_AUDITED = "not-audited"
 SURFACE = "surface"
@@ -170,8 +171,14 @@ def profile(skill: str) -> Profile:
 
 
 def texts() -> Dict[str, Any]:
-    """French texts of the deliverables (templates/audits.json)."""
+    """Texts of the deliverables (templates/audits.json)."""
     return json.loads(AUDIT_TEXTS.read_text(encoding="utf-8"))
+
+
+def legacy_texts() -> Dict[str, Any]:
+    """Texts of the deliverables written before the English templates (templates/audits-legacy-fr.json);
+    only used to read back an existing French deliverable."""
+    return json.loads(LEGACY_AUDIT_TEXTS.read_text(encoding="utf-8"))
 
 
 # --------------------------------------------------------- arguments (AU-01 to AU-03)
@@ -937,9 +944,9 @@ class Section(NamedTuple):
 FREE_COLUMNS = ("title", "question")
 
 
-def _sections(skill: str) -> List[Section]:
-    """Known sections of a deliverable, from the templates."""
-    t = texts()[skill]
+def _sections(skill: str, legacy: bool = False) -> List[Section]:
+    """Known sections of a deliverable, from the templates (`legacy`: those of the French templates)."""
+    t = (legacy_texts() if legacy else texts())[skill]
 
     def table(key: str) -> Section:
         return Section(key, t[key + "_heading"], t[key + "_row"], t[key + "_table"][0], None)
@@ -1007,7 +1014,7 @@ def parse_deliverable(skill: str, text: str) -> Dict[str, Any]:
     unreadable finding line is an explicit stop naming it (exit 1), never a
     silent loss. A status outside the skill's set -> exit 2 (AU-10)."""
     p = profile(skill)
-    sections = _sections(skill)
+    sections = _sections(skill) + _sections(skill, legacy=True)   # a French deliverable is still read back
     entries: List[Dict[str, Any]] = []
     headings: Dict[str, str] = {}
     tables: Dict[str, Dict[str, Any]] = {}
@@ -1141,9 +1148,13 @@ def set_status(skill: str, entry: Dict[str, Any], status: str) -> Dict[str, Any]
         new["cells"][new["index"]["status"]] = status
         new["line"] = _emit_row(new["cells"])
     else:
-        block_tpl = {s.key: s.block for s in _sections(skill)}[new["section"]]
-        prefix = _status_prefix(block_tpl)
-        new["lines"] = [prefix + status if line.startswith(prefix) else line for line in new["lines"]]
+        prefixes = [_status_prefix({s.key: s.block for s in _sections(skill, legacy)}[new["section"]])
+                    for legacy in (False, True)]
+
+        def rewrite(line: str) -> str:
+            prefix = next((x for x in prefixes if line.startswith(x)), None)
+            return prefix + status if prefix is not None else line
+        new["lines"] = [rewrite(line) for line in new["lines"]]
     return new
 
 
@@ -1154,8 +1165,8 @@ def resumed_registry_status(skill: str, group: List[Dict[str, Any]]) -> Tuple[st
     if any(e["section"] == "rejected" for e in group):
         return findings.REJECTED, {}
     if skill == "vibecode-audit":
-        no = texts()[skill]["validated"]["no"]
-        if any(e["kind"] == "row" and e["fields"].get("validated") == no for e in group):
+        no = (texts()[skill]["validated"]["no"], legacy_texts()[skill]["validated"]["no"])
+        if any(e["kind"] == "row" and e["fields"].get("validated") in no for e in group):
             return findings.UNVALIDATED, {}
     for e in group:
         m = SETTLED_STATUS.match(e.get("status") or "")

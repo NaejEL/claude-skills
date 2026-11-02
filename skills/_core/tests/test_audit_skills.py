@@ -162,8 +162,8 @@ class AiLabAuditTest(EngineCase):
                 "journal_date": "2026-09-01", "findings": {
                     "Q-01": {"question": "Does it hold on 5 seeds?", "motivation": "VAL-01", "decides": "the title"}}}
         text = audit.render("ai-lab-audit", audit.document(state, data))
-        self.assertIn('- **Lancer** : `/lab-run "Does it hold on 5 seeds?"`', text)
-        self.assertLess(text.index("## Corrections à faire"), text.index("## Questions de recherche retenues"))
+        self.assertIn('- **Run**: `/lab-run "Does it hold on 5 seeds?"`', text)
+        self.assertLess(text.index("## Corrections to make"), text.index("## Research questions retained"))
         rows = {r["unit"]: r for r in audit.counters(state)}
         self.assertEqual((rows["fidelite"]["corrections"], rows["validite"]["questions"]), (1, 1))
         self.assertEqual(set(rows["fidelite"]), {"unit", "raw", "confirmed", "rejected", "corrections", "questions",
@@ -177,7 +177,7 @@ class AiLabAuditTest(EngineCase):
         out = audit.write_spec("ai-lab-audit", self.tmp, f, SECTIONS, 1, "budget")
         self.assertEqual(out["state"], "créé")
         text = (self.tmp / out["file"]).read_text(encoding="utf-8")
-        self.assertTrue(text.startswith("Statut : PROPOSEE\n"))
+        self.assertTrue(text.startswith("Status: PROPOSED\n"))
         for criterion in findings.deliverable_texts()["leak_criteria"]:
             self.assertIn(criterion, text)
         self.assertEqual(len(findings.deliverable_texts()["leak_criteria"]), 2)
@@ -282,17 +282,17 @@ class LegacyAuditTest(EngineCase):
         self.assertEqual([renamed[i] for i in ("HYG-02", "QUAL-01", "HYG-01")], ["LEG-01", "LEG-02", "LEG-03"])
 
     def test_la09_roadmap_rendering_statuses_and_links(self):
-        """LA-09: milestones with tables, relative links with '/', statuses A_FAIRE..REPORTE only, 'non retenus' section."""
+        """LA-09: milestones with tables, relative links with '/', statuses A_FAIRE..REPORTE only, 'not retained' section."""
         state, _ = run_findings(self, "legacy-audit", "--categories hygiene", {
             "hygiene": [legacy_item("HYG-01"), legacy_item("HYG-02", title="Other", line=9, category="x")]})
         data = {"name": "toy", "date": "2026-10-17", "factory": True, "milestones": [{"number": 1, "title": "Assainir"}],
                 "findings": {"LEG-01": {"milestone": 1, "spec": "specs\\SPEC-leg-01-purge.md"},
                              "LEG-02": {"not_retained": "cap"}}}
         text = audit.render("legacy-audit", audit.document(state, data))
-        self.assertIn("## Jalon 1 — Assainir", text)
+        self.assertIn("## Milestone 1 — Assainir", text)
         self.assertIn("| [specs/SPEC-leg-01-purge.md](specs/SPEC-leg-01-purge.md) | A_FAIRE |", text)
         self.assertNotIn("\\", text)
-        self.assertIn("| LEG-02 | Other | au-delà du plafond de specs |", text)
+        self.assertIn("| LEG-02 | Other | beyond the spec cap |", text)
         p = audit.profile("legacy-audit")
         for ok in ("A_FAIRE", "EN_COURS", "FAIT", "REPORTE"):
             self.assertEqual(audit.check_status(p, ok), ok)
@@ -333,7 +333,7 @@ class LegacyAuditTest(EngineCase):
         audit.record_auditor(state, reg, "filet", None, True)
         rows = {r["unit"]: r for r in audit.counters(state)}
         self.assertEqual((rows["hygiene"]["raw"], rows["hygiene"]["confirmed"], rows["hygiene"]["rejected"]), (2, 1, 1))
-        self.assertEqual(rows["filet"]["raw"], "échec")
+        self.assertEqual(rows["filet"]["raw"], "failed")
 
 
 class VibecodeAuditTest(EngineCase):
@@ -380,16 +380,16 @@ class VibecodeAuditTest(EngineCase):
         self.assertEqual((state["findings"]["ACC-01"]["count"], state["findings"]["ACC-01"]["sampled"]), (1, False))
 
     def test_va05_va06_dead_family_is_a_major_surface_announced_in_the_report(self):
-        """VA-05, VA-06: dead family twice -> unauditable surface major, raw = échec, announced at the top; a surface below major is refused."""
+        """VA-05, VA-06: dead family twice -> unauditable surface major, raw = failed, announced at the top; a surface below major is refused."""
         state, reg = self.start("vibecode-audit", "--axes evolutivite")
         audit.record_auditor(state, reg, "evolutivite", None, True)
         d, _ = audit.record_auditor(state, reg, "evolutivite", "garbage", False)
         self.assertEqual((d["action"], d["severity"]), ("surface", "major"))
-        self.assertEqual([r for r in audit.counters(state)][0]["raw"], "échec")
+        self.assertEqual([r for r in audit.counters(state)][0]["raw"], "failed")
         data = {"name": "poc", "date": "2026-10-17", "axes": ["evolutivite"], "path": "./poc", "findings": {}}
         text = audit.render("vibecode-audit", audit.document(state, data))
-        self.assertIn("**Famille non auditée : evolutivite.**", text)
-        self.assertIn("| famille evolutivite |", text)
+        self.assertIn("**Family not audited: evolutivite.**", text)
+        self.assertIn("| family evolutivite |", text)
         weak = dict(data, surfaces=[{"surface": "s", "why": "w", "needs": "n", "severity": "minor"}])
         with self.assertRaises(audit.AuditUsage):
             audit.render("vibecode-audit", audit.document(state, weak))
@@ -417,7 +417,7 @@ class VibecodeAuditTest(EngineCase):
         self.assertEqual((d["action"], d["parts"]), ("split", ["ACC-01.1", "ACC-01.2"]))
 
     def test_va09_partial_validation_critical_first_then_occurrences_and_marked(self):
-        """VA-09: validators run critical first, then by occurrence count; an UNVALIDATED pattern is delivered marked 'non validé' with the ratio."""
+        """VA-09: validators run critical first, then by occurrence count; an UNVALIDATED pattern is delivered marked 'not validated' with the ratio."""
         state, reg = self.start("vibecode-audit", "--axes securite")
         audit.record_auditor(state, reg, "acces", block({"findings": [
             vib_item("ACC-01", "few", (("a.js", 1),), severity="major"),
@@ -432,8 +432,8 @@ class VibecodeAuditTest(EngineCase):
             audit.record_auditor(state, reg, unit, block({"findings": []}), False)
         data = {"name": "poc", "date": "2026-10-17", "axes": ["securite"], "path": ".", "findings": {}}
         text = audit.render("vibecode-audit", audit.document(state, data))
-        self.assertIn("| non validé |", text)
-        self.assertIn("2 motifs sur 3 ont passé la validation adversariale", text)
+        self.assertIn("| not validated |", text)
+        self.assertIn("2 patterns out of 3 passed the adversarial validation", text)
 
     def test_va10_ordering_raised_criticals_and_quick_wins(self):
         """VA-10: every critical first whatever its axis, then securite > maintenabilite > evolutivite, then difficulty; regression_risk never sorts; raised criticals and quick wins are reported."""

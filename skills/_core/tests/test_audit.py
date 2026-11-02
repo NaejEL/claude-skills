@@ -265,14 +265,14 @@ class AuditorTest(EngineCase):
 # ---------------------------------------------------------- AU-09 to AU-16
 
 class DeliverableTest(EngineCase):
-    LEGACY = ("# Roadmap de remise à niveau — x\n\n## Jalon 1 — Assainir\n"
-              "| ID | Finding | Sévérité | Taille | Dépend de | Spec | Statut |\n|---|---|---|---|---|---|---|\n"
+    LEGACY = ("# Upgrade roadmap — x\n\n## Milestone 1 — Assainir\n"
+              "| ID | Finding | Severity | Size | Depends on | Spec | Status |\n|---|---|---|---|---|---|---|\n"
               "| LEG-01 | Secrets | critical | S | — | — | FAIT |\n"
               "| LEG-02 | Gitignore \\| bis | major | XS | — | — | EN_COURS |\n\n"
-              "## Findings rejetés à la validation\n| ID | Finding | Raison |\n|---|---|---|\n"
+              "## Findings rejected at validation\n| ID | Finding | Reason |\n|---|---|---|\n"
               "| HYG-07 | Faux positif | fixture |\n")
-    LAB = ("## Questions de recherche retenues (ordre recommandé)\n### Q-02 — Seeds\n- **Question** : q ?\n"
-           "- **Statut** : TRANCHEE (journal 2026-10-01)\n")
+    LAB = ("## Research questions retained (recommended order)\n### Q-02 — Seeds\n- **Question**: q ?\n"
+           "- **Status**: TRANCHEE (journal 2026-10-01)\n")
 
     def test_au09_resume_reads_tables_and_sections_back_keeping_statuses(self):
         """AU-09: rows and sections of an existing deliverable go to the run registry,
@@ -298,7 +298,7 @@ class DeliverableTest(EngineCase):
         for line in self.LEGACY.splitlines():
             if line.startswith("| LEG-") or line.startswith("| HYG-"):
                 self.assertIn(line + "\n", text)
-        self.assertIn("## Jalon 1 — Assainir\n", text)
+        self.assertIn("## Milestone 1 — Assainir\n", text)
 
     def test_au10_deliverable_status_sets_per_skill(self):
         """AU-10: A_FAIRE / EN_COURS / FAIT / REPORTE everywhere, TRANCHEE (journal <date>)
@@ -319,7 +319,7 @@ class DeliverableTest(EngineCase):
                          "| LEG-01 | Secrets | critical | S | — | — | REPORTE |")
         sec = audit.parse_deliverable("ai-lab-audit", self.LAB.replace("TRANCHEE (journal 2026-10-01)", "A_FAIRE"))
         new = audit.set_status("ai-lab-audit", sec["entries"][0], "TRANCHEE (journal 2026-10-02)")
-        self.assertEqual(new["lines"][-1], "- **Statut** : TRANCHEE (journal 2026-10-02)")
+        self.assertEqual(new["lines"][-1], "- **Status**: TRANCHEE (journal 2026-10-02)")
         with self.assertRaises(audit.AuditUsage):
             audit.set_status("legacy-audit", row, "TRANCHEE (journal 2026-10-02)")
 
@@ -411,7 +411,7 @@ class DeliverableTest(EngineCase):
         self.assertFalse((specs / "SPEC-leg-03-other-slug.md").exists())
         out = audit.write_spec("legacy-audit", self.tmp, f, sections, 4, "new")
         self.assertEqual(out["state"], "créé")
-        self.assertTrue((specs / "SPEC-leg-04-new.md").read_text(encoding="utf-8").startswith("Statut : PROPOSEE"))
+        self.assertTrue((specs / "SPEC-leg-04-new.md").read_text(encoding="utf-8").startswith("Status: PROPOSED"))
         for bad in ("Bad Slug", "", "x/../y"):
             with self.assertRaises(audit.AuditUsage):
                 audit.write_spec("legacy-audit", self.tmp, f, sections, 5, bad)
@@ -419,7 +419,7 @@ class DeliverableTest(EngineCase):
             audit.write_spec("vibecode-audit", self.tmp, f, sections, 1, "x")
 
     def test_au15_readjust_only_once(self):
-        """AU-15: 'Réajuster' replays the theme gate once, then disappears from the
+        """AU-15: 'Readjust' replays the theme gate once, then disappears from the
         final options; a second readjustment -> exit 2."""
         state, _ = self.start("legacy-audit")
         label = audit.readjust_option("legacy-audit")
@@ -569,11 +569,11 @@ class ReplayTest(helpers.TempDirCase):
         self.assertEqual([d["action"] for d in out["auditors"]["qualite"]], ["relaunch", "not-audited"])
         self.assertEqual([d["action"] for d in out["auditors"]["portabilite"]], ["relaunch", "validate"])
         rows = {r["unit"]: r for r in out["next"]["counters"]}
-        self.assertEqual(rows["qualite"]["raw"], "échec")
+        self.assertEqual(rows["qualite"]["raw"], "failed")
         self.assertEqual((rows["filet"]["raw"], rows["filet"]["rejected"], rows["filet"]["unvalidated"]), (2, 1, 1))
         spec = (out["repo"] / "specs" / "SPEC-leg-01-purge-secrets.md").read_text(encoding="utf-8")
-        self.assertTrue(spec.startswith("Statut : PROPOSEE\nQuestions bloquantes : aucune\n\n# SPEC-leg-01 — Secret commité dans config.py\n"))
-        self.assertIn("## Hors-périmètre\nRéécriture d'historique ; Rotation", spec)
+        self.assertTrue(spec.startswith("Status: PROPOSED\nBlocking questions: none\n\n# SPEC-leg-01 — Secret commité dans config.py\n"))
+        self.assertIn("## Out of scope\nHistory rewriting ; Rotation", spec)
         self.assertEqual(out["publish"]["published"], 4)
         lines = (out["repo"] / ".claude" / "findings.jsonl").read_text(encoding="utf-8").splitlines()
         self.assertEqual(len(lines), len({json.loads(x)["key"] for x in lines}))
@@ -617,8 +617,8 @@ class ReplayTest(helpers.TempDirCase):
         self.assertEqual([d["action"] for d in out["validators"]["VAL-01"]], ["relaunch", "confirmed"])
         rows = {r["unit"]: r for r in out["next"]["counters"]}
         self.assertEqual((rows["fuites"]["corrections"], rows["validite"]["questions"]), (1, 1))
-        self.assertEqual(rows["bio"]["raw"], "échec")
-        self.assertIn("- **Dépend de** : COR-01".replace("- ", ""), out["deliverable"])
+        self.assertEqual(rows["bio"]["raw"], "failed")
+        self.assertIn("- **Depends on**: COR-01".replace("- ", ""), out["deliverable"])
         spec = (out["repo"] / "specs" / "SPEC-lab-01-e2-meme-budget.md").read_text(encoding="utf-8")
         for criterion in findings.deliverable_texts()["leak_criteria"]:
             self.assertIn(criterion, spec)
@@ -627,7 +627,7 @@ class ReplayTest(helpers.TempDirCase):
     def test_ca27_ca29_vibecode_audit_replay_git_absent(self):
         """CA-27, CA-29 (vibecode-audit, AU-12 GIT_ABSENT): dead family twice ->
         unauditable surface major, split parts, false occurrence removed from the count,
-        UNVALIDATED marked 'non validé', no git exclusion; report equal to the expected file."""
+        UNVALIDATED marked 'not validated', no git exclusion; report equal to the expected file."""
         fx, out = self.play("vibecode-audit")
         self.check_common("vibecode-audit", fx, out)
         self.assertTrue(out["start"]["git_absent"])
@@ -636,8 +636,8 @@ class ReplayTest(helpers.TempDirCase):
         self.assertEqual(out["auditors"]["injection"][-1]["action"], "surface")
         self.assertEqual(out["validators"]["MNT-01"][0]["parts"], ["MNT-01.1", "MNT-01.2"])
         self.assertIn("| 1 | VIB-01 | Les points d'entrée de modification ne vérifient pas l'appartenance "
-                      "de la ressource | sécurité | critical | 13 | M | élevé | oui | — | A_FAIRE |", out["deliverable"])
-        self.assertIn("| non validé |", out["deliverable"])
+                      "de la ressource | security | critical | 13 | M | high | yes | — | A_FAIRE |", out["deliverable"])
+        self.assertIn("| not validated |", out["deliverable"])
         rows = {r["unit"]: r for r in out["next"]["counters"]}
         self.assertEqual((rows["maintenabilite"]["split"], rows["acces"]["occurrences"]), (1, 13))
         self.assertFalse((out["repo"] / ".git").exists())
@@ -650,7 +650,7 @@ class ReplayTest(helpers.TempDirCase):
             res = helpers.harness(["gate", "answer", "--run", d["run"], "--id", gid, "--headless"], self.tmp)
             self.assertEqual(res.returncode, code, (gid, res.stderr))
             if code == 0:
-                self.assertEqual(json.loads(res.stdout)["answer"], "Gravité d'abord / Les détailler")
+                self.assertEqual(json.loads(res.stdout)["answer"], "Severity first / Detail them")
 
     def resume_fixture(self, filet):
         fx = json.loads((AUDIT_FIXTURES / "legacy-audit.json").read_text(encoding="utf-8"))

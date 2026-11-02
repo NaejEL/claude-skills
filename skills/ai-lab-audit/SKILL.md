@@ -1,23 +1,23 @@
 ---
 name: ai-lab-audit
-description: Alias de /audit pour un projet de recherche IA (fidélité, validité, fuites, analogies biologiques, feuille de route) — produit désormais AUDIT.md. À utiliser quand l'utilisateur veut une revue externe d'un projet de recherche IA.
+description: Alias of /audit for an AI research project (fidelity, validity, leaks, biological analogies, roadmap) — now produces AUDIT.md. Use when the user wants an external review of an AI research project.
 user-invocable: true
 argument-hint: "[REPO] [--lenses \"fidelite;validite;fuites;bio;route\"] [--max-questions N] [--models \"role=modele;...\"] [--autonomy gate|auto]"
 ---
 
-# AI Lab audit — alias de `/audit`
+# AI Lab audit — alias of `/audit`
 
-`/ai-lab-audit` est un alias de `/audit`, conservé pendant la version 2.0.0 et retiré à la version suivante.
+`/ai-lab-audit` is an alias of `/audit`, kept during version 2.0.0 and removed in the next version.
 
-Afficher d'abord cette phrase mot pour mot, puis :
+First display this sentence word for word, then:
 
-1. Écrire `$ARGUMENTS` tel quel avec l'outil Write dans `.harness/runs/ai-lab-audit-arguments.txt` (jamais par le shell), puis appeler `<PY> "${CLAUDE_SKILL_DIR}/../_core/harness.py" audit alias-args --skill ai-lab-audit --arguments-file .harness/runs/ai-lab-audit-arguments.txt --skill-dir "${CLAUDE_SKILL_DIR}"` (`<PY>` : voir `/software-factory`). Le champ `arguments` rendu force `--profile research`, conserve `--lenses`, `--max-questions` et les alias courts de `--models`, et ajoute `--via ai-lab-audit` ; le champ `invoke` est le nom effectif de `audit` pour l'outil Skill.
-2. Invoquer **en ligne** (sans sous-agent) l'outil Skill sur le skill nommé par `invoke` avec ces arguments. Repli si l'outil Skill est indisponible : lire `${CLAUDE_SKILL_DIR}/../audit/SKILL.md` et suivre ses instructions avec ces arguments.
+1. Write `$ARGUMENTS` as is with the Write tool to `.harness/runs/ai-lab-audit-arguments.txt` (never through the shell), then call `<PY> "${CLAUDE_SKILL_DIR}/../_core/harness.py" audit alias-args --skill ai-lab-audit --arguments-file .harness/runs/ai-lab-audit-arguments.txt --skill-dir "${CLAUDE_SKILL_DIR}"` (`<PY>`: see `/software-factory`). The `arguments` field returned forces `--profile research`, keeps `--lenses`, `--max-questions` and the short aliases of `--models`, and adds `--via ai-lab-audit`; the `invoke` field is the effective name of `audit` for the Skill tool.
+2. Invoke **inline** (without a sub-agent) the Skill tool on the skill named by `invoke` with these arguments. Fallback if the Skill tool is unavailable: read `${CLAUDE_SKILL_DIR}/../audit/SKILL.md` and follow its instructions with these arguments.
 
-## Défauts en politique `auto` (AP-09)
+## Defaults under the `auto` policy (AP-09)
 
-L'option `--autonomy gate|auto` (AP-03) vaut pour cette exécution seulement et n'écrit jamais `.claude/harness.json` ; elle est transmise à `K gate decide --autonomy` et aux skills enchaînés (AP-04). Défaut de chaque gate de ce skill en `auto`, avec sa justification d'une ligne (celle du catalogue `K gate list`) :
+The `--autonomy gate|auto` option (AP-03) applies to this run only and never writes `.claude/harness.json`; it is passed to `K gate decide --autonomy` and to chained skills (AP-04). Default of each gate of this skill under `auto`, with its one-line justification (the one from the `K gate list` catalog):
 
-- `ai-lab-audit.framing` → specs / fiabiliser — specs when a factory is present, otherwise lister; make it reliable first
-- `ai-lab-audit.selection` → Toutes — the cap applies afterwards
-- `ai-lab-audit.final` → Écrire AUDIT-lab.md — the deliverable the audit was run for
+- `ai-lab-audit.framing` → specs / make reliable — specs when a factory is present, otherwise list; make it reliable first (options: specs, list, ignore minors, make reliable, cheaper, roadmap, proposed order)
+- `ai-lab-audit.selection` → All — the cap applies afterwards (options: All / Only the best ranked / None)
+- `ai-lab-audit.final` → Write AUDIT-lab.md — the deliverable the audit was run for (options: Write AUDIT-lab.md / Readjust / Abandon)

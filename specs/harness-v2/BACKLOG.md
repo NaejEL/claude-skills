@@ -348,6 +348,11 @@ Spec : `specs/SPEC-phase1-fin-L8-L14.md` (APPROUVEE), qui renvoie aux sections �
 - Phase 7 : la détection du mode plugin suppose que `CLAUDE_SKILL_DIR` reste le chemin du lien, non résolu (recette R1). Si Claude Code le résolvait un jour, une installation par liens rendrait `harness:<skill>`.
 - Phase 7 : `test_repo_factory` ne teste plus l'idempotence du bloc modèle (`harness.model`), car ce bloc a disparu au passage en core 4.0.
 - Corrigé en Phase 7 : `queue.scan` plantait quand le worktree d'une spec mergée était retiré pendant le parcours. C'était la cause des échecs intermittents de fb02, fb04 et fb05.
+- English translation (2026-11-02): user-visible French labels remain in `hcore/cx.py` (`Index: réindexer`, the search prompt) and `hcore/lab.py` (`Lab: nouvelle expérience`); French state words in `fusion.py`, `hooks_install.py`, `queue.py` (`créé`, `fusionné`, `mergée`); French quotes in `audit.py` comments; `unified.py:1742` cites only `Défaut :`; `brainstorm` keeps `SUJET`, `[énoncé]` and the quoted heading "non retenus dans ce cycle".
+- English translation: the guard rejects globs, so a recursive delete of `.harness/tmp/` with a `*` glob is blocked (naming the folder passes).
+- Real use: the Bash guard analyses the body of a heredoc as commands (a Python heredoc quoting a delete command was blocked).
+- English translation: `test_px03` no longer compares the extracted Phase 2 sentences (the French BASE2 copies are legacy fixtures); it only checks the inventory is well formed.
+- Real use: a cycle whose Builder hits the Bash guard stops (`destructive`) without deactivating its scope marker; `factory-run` could run `deactivate` on that stop.
 
 ## 9. Phase 3 — état (2026-11-01)
 

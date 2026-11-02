@@ -23,7 +23,7 @@ class MachineTest(unittest.TestCase):
         gate_ids = [g for p in res["loop"]["phases"] if p["kind"] == "gate" for g in p["ids"]]
         self.assertEqual(gate_ids, ["lab-run.pi-questions", "lab-run.preregistration", "lab-run.consignation"])
         self.assertEqual((loop.machine_of(soft), loop.machine_of(res)), ("linear", "lab"))
-        self.assertEqual((factory.PLANNER, factory.APPROVED_LINE), ("factory-planner", "Statut : APPROUVEE"))
+        self.assertEqual((factory.PLANNER, factory.APPROVED_LINE), ("factory-planner", "Status: APPROVED"))
         self.assertEqual((labrun.DIRECTOR, labrun.EXPERTS), ("lab-director", {"lab-neuro": "neuro", "lab-math": "math"}))
         self.assertEqual(labrun.role_of("lab-director", "interpretation"), "lab.director.interpretation")
 

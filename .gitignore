@@ -2,7 +2,8 @@ factory-logs/
 .harness/runs/
 __pycache__/
 
-# Artefacts de session, propres a une machine : jamais commites
+# Session artefacts, machine-specific: never committed
 BRAINSTORM-*.md
 AUDIT-*.md
 ROADMAP-legacy.md
+.harness/tmp/

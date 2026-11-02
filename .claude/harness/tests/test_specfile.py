@@ -189,7 +189,7 @@ class FileTest(helpers.TempDirCase):
         self.assertEqual((self.tmp / rel).read_bytes(), before)
 
     def test_bq11_finding_specs_carry_the_header(self):
-        """BQ-11: `Questions bloquantes : aucune`, `Dépend de` and `Priorité` in the spec of a finding."""
+        """BQ-11: `Blocking questions: none`, `Depends on` and `Priority` in the spec of a finding."""
         sections = {"context": "c", "scope": "s", "criteria": ["one"], "out_of_scope": "o", "risks": "r",
                     "depends_on": ["SPEC-leg-01"], "priority": 2}
         finding = {"id": "HYG-03", "severity": "major", "title": "T", "size": "S", "axis": None, "category": "x"}
@@ -197,7 +197,84 @@ class FileTest(helpers.TempDirCase):
         parsed = specfile.parse(text)
         self.assertEqual((parsed["blocking"], parsed["depends_on"], parsed["priority"], parsed["errors"]),
                          ([], ["SPEC-leg-01"], 2, []))
-        self.assertTrue(text.startswith("Statut : PROPOSEE\nQuestions bloquantes : aucune\nDépend de : SPEC-leg-01\n"))
+        self.assertTrue(text.startswith("Status: PROPOSED\nBlocking questions: none\nDepends on: SPEC-leg-01\n"))
+        self.assertIn("\n## Open questions\n", text)
+
+
+EN_SPEC = ("Status: APPROVED\nBlocking questions: Q2\nFiles scope: src/**, tests/**\nDepends on: SPEC-a, SPEC-b.md\n"
+           "Priority: 3\n\n# SPEC\n\n## Open questions\n- Q1 — a\n  Default: x\n- Q2 — b\n  Answer: yes\n")
+FR_SPEC = ("Statut : APPROUVEE\nQuestions bloquantes : Q2\nPérimètre fichiers : src/**, tests/**\n"
+           "Dépend de : SPEC-a, SPEC-b.md\nPriorité : 3\n\n# SPEC\n\n## Questions ouvertes\n- Q1 — a\n  Défaut : x\n"
+           "- Q2 — b\n  Réponse : yes\n")
+PARSED_KEYS = ("word", "role", "blocking", "unanswered", "perimeter", "depends_on", "priority", "errors")
+
+
+class LanguageTest(helpers.TempDirCase):
+    def test_en_and_fr_specs_parse_alike(self):
+        """English and French spellings give the same status, perimeter, priority, dependencies and questions."""
+        en, fr = specfile.parse(EN_SPEC), specfile.parse(FR_SPEC)
+        self.assertEqual(en["errors"], [])
+        self.assertEqual(fr["errors"], [])
+        self.assertEqual({k: en[k] for k in PARSED_KEYS}["perimeter"], ["src/**", "tests/**"])
+        self.assertEqual(en["word"], "APPROVED")
+        self.assertEqual(fr["word"], "APPROUVEE")
+        for key in PARSED_KEYS:
+            if key != "word":
+                self.assertEqual(en[key], fr[key], key)
+        self.assertEqual([(q["id"], q["default"], q["answer"]) for q in en["questions"]],
+                         [(q["id"], q["default"], q["answer"]) for q in fr["questions"]])
+        self.assertEqual((en["lang"], fr["lang"]), ("en", "fr"))
+
+    def test_keywords_are_case_and_spacing_tolerant(self):
+        text = "status :  proposed\nblocking   questions: NONE\nFILES SCOPE : src/**\ndepends on : SPEC-a\npriority: 2\n"
+        p = specfile.parse(text)
+        self.assertEqual((p["errors"], p["blocking"], p["perimeter"], p["depends_on"], p["priority"]),
+                         ([], [], ["src/**"], ["SPEC-a"], 2))
+        self.assertEqual(p["role"], "proposed")
+
+    def test_a_transition_keeps_the_language_of_the_spec(self):
+        en = self.tmp / "SPEC-en.md"
+        fr = self.tmp / "SPEC-fr.md"
+        en.write_text("Status: APPROVED\n\n# S\n", encoding="utf-8")
+        fr.write_text("Statut : APPROUVEE\n\n# S\n", encoding="utf-8")
+        self.assertEqual(specfile.set_status(en, "DELIVERED")["to"], "DELIVERED")
+        self.assertEqual(en.read_text(encoding="utf-8").splitlines()[0], "Status: DELIVERED")
+        self.assertEqual(specfile.set_status(fr, "LIVREE")["to"], "LIVREE")
+        self.assertEqual(fr.read_text(encoding="utf-8").splitlines()[0], "Statut : LIVREE")
+        # a word of the other language is written in the language of the spec, never mixed
+        en.write_text("Status: APPROVED\n", encoding="utf-8")
+        fr.write_text("Statut : APPROUVEE\n", encoding="utf-8")
+        specfile.set_status(en, "LIVREE")
+        specfile.set_status(fr, "DELIVERED")
+        self.assertEqual(en.read_text(encoding="utf-8").splitlines()[0], "Status: DELIVERED")
+        self.assertEqual(fr.read_text(encoding="utf-8").splitlines()[0], "Statut : LIVREE")
+        # by role
+        en.write_text("Status: PROPOSED\n", encoding="utf-8")
+        fr.write_text("Statut : PROPOSEE\n", encoding="utf-8")
+        specfile.set_role(en, "ready")
+        specfile.set_role(fr, "blocked")
+        self.assertEqual(en.read_text(encoding="utf-8").splitlines()[0], "Status: APPROVED")
+        self.assertEqual(fr.read_text(encoding="utf-8").splitlines()[0], "Statut : BLOQUEE")
+
+    def test_defaults_are_applied_in_the_language_of_the_spec(self):
+        en = self.tmp / "SPEC-en.md"
+        fr = self.tmp / "SPEC-fr.md"
+        en.write_text("Status: PROPOSED\n\n## Open questions\n- Q1 — a\n  Default: x\n", encoding="utf-8")
+        fr.write_text("Statut : PROPOSEE\n\n## Questions ouvertes\n- Q1 — a\n  Défaut : x\n", encoding="utf-8")
+        self.assertEqual(specfile.apply_defaults(en)["applied"], [{"id": "Q1", "default": "x"}])
+        specfile.apply_defaults(fr)
+        self.assertIn("  Answer: x (default applied automatically)", en.read_text(encoding="utf-8"))
+        self.assertIn("  Réponse : x (défaut appliqué automatiquement)", fr.read_text(encoding="utf-8"))
+        self.assertEqual(specfile.parse(en.read_text(encoding="utf-8"))["questions"][0]["answer"],
+                         "x (default applied automatically)")
+
+    def test_what_the_core_writes_is_english(self):
+        sections = {"context": "c", "scope": "s", "criteria": ["one"], "out_of_scope": "o", "risks": "r"}
+        finding = {"id": "HYG-03", "severity": "major", "title": "T", "size": "S", "axis": None, "category": "x"}
+        text = findings.to_spec(finding, sections, "leg", 3)
+        self.assertTrue(text.startswith("Status: PROPOSED\nBlocking questions: none\n"))
+        self.assertEqual(specfile.parse(text)["lang"], "en")
+        self.assertEqual(specfile.parse(text)["errors"], [])
 
 
 if __name__ == "__main__":

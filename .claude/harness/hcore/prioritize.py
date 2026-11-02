@@ -8,7 +8,7 @@
 # - PZ-03: the assignment is the milestone of each finding, nothing is excluded;
 #   the cap `--max-specs` applies afterwards, in the order of the milestones.
 # - PZ-04: research questions: severity decreasing, then cost increasing (TS-03).
-# - PZ-05: `rank` gives milestones, ranks and the `Priorité` of each finding.
+# - PZ-05: `rank` gives milestones, ranks and the `Priority` of each finding.
 # - CH-04: `chain_plan` orders the specs written by an audit for the queue.
 
 from __future__ import annotations
@@ -20,8 +20,8 @@ from . import specfile, tshirt
 
 MILESTONE_OF = {"critical": 1, "major": 2, "minor": 3}
 TITLES = {1: "Critiques", 2: "Majeurs", 3: "Mineurs"}
-FRAMING = {"legacy": {"order": "risque d'abord"},
-           "vibecode": {"order": "Gravité d'abord", "minor": "Les détailler"}}
+FRAMING = {"legacy": {"order": "risk first"},
+           "vibecode": {"order": "Severity first", "minor": "Detail them"}}
 
 
 def _severity(f: Dict[str, Any]) -> int:
@@ -92,7 +92,7 @@ def rank_questions(findings: List[Dict[str, Any]]) -> List[str]:
 
 
 def chain_plan(root: Path, only: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-    """CH-04: the specs/ files with a proposed status, ordered by `Priorité` (absent = last) then name."""
+    """CH-04: the specs/ files with a proposed status, ordered by `Priority` (absent = last) then name."""
     folder = Path(root) / "specs"
     rows: List[Dict[str, Any]] = []
     wanted = {Path(o).name for o in only or []}

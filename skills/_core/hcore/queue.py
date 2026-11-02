@@ -7,9 +7,9 @@
 #   (delivered here or in a worktree), in progress (run `running` updated less than
 #   2 h ago, older = `interrupted`), blocked (blocked with open questions),
 #   proposed (proposed, a blocked spec whose questions are all answered, or an inactive ready one).
-# - FQ-04: `Dépend de` is resolved by file name or id prefix; an unknown
+# - FQ-04: `Depends on` is resolved by file name or id prefix; an unknown
 #   dependency or a cycle makes the specs concerned ineligible, with an error.
-# - FQ-05: order = topological, then `Priorité` (absent = last), then file name.
+# - FQ-05: order = topological, then `Priority` (absent = last), then file name.
 # - FQ-06: `next_spec` = first eligible spec: proposed, every dependency merged,
 #   not attempted in this queue run.
 # - FQ-07: one coordinator per repository (OS lock shared with the batch).

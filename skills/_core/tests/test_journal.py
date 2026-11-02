@@ -80,7 +80,7 @@ class ValidateTest(helpers.TempDirCase):
         follows GT-07; a gate event without decision, or an unknown event, is refused."""
         from hcore import gates
         decision = gates.decide("ship-pr.merge", "gate")
-        answer = gates.answer("ship-pr.merge", decision, "user", "Merger")
+        answer = gates.answer("ship-pr.merge", decision, "user", "Merge")
         path = self.write([json.dumps(GOOD), json.dumps(decision), json.dumps(answer)])
         self.assertEqual(journal.validate_file(path), [])
         self.assertEqual(helpers.harness(["journal", "validate", str(path)], self.tmp).returncode, 0)
