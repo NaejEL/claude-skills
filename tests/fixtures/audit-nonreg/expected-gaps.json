@@ -8,7 +8,7 @@
     {
       "id": "E-A2",
       "finding": "VIB patterns assigned to milestones",
-      "why": "not delivered in this lot: vibecode keeps its own attack table, no SPEC-vib-*"
+      "why": "with legacy and vibecode both active, VIB patterns assigned to a milestone may produce SPEC-vib-<nn>-<slug>.md; vibecode alone writes no spec"
     },
     {
       "id": "E-A3",
@@ -28,7 +28,7 @@
     {
       "id": "E-A6",
       "finding": "SPEC-lab-* condition",
-      "why": "software profile active or factory inferred, equivalent before Phase 2"
+      "why": "software profile active or factory inferred, equivalent before Phase 2 (SO-03)"
     },
     {
       "id": "E-A7",
@@ -38,7 +38,7 @@
     {
       "id": "E-A8",
       "finding": "alias warning",
-      "why": "alias warning at the top of the session, journaled as an alias event"
+      "why": "alias warning at the top of the session, journaled as an alias event (AX-04)"
     },
     {
       "id": "E-A9",
@@ -58,7 +58,7 @@
     {
       "id": "E-I2",
       "finding": "orchestrator",
-      "why": "per-profile blocks (EP-06)"
+      "why": "the orchestrator carries one block per profile (EP-06)"
     },
     {
       "id": "E-I3",

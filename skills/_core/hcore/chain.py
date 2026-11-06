@@ -338,7 +338,9 @@ def status(root: Path, chain_id: str) -> Dict[str, Any]:
     result["done"] = card["status"] != "running"
     result["error"] = card.get("error")
     result["output_error"] = output_error(card) if result["done"] else None
-    result["child_run"] = find_child_run(root, chain_id)
+    # the child runs in its own working directory (a worktree for a batch): its run lives there
+    result["child_run"] = find_child_run(root, chain_id) or (
+        find_child_run(card["cwd"], chain_id) if card.get("cwd") else None)
     result["stops"] = stops_since(card["cwd"], card.get("stops_before", [])) if result["done"] else []
     return result
 
@@ -368,6 +370,8 @@ def failure(result: Dict[str, Any]) -> Optional[str]:
         return "the cycle of the child failed"
     if result.get("output_error"):
         return "the child ended in error: %s" % result["output_error"]
+    if not run:
+        return "the child exited with code 0 but created no run (the skill never started)"
     return None
 
 

@@ -138,7 +138,7 @@ class BoundsTest(EngineCase):
         plain = self.tmp / "specs" / "SPEC-leg-05.md"
         plain.write_text("mine\n", encoding="utf-8")
         out = audit.write_spec("legacy-audit", self.tmp, f, sections, 5, "x")
-        self.assertEqual(out, {"file": "specs/SPEC-leg-05.md", "state": "personnalisé-conservé"})
+        self.assertEqual(out, {"file": "specs/SPEC-leg-05.md", "state": "customized-kept"})
         self.assertEqual(plain.read_text(encoding="utf-8"), "mine\n")
         self.assertFalse((self.tmp / "specs" / "SPEC-leg-05-x.md").exists())
 
@@ -294,6 +294,34 @@ class ModelsReadOnlyTest(helpers.TempDirCase):
         res = helpers.harness(["audit", "start", "--skill", "ai-lab-audit", "--arguments-file", args], self.tmp)
         self.assertEqual(res.returncode, 2, res.stderr)
         self.assertFalse((self.tmp / ".claude" / "models.json").exists())
+
+
+class OrphanRunTest(helpers.TempDirCase):
+    def test_au01_a_run_opened_by_audit_start_that_then_fails_is_closed_not_left_running(self):
+        """AU-01: `audit start` fails after opening its run (invalid input met once the run exists): the run
+        state says `failed` with the reason, no state of `.harness/runs/` stays `running`, and the error
+        still reaches the caller."""
+        import argparse
+        import contextlib
+        import io
+        from unittest import mock
+        import harness
+        runs_dir = self.tmp / ".harness" / "runs"
+        ok = helpers.harness(["audit", "start", "--skill", "legacy-audit", "--arguments-file",
+                              helpers.write_output(self.tmp, "a.txt", "")], self.tmp)
+        self.assertEqual(ok.returncode, 0, ok.stderr)
+        self.assertEqual([json.loads(p.read_text(encoding="utf-8"))["status"] for p in runs_dir.glob("*.state.json")],
+                         ["running"])
+        for p in runs_dir.glob("legacy-audit-*"):
+            p.unlink()
+        ns = argparse.Namespace(skill="legacy-audit", root=str(self.tmp), only=None, unified=False,
+                                arguments_file=str(self.tmp / helpers.write_output(self.tmp, "b.txt", "")))
+        with mock.patch.object(audit, "subagent_type", side_effect=audit.AuditUsage("field difficulty is not a size")), \
+                contextlib.redirect_stdout(io.StringIO()):
+            with self.assertRaises(audit.AuditUsage):
+                harness.cmd_audit_start(ns)
+        states = [json.loads(p.read_text(encoding="utf-8")) for p in runs_dir.glob("*.state.json")]
+        self.assertEqual([(s["status"], s["error"]) for s in states], [("failed", "field difficulty is not a size")])
 
 
 class FactoryRunTransitTest(helpers.TempDirCase):

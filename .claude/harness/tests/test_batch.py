@@ -121,6 +121,21 @@ class RunTest(helpers.TempDirCase):
         self.assertEqual(d["status"]["specs/SPEC-a.md"], "open")
         self.assertEqual(len([c for c in phase4.claude_calls(self.tmp) if c["skill"] == "factory-run"]), 2)
 
+    def test_fb06_resume_reevaluates_a_spec_recorded_ineligible(self):
+        """FB-06: a spec recorded `ineligible` may have become eligible: --resume looks at it again and builds it."""
+        work = self.project({"SPEC-a.md": phase4.spec_text("PROPOSEE", "A")})
+        phase4.scenario(self.tmp, {"*": {"action": "fail"}})
+        self.assertEqual(self.run_batch(work, "specs/*.md").returncode, 1)
+        journal_path = sorted((work / ".harness" / "runs").glob("factory-batch-*.jsonl"))[0]
+        state = runs.load_state(journal_path)
+        state["specs"]["specs/SPEC-a.md"] = "ineligible"          # as recorded when the spec was blocked
+        runs.save_state(journal_path, state)
+        batch_id = journal_path.name[len("factory-batch-"):-len(".jsonl")]
+        phase4.scenario(self.tmp, {"*": {"action": "merge"}})
+        d = out(self, self.run_batch(work, "--resume", batch_id))
+        self.assertEqual(d["status"]["specs/SPEC-a.md"], "merged")
+        self.assertEqual(d["not_eligible"], [])
+
     def test_fb05_a_non_trivial_conflict_aborts_the_rebase_and_stops_with_the_worktree_kept(self):
         """FB-05, CA-24: rebase conflict -> `rebase --abort`, stop `conflict`, the worktree is kept, the first PR merged."""
         work = self.project({"SPEC-a.md": phase4.spec_text("PROPOSEE", "A", ["Priorité : 1"]),

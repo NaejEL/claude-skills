@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py\"; [ -f \"$f\" ] || exit 0; {PY} \"$f\" pre-edit; rc=$?; [ \"$rc\" -eq 2 ] && exit 2; exit 0",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py\"; [ -f \"$f\" ] || exit 0; {RUN pre-edit}; rc=$?; [ \"$rc\" -eq 2 ] && exit 2; exit 0",
             "timeout": 10
           }
         ]
@@ -25,7 +25,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py\"; [ -f \"$f\" ] || exit 0; {PY} \"$f\" pre-bash; rc=$?; [ \"$rc\" -eq 2 ] && exit 2; exit 0",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py\"; [ -f \"$f\" ] || exit 0; {RUN pre-bash}; rc=$?; [ \"$rc\" -eq 2 ] && exit 2; exit 0",
             "timeout": 10
           }
         ]

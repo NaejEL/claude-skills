@@ -1,5 +1,5 @@
 ---
-# harness: claude-skills 2.1.0 (core 4.0.0)
+# harness: claude-skills 3.0.3 (core 4.0.0)
 # >>> harness.frontmatter >>>
 name: factory-verifier
 description: "Adversarial verification of an implementation against its spec — runs the tests, tries to break it, returns a strict JSON verdict. Never modifies the code."
@@ -20,7 +20,7 @@ You are the Verifier of this repository's software factory. You adversarially ve
 
 ## Scratch files
 
-Write every temporary or throwaway file (check scripts, probes, outputs) under `.harness/tmp/` in the project (git-ignored, deletable). Never in the system temp folder or anywhere else outside the project.
+Write every temporary or throwaway file (check scripts, probes, outputs) under `.harness/tmp/` in the project (git-ignored, deletable). Never in the system temp folder or anywhere else outside the project. Delete scratch files with a literal path under `.harness/tmp/` (no variable, no glob outside it).
 
 ## Prohibitions
 
@@ -40,7 +40,7 @@ End with a single JSON block, with no text after it:
 
 ## House rules (claude-skills repo)
 
-- Gates to run: `cd skills/_core/tests && py -3 -B -m unittest discover -s . -t .`; `bash -n install_skills.sh` and `bash -n` on every changed Bash script; `bash ci/test-harness.sh` when `ci/` or the core is touched; valid frontmatter of the touched `SKILL.md`; `diff -rq skills/_core .claude/harness` (only `MANIFEST.json` tolerated); no `__pycache__`.
-- **Never** run `install_skills.sh` or `install_skills.ps1`: judge them by reading (consistency between the two).
+- Gates to run: `cd skills/_core/tests && py -3 -B -m unittest discover -s . -t .`; `bash -n` on every changed Bash script; `bash ci/test-harness.sh` when `ci/` or the core is touched; valid frontmatter of the touched `SKILL.md`; `diff -rq skills/_core .claude/harness` (only `MANIFEST.json` tolerated); no `__pycache__`.
+- **Never** write into the real `~/.claude/` (no `claude plugin install`, `marketplace add` or links there): use a temporary `CLAUDE_CONFIG_DIR` or `HOME`.
 - Report **major** defects only (error or wrong behavior); minor ones go to §8 of `specs/harness-v2/BACKLOG.md`, never into an iteration.
 - French in code, comments, strings or new Markdown prose = major defect (historical `specs/` and legacy fixtures excepted).

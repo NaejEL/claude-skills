@@ -40,7 +40,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 from . import blocks, fusion, profiles, stack
 
 CREATED, MERGED, IDENTICAL, KEPT = fusion.CREATED, fusion.MERGED, fusion.IDENTICAL, fusion.KEPT
-UPDATED = "mis-à-jour"
+UPDATED = "updated"
 
 READ_TOOLS = ["mcp__rgkb__search", "mcp__rgkb__definition", "mcp__rgkb__symbols", "mcp__rgkb__neighbors",
               "mcp__rgkb__file_card", "mcp__rgkb__notes", "mcp__rgkb__status"]
@@ -58,9 +58,9 @@ LAB_FILES = tuple(profiles.files_of(_LAB))
 GITIGNORE_NOTE = "# The knowledge base is shared on purpose (code-index): do not ignore it."
 COUNTER_RULE = "!.knowledge/**"
 
-QUERY_INPUT = {"id": "rgkbQuery", "type": "promptString", "description": "Motif ou nom de symbole à chercher"}
-TASKS = (("Index: réindexer", "index"), ("Index: état", "status"), ("Index: chercher", 'search "${input:rgkbQuery}"'),
-         ("Index: diagnostic", "doctor"), ("Index: hooks git", "hooks status"))
+QUERY_INPUT = {"id": "rgkbQuery", "type": "promptString", "description": "Pattern or symbol name to search"}
+TASKS = (("Index: reindex", "index"), ("Index: status", "status"), ("Index: search", 'search "${input:rgkbQuery}"'),
+         ("Index: diagnostics", "doctor"), ("Index: git hooks", "hooks status"))
 
 
 class CxError(ValueError):

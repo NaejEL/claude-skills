@@ -178,6 +178,18 @@ class FileTest(helpers.TempDirCase):
         self.assertEqual((self.tmp / rel2).read_text(encoding="utf-8").splitlines()[0], "Statut : BLOQUEE")
         self.assertIn("blocked", [x.get("event") for x in journal.read(self.tmp / run2)])
 
+    def test_bq06_a_question_without_default_cites_both_spellings_of_the_line(self):
+        """BQ-06: the stop for a non-blocking question without default names `Default:` and the legacy `Défaut :`."""
+        phase4.stamp(self.tmp, autonomy="auto")
+        text = phase4.spec_text("PROPOSEE", header=["Questions bloquantes : aucune"], questions=["- Q1 — a ?"])
+        rel = phase4.write_spec(self.tmp, "SPEC-a.md", text)
+        src = helpers.write_output(self.tmp, "factory-run-arguments.txt", "add the thing")
+        run = out(self, helpers.harness(["factory-run", "start", "--arguments-file", src], self.tmp))["run"]
+        res = helpers.harness(["spec", "settle", "--run", run, "--file", rel], self.tmp)
+        self.assertEqual(res.returncode, 1, res.stdout)
+        self.assertIn("`Default:`", res.stderr)
+        self.assertIn("`Défaut :`", res.stderr)
+
     def test_bq05_under_gate_nothing_changes(self):
         """BQ-05: under gate the questions are asked as before; the file is untouched."""
         rel = phase4.write_spec(self.tmp, "SPEC-a.md", BLOCKED.replace("BLOQUEE", "PROPOSEE", 1))

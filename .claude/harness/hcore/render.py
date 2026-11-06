@@ -197,11 +197,25 @@ def _block(name: str, style: str, content: str) -> str:
     return "%s\n%s\n%s\n" % (start, content, end)
 
 
+def _header_zone_end(lines: List[str], kind: str) -> int:
+    """Where the header can be: the YAML frontmatter of a markdown file, else its first line; for a script, the
+    leading comment lines (shebang and generated-block markers included) up to the first line of code."""
+    if kind == "md":
+        if lines and lines[0].rstrip("\r") == "---":
+            return next((i for i in range(1, len(lines)) if lines[i].rstrip("\r") == "---"), len(lines))
+        return min(1, len(lines))
+    for at, line in enumerate(lines):
+        if (line.strip() and not line.startswith("#")) or line.startswith("# >>>"):
+            return at
+    return len(lines)
+
+
 def _set_header(text: str, kind: str, hdr: str) -> str:
-    match = re.search(r"^" + re.escape(blocks.HEADER_PREFIX) + r"[^\r\n]*", text, re.M)
-    if match:
-        return text[:match.start()] + hdr + text[match.end():]
     lines = text.split("\n")
+    for at in range(_header_zone_end(lines, kind)):          # a header-looking line in the body is not the header
+        if lines[at].startswith(blocks.HEADER_PREFIX):
+            lines[at] = hdr + ("\r" if lines[at].endswith("\r") else "")
+            return "\n".join(lines)
     index = 0
     if kind == "md" and lines and lines[0].rstrip("\r") == "---":
         index = 1

@@ -175,7 +175,7 @@ class AiLabAuditTest(EngineCase):
             "fuites": [lab_item("LEAK-01", "fuites", title="Budget differs")]})
         f = state["findings"]["LEAK-01"]
         out = audit.write_spec("ai-lab-audit", self.tmp, f, SECTIONS, 1, "budget")
-        self.assertEqual(out["state"], "créé")
+        self.assertEqual(out["state"], "created")
         text = (self.tmp / out["file"]).read_text(encoding="utf-8")
         self.assertTrue(text.startswith("Status: PROPOSED\n"))
         for criterion in findings.deliverable_texts()["leak_criteria"]:
@@ -353,14 +353,14 @@ class VibecodeAuditTest(EngineCase):
         self.assertEqual(tshirt.apply_cap(["VIB-01", "VIB-02"], 1)["excess"], ["VIB-02"])
 
     def test_va03_only_the_report_is_written(self):
-        """VA-03: AUDIT-vibecode.md only; no spec, no other file."""
+        """VA-03: AUDIT-vibecode.md, and only SPEC-vib-* as specs (E-A2); no other file."""
         repo = self.tmp
         self.assertEqual(audit.check_writable("vibecode-audit", repo, repo / "AUDIT-vibecode.md"), "AUDIT-vibecode.md")
         for bad in ("specs/SPEC-leg-01-x.md", "ROADMAP-legacy.md", "src/app.js", ".gitignore"):
             with self.assertRaises(audit.AuditUsage):
                 audit.check_writable("vibecode-audit", repo, repo / bad)
-        with self.assertRaises(audit.AuditUsage):
-            audit.write_spec("vibecode-audit", repo, {}, SECTIONS, 1, "x")
+        with self.assertRaises(audit.AuditUsage):      # incomplete judgement sections are refused
+            audit.write_spec("vibecode-audit", repo, {"id": "ACC-01", "severity": "major", "title": "t"}, {}, 1, "x")
 
     def test_va04_occurrences_capped_at_five_with_the_real_count(self):
         """VA-04: 5 occurrences kept, count never below what was listed, sampled as soon as some are left out."""

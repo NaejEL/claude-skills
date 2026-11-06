@@ -4,54 +4,41 @@ Personal global [Claude Code](https://code.claude.com/docs) skills, versioned so
 
 ## Install
 
-Two routes coexist during version 2.0.x. **Do not use both together**: each skill would appear twice.
-
-**Route 1 — the `harness` plugin (recommended).** The repository is its own marketplace (`.claude-plugin/marketplace.json`, source `./`):
+The `harness` plugin is the only install route. The repository is its own marketplace (`.claude-plugin/marketplace.json`, source `./`):
 
 ```bash
 claude plugin marketplace add <repository-path-or-url>
 claude plugin install harness@harness
 ```
 
-The skills are exposed as `/harness:<skill>`; the short form (`/ship-pr`) works too. The plugin cache is keyed by `version` (`.claude-plugin/plugin.json`): any change under `skills/` requires a `version` bump, otherwise `claude plugin update` answers "already at the latest version". A guard checks this (`harness.py plugin version-guard`, the `plugin-guard` scenario of `ci/test-harness.*`). For development: `claude --plugin-dir <repository>`. `ripgrep` is not installed up front: `code-index` offers to install it itself.
+The skills are exposed as `/harness:<skill>`; the short form (`/ship-pr`) works too. For development: `claude --plugin-dir <repository>`.
 
-**Route 2 — links (deprecated, removed in the next version).** `install_skills.*` prints a removal warning. To switch to the plugin, first remove the links, **only those the installer created towards this repository** (a foreign link or a real folder is never touched):
+The plugin cache is keyed by `version` (`.claude-plugin/plugin.json`): any change under `skills/` requires a `version` bump, otherwise `claude plugin update` answers "already at the latest version". A guard checks this (`harness.py plugin version-guard`, the `plugin-guard` scenario of `ci/test-harness.*`).
+
+`ripgrep`, required by `code-index`, is installed by `/code-index` on first use (it asks first).
+
+### Migrating from the link install
+
+Earlier versions linked each skill into `~/.claude/skills` with `install_skills.*` (removed in 3.0.0). Remove those links before installing the plugin, otherwise each skill appears twice. The commands below remove **only** the links that point into this clone and never follow them; a foreign link or a real folder is left alone. Replace `<clone>` with the path of this repository.
 
 ```powershell
-.\install_skills.ps1 -Unlink
+# Windows (PowerShell)
+$skills = '<clone>\skills\'   # keep the trailing backslash: a sibling folder such as skills-x must not match
+Get-ChildItem "$HOME\.claude\skills" -Force | Where-Object { $_.LinkType } | ForEach-Object {
+  $target = @($_.Target)[0]
+  if ($target -and $target.StartsWith($skills, [StringComparison]::OrdinalIgnoreCase)) {
+    [System.IO.Directory]::Delete($_.FullName, $false)
+  }
+}
 ```
 
 ```bash
-./install_skills.sh --unlink
+# Linux / macOS
+clone=<clone>
+find ~/.claude/skills -maxdepth 1 -type l | while read -r l; do
+  case "$(readlink "$l")" in "$clone"/skills/*) rm "$l" ;; esac
+done
 ```
-
-### Installing by links
-
-Clone the repository, then link the skills into `~/.claude/skills`:
-
-```powershell
-# Windows (junctions, no admin rights)
-.\install_skills.ps1
-```
-
-```bash
-# Linux / macOS (symbolic links)
-./install_skills.sh
-```
-
-The scripts are idempotent: running them again after a `git pull` or after adding a skill breaks nothing. The skills are available in any new Claude Code session.
-
-They also install the **external tools** the skills need — today the only one is **ripgrep**, required by `code-index` — by detecting the machine's package manager: `winget`, then `scoop`, then `chocolatey` on Windows; `brew` (or MacPorts) on macOS; `apt`, `dnf`, `paru`/`yay`/`pacman`, `zypper`, `apk`, `xbps`, `nix` on Linux; `cargo install` as a last resort. The session's `PATH` is refreshed after the installation. If nothing succeeds, the skills stay installed and the script explains what to do, without failing.
-
-```powershell
-.\install_skills.ps1 -SkipTools   # link the skills without touching packages
-```
-
-```bash
-./install_skills.sh --skip-tools
-```
-
-Package manager detection is **factored out** and independent of ripgrep. To add a tool tomorrow: one entry in `tool_package` (bash) or `Get-ToolPackage` (PowerShell), giving the package identifier per manager, then one `ensure_tool` / `Install-ToolIfMissing` line in the "External tools" section.
 
 ## Skills
 
@@ -267,7 +254,7 @@ Each equipped project carries a **versioned** `.claude/harness.json` stamp: vers
 
 ## The `skills/_core/` core
 
-`skills/_core/` is not a skill (it has no `SKILL.md`): it is the shared deterministic core, in standard-library Python (≥ 3.9), exposed by a single `harness.py` CLI and tested by `py -3 -B -m unittest discover -s skills/_core/tests` (or `python3`). It carries what is not a matter of judgement — parsing of verdict JSON blocks, iteration and round counters, retry of a dead agent, file merges, `ship-pr`'s `gh`/`git` sequences, and for all skills: the **gate** primitive (autonomy policy, gate catalogue, headless fallback), the single **finding** schema (adapters, validator, conversions to spec, note or comment) with its local project registry **`.claude/findings.jsonl`** (excluded from git, one line per finding), **stack** detection and its bounds, **tshirt** sizes and sorts, per-role models (`.claude/models.json`, with migration from `lab-models.json`), the common audit engine — and writes the cycle journal `.harness/runs/<skill>-<timestamp>.jsonl`, excluded from git. The install script links it like the skills, as `~/.claude/skills/_core`, where `ship-pr` calls it through `${CLAUDE_SKILL_DIR}/../_core`; `software-factory` copies it into each equipped project under `.claude/harness/` (with a `MANIFEST.json`, and `history.json` which recognises its successive states: `harness.py core history --check`), which the generated `/factory-run` and the CI call.
+`skills/_core/` is not a skill (it has no `SKILL.md`): it is the shared deterministic core, in standard-library Python (≥ 3.9), exposed by a single `harness.py` CLI and tested by `py -3 -B -m unittest discover -s skills/_core/tests` (or `python3`). It carries what is not a matter of judgement — parsing of verdict JSON blocks, iteration and round counters, retry of a dead agent, file merges, `ship-pr`'s `gh`/`git` sequences, and for all skills: the **gate** primitive (autonomy policy, gate catalogue, headless fallback), the single **finding** schema (adapters, validator, conversions to spec, note or comment) with its local project registry **`.claude/findings.jsonl`** (excluded from git, one line per finding), **stack** detection and its bounds, **tshirt** sizes and sorts, per-role models (`.claude/models.json`, with migration from `lab-models.json`), the common audit engine — and writes the cycle journal `.harness/runs/<skill>-<timestamp>.jsonl`, excluded from git. The plugin ships it next to the skills, where `ship-pr` calls it through `${CLAUDE_SKILL_DIR}/../_core`; `software-factory` copies it into each equipped project under `.claude/harness/` (with a `MANIFEST.json`, and `history.json` which recognises its successive states: `harness.py core history --check`), which the generated `/factory-run` and the CI call.
 
 ## Testing the harness
 
@@ -279,8 +266,6 @@ Two levels of tests:
 | Scenario | What it verifies |
 | --- | --- |
 | `install-fresh` | fresh install of `/software-factory` on a Python project |
-| `install-skills` | `install_skills.sh` / `.ps1` into a temporary `HOME` (links, idempotence, conflict) |
-| `install-unlink` | `--unlink` / `-Unlink` in a temporary `HOME`: only links to this repository are removed |
 | `plugin-guard` | plugin version guard (change under `skills/` without a `version` bump), effective name of a skill in both modes |
 | `plugin-validate` | `claude plugin validate .` (SKIP without `claude`) |
 | `upgrade-legacy` | `--upgrade` of a project installed the old way, out-of-block customisations kept |
@@ -298,4 +283,4 @@ Options: `--list [--verbose]`, `--scenario <id>` (repeatable), `--live`, `--keep
 
 ## Adding a skill
 
-Create `skills/<name>/SKILL.md` (frontmatter `name` + `description` minimum), rerun the install script, commit.
+Create `skills/<name>/SKILL.md` (frontmatter `name` + `description` minimum), bump `version` in `.claude-plugin/plugin.json`, commit.

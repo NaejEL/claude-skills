@@ -61,6 +61,21 @@ class LintTest(helpers.TempDirCase):
         self.assertEqual(res.returncode, 0)
         self.assertIn("not found", json.loads(res.stdout)["hookSpecificOutput"]["additionalContext"])
 
+    def test_hl02_a_lint_longer_than_the_hook_budget_is_killed_and_reported(self):
+        """HL-02: the lint is bounded by the hook budget (timeout_s 30 > budget): killed, reported, never orphaned."""
+        import time
+        (self.tmp / "lint_orphan.py").write_text(
+            "import time\ntime.sleep(3)\nopen('survived.txt', 'w').close()\n", encoding="utf-8")
+        self.configure({"glob": "src/*.py", "argv": [sys.executable, "lint_orphan.py", "{file}"], "timeout_s": 30})
+        started = time.monotonic()
+        res = phase4.hook("post-edit", self.payload, self.tmp,
+                          env={"HCORE_TEST_MODE": "1", "HCORE_HOOK_BUDGET_S": "1.6"})
+        self.assertLess(time.monotonic() - started, 3.0)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertIn("timed out", json.loads(res.stdout)["hookSpecificOutput"]["additionalContext"])
+        time.sleep(3.5)
+        self.assertFalse((self.tmp / "survived.txt").exists())
+
     def test_hl02_only_the_entries_that_match_the_file_run(self):
         """HL-02: a glob that does not match the edited file runs nothing."""
         self.configure({"glob": "**/*.js", "argv": [sys.executable, "lint_fail.py", "{file}"], "timeout_s": 5})

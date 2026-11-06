@@ -113,7 +113,7 @@ class RepoFactoryTest(unittest.TestCase):
         core with the retained interpreter, bash -n, ci/test-harness, no __pycache__."""
         for name in ("factory-builder", "factory-verifier"):
             body = text(AGENTS / ("%s.md" % name))
-            self.assertIn("bash -n install_skills.sh", body, name)
+            self.assertIn("bash -n", body, name)
             self.assertIn("`%s`" % UNITTEST, body, name)
             self.assertIn("bash ci/test-harness.sh", body, name)
             self.assertIn("__pycache__", body, name)
@@ -192,13 +192,11 @@ class RepoFactoryTest(unittest.TestCase):
             self.assertEqual(res.returncode, 0, res.stderr)
 
     def test_uf07_ca31_repository_rules_kept(self):
-        """UF-07, CA-31: never run install_skills.* (Builder and Verifier house rules); the
-        Verifier judges the .sh / .ps1 pair by reading. The 4.0 house rules replaced the
-        accent and equivalence wording with the English-code rule."""
+        """UF-07, CA-31: never write into the real ~/.claude/ (Builder and Verifier house rules). The
+        installers are gone, so the .sh / .ps1 pair rule is gone too; the English-code rule stays."""
         for name in ("factory-builder", "factory-verifier"):
             body = text(AGENTS / ("%s.md" % name))
-            self.assertRegex(body, r"\*\*Never\*\* run `install_skills\.sh` or `install_skills\.ps1`", name)
-        self.assertRegex(text(AGENTS / "factory-verifier.md"), "consistency between the two")
+            self.assertRegex(body, r"\*\*Never\*\* write into the real `~/\.claude/`", name)
         self.assertRegex(text(AGENTS / "factory-builder.md"),
                          "Code, comments, strings and Markdown prose in English")
 

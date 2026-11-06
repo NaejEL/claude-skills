@@ -52,6 +52,41 @@ class EffectiveName(unittest.TestCase):
         self.assertEqual(plugin.effective_name("x", str(self.tmp / "skills" / "y"), {})["name"], "x")
 
 
+class CorePath(unittest.TestCase):
+    def setUp(self):
+        self.tmp = Path(tempfile.mkdtemp(prefix="hcore-plugin-"))
+        self.addCleanup(shutil.rmtree, str(self.tmp), True)
+
+    def touch(self, *parts):
+        path = self.tmp.joinpath(*parts)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+
+    def test_pl04_an_equipped_project_gets_its_own_copy_never_the_core_folder(self):
+        self.touch("repo", ".claude", "harness", "harness.py")
+        self.touch("links", "skills", "_core", "harness.py")
+        out = plugin.core_path(str(self.tmp / "repo"), str(self.tmp / "links" / "skills" / "audit"), {})
+        self.assertEqual(out["mode"], "project")
+        self.assertTrue(out["path"].endswith("repo/.claude/harness/harness.py"))
+        self.assertNotIn("_core", out["path"])
+
+    def test_pl04_the_plugin_runs_its_own_core(self):
+        write_manifest(self.tmp / "plug")
+        self.touch("plug", "skills", "_core", "harness.py")
+        self.touch("repo", ".claude", "harness", "harness.py")
+        out = plugin.core_path(str(self.tmp / "repo"), str(self.tmp / "plug" / "skills" / "audit"), {})
+        self.assertEqual(out["mode"], "plugin")
+        self.assertTrue(out["path"].endswith("plug/skills/_core/harness.py"))
+
+    def test_pl04_a_bare_project_falls_back_to_the_core_beside_the_skill_and_nothing_else_is_an_error(self):
+        self.touch("links", "skills", "_core", "harness.py")
+        skill = str(self.tmp / "links" / "skills" / "audit")
+        out = plugin.core_path(str(self.tmp / "bare"), skill, {})
+        self.assertEqual(out["mode"], "skill")
+        with self.assertRaises(ValueError):
+            plugin.core_path(str(self.tmp / "bare"), str(self.tmp / "nowhere" / "audit"), {})
+
+
 class VersionSource(unittest.TestCase):
     def setUp(self):
         self.tmp = Path(tempfile.mkdtemp(prefix="hcore-plugin-"))
@@ -99,6 +134,27 @@ class Guard(unittest.TestCase):
         self.assertEqual((stale["ok"], stale["files"]), (False, ["skills/a/SKILL.md"]))
         write_manifest(self.tmp, version="1.2.4")
         self.assertEqual(plugin.version_guard(self.tmp)["status"], "bumped")
+
+    def test_pl03_the_baseline_is_the_last_change_of_the_version_value_and_a_decrease_fails(self):
+        """PL-03: another manifest line holding "version" does not move the baseline; a lower version is a failure."""
+        write_manifest(self.tmp)
+        (self.tmp / "skills" / "a").mkdir(parents=True)
+        (self.tmp / "skills" / "a" / "SKILL.md").write_text("one\n", encoding="utf-8")
+        self.git("init", "-q")
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "v1.2.3")
+        first = plugin.version_guard(self.tmp)["base"]
+        (self.tmp / "skills" / "a" / "SKILL.md").write_text("two\n", encoding="utf-8")
+        write_manifest(self.tmp, description="mentions the version field")     # a "version" substring, same value
+        self.git("add", "-A")
+        self.git("commit", "-q", "-m", "description only")
+        self.assertEqual(plugin.version_guard(self.tmp)["base"], first)        # the baseline did not move
+        self.assertEqual(plugin.version_guard(self.tmp)["files"], ["skills/a/SKILL.md"])   # still changed since v1.2.3
+        write_manifest(self.tmp, version="1.2.2")
+        lower = plugin.version_guard(self.tmp)
+        self.assertEqual((lower["ok"], lower["status"]), (False, "decreased"))
+        write_manifest(self.tmp, version="1.10.0")
+        self.assertEqual((plugin.version_guard(self.tmp)["ok"], plugin.version_guard(self.tmp)["status"]), (True, "bumped"))
 
     def test_pl03_no_manifest_or_no_git_is_not_a_failure(self):
         self.assertEqual(plugin.version_guard(self.tmp)["status"], "no_plugin")

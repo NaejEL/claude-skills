@@ -22,8 +22,8 @@ The deterministic rules are Python code (standard library, ≥ 3.9) in `${CLAUDE
 
 - **No placeholder**: every generated file is complete and operational (no TODO, no pseudo-code, no invented command). Every command written in a prompt or script comes from detection, never from a guess.
 - **Merge, never overwrite**: `.claude/settings.json`, `.vscode/tasks.json` and `.gitignore` are created or merged by the core (additive union, never hand-edited). An existing unreadable file makes the command fail without modifying anything.
-- **Generated files** (SF-04): write each content as is with the Write tool under `.harness/runs/`, then `K sf install --dest <path> --source <this file>`; never through stdin or the shell (the content carries `$ARGUMENTS`, backticks, apostrophes). The core creates, recognizes the identical, or returns `personnalisé-conservé` (to be reported); it deletes the transit file as soon as it reads it.
-- **Idempotence**: relaunching destroys nothing. An added profile writes only its files, its orchestrator block and the union of its entries (EP-05); another profile's files are returned `identique` or `personnalisé-conservé`.
+- **Generated files** (SF-04): write each content as is with the Write tool under `.harness/runs/`, then `K sf install --dest <path> --source <this file>`; never through stdin or the shell (the content carries `$ARGUMENTS`, backticks, apostrophes). The core creates, recognizes the identical, or returns `customized-kept` (to be reported); it deletes the transit file as soon as it reads it.
+- **Idempotence**: relaunching destroys nothing. An added profile writes only its files, its orchestrator block and the union of its entries (EP-05); another profile's files are returned `identique` or `customized-kept`.
 
 ## Phase 1 — Profiles (SC, AR, EP-02, EP-03)
 

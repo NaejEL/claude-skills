@@ -290,6 +290,62 @@ class UpgradeLegacyTest(helpers.TempDirCase):
                                            now=uf.NOW + timedelta(minutes=1))["changes"], [])
         self.assertTrue(any(c["kind"] == "local" for c in res["changes"]))
 
+    def test_up_a_legacy_read_only_agent_keeps_its_tools_line_outside_the_block(self):
+        """FU-05: code-index never touches the out-of-block `tools:` line of a legacy file; only the rgkb block moves."""
+        rel = ".claude/agents/factory-planner.md"
+        uf.plan_and_apply(self.root, upgrade.SF, self.info)
+        uf.write(self.root, rel, uf.legacy_agent("factory-planner", "Read, Glob, Grep", rgkb=True))
+        plan = upgrade.build_plan(self.root, upgrade.CI, self.info, uf.CORE, None, None, False, uf.INTERPRETER, (),
+                                  "scout", uf.NOW, None, uf.ASSETS)
+        changed = [c for c in plan["changes"] if c["file"] == rel]
+        self.assertEqual(len(changed), 1)
+        self.assertIn("\ntools: Read, Glob, Grep\n", changed[0]["after"])
+        self.assertNotIn("mcp__rgkb__search", changed[0]["after"].split("<!-- rgkb:debut -->")[0])
+
+    def test_up05_a_conversion_candidate_changed_since_the_plan_is_refused(self):
+        """UP-05: at apply, a candidate to convert is re-checked against the sha recorded in the plan."""
+        plan = upgrade.build_plan(self.root, upgrade.SF, self.info, uf.CORE, None, None, False, uf.INTERPRETER, (),
+                                  "scout", uf.NOW, None, uf.ASSETS)
+        self.assertTrue(plan["candidates"])
+        cand = plan["candidates"][0]["file"]
+        files = upgrade.write_plan(self.root, plan, uf.NOW)
+        uf.write(self.root, cand, uf.read(self.root, cand) + "\nlate edit\n")
+        before = uf.tree(self.root)
+        with self.assertRaises(Stop):
+            upgrade.apply_plan(self.root, self.root / files["plan"], {"files": {cand: "convert"}}, uf.NOW)
+        self.assertEqual(uf.tree(self.root), before)
+
+    def test_up08_code_index_is_compared_to_its_own_tool_version(self):
+        """UP-08: the stamp of code-index holds its tool version: an up-to-date install is not `behind` the core."""
+        uf.plan_and_apply(self.root, upgrade.SF, self.info)
+        uf.plan_and_apply(self.root, upgrade.CI, self.info)
+        again = upgrade.build_plan(self.root, upgrade.CI, dict(self.info, commit=None), uf.CORE, None, None, False,
+                                   uf.INTERPRETER, (), "scout", uf.NOW + timedelta(minutes=1), None, uf.ASSETS)
+        self.assertEqual(again["lag"]["status"], "up_to_date")
+        self.assertEqual(upgrade._guard_direction({"commit": None, "describe": "d", "core_version": "0.9.0"},
+                                                  dict(self.info, commit=None), None, "1.0.1")["status"], "behind")
+        with self.assertRaises(Stop):
+            upgrade._guard_direction({"commit": None, "describe": "d", "core_version": "2.0.0"},
+                                     dict(self.info, commit=None), None, "1.0.1")
+
+    def test_up_no_upgrade_tmp_file_survives_an_exception(self):
+        """UP-05: a failure between the temporary write and the replace leaves no *.upgrade-tmp behind."""
+        target = self.root / "out" / "a.txt"
+        with mock.patch("os.replace", side_effect=OSError("injected")):
+            with self.assertRaises(OSError):
+                upgrade._write_file(target, "text")
+        self.assertEqual(list((self.root / "out").glob("*")), [])
+
+    def test_mi02_migrating_registries_again_does_not_rewrite_findings(self):
+        """MI-02: when findings.jsonl already holds the merged content, no new content is proposed."""
+        from hcore import migrate
+        text, migrations = migrate.registries_text(self.root, set(), "2026-11-01T10:00:00")
+        self.assertIsNotNone(text)
+        self.assertEqual(len(migrations), 1)
+        uf.write(self.root, ".claude/findings.jsonl", text)
+        again, migrations = migrate.registries_text(self.root, set(), "2026-11-01T10:00:00")
+        self.assertIsNone(again)
+
     def test_cx18_a_newer_project_rgkb_is_kept(self):
         """CX-18: a project TOOL_VERSION above the asset's is kept and reported, without stop."""
         uf.plan_and_apply(self.root, upgrade.SF, self.info)

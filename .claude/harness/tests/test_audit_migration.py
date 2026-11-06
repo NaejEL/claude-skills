@@ -71,7 +71,7 @@ class MigrationTest(helpers.TempDirCase):
         self.assertEqual(len(imports), 3)
         first = self.assemble(blocks, imports)
         text = (self.repo / "AUDIT.md").read_bytes()
-        self.assertEqual(first["state"], "créé")
+        self.assertEqual(first["state"], "created")
         body = text.decode("utf-8")
         self.assertEqual(body.count("<!-- harness:import "), 3)
         self.assertEqual(body.count("Imported from: "), 3)
@@ -84,7 +84,7 @@ class MigrationTest(helpers.TempDirCase):
             again_blocks.append((skill, unified.slice_of(body, skill)))
         self.assertEqual(again_imports, [])
         second = self.assemble(again_blocks, again_imports)
-        self.assertEqual(second["state"], "identique")
+        self.assertEqual(second["state"], "identical")
         self.assertEqual((self.repo / "AUDIT.md").read_bytes(), text)
         for name, content in self.before.items():
             self.assertEqual((self.repo / name).read_bytes(), content, name)

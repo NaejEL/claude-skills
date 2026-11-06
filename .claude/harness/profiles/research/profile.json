@@ -246,15 +246,15 @@
         "problemMatcher": []
       },
       {
-        "label": "Lab: nouvelle expérience (session)",
+        "label": "Lab: new experiment (session)",
         "type": "shell",
         "command": "echo 'Open Claude Code and type: /lab-run \"<your question>\"  or  /lab-run suivant'",
         "problemMatcher": []
       }
     ],
     "test_task": {
-      "label": "Lab: tests unitaires",
-      "before": "Lab: nouvelle expérience (session)"
+      "label": "Lab: unit tests",
+      "before": "Lab: new experiment (session)"
     }
   },
   "ci": {

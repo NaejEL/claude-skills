@@ -322,11 +322,11 @@ class ConversionTest(helpers.TempDirCase):
         spath.write_text(json.dumps(self.sections()), encoding="utf-8")
         args = ["finding", "spec", "--finding", str(fpath), "--sections", str(spath), "--prefix", "leg",
                 "--number", "1", "--dest", "specs/SPEC-leg-01-secret.md"]
-        self.assertEqual(check_ok(self, helpers.harness(args, self.tmp))["specs/SPEC-leg-01-secret.md"], "créé")
+        self.assertEqual(check_ok(self, helpers.harness(args, self.tmp))["specs/SPEC-leg-01-secret.md"], "created")
         dest = self.tmp / "specs" / "SPEC-leg-01-secret.md"
         dest.write_text("my own spec\n", encoding="utf-8")
         self.assertEqual(check_ok(self, helpers.harness(args, self.tmp))["specs/SPEC-leg-01-secret.md"],
-                         "personnalisé-conservé")
+                         "customized-kept")
         self.assertEqual(dest.read_text(encoding="utf-8"), "my own spec\n")
 
     def test_fd08_deliverable_texts_are_data_files(self):

@@ -16,7 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py\"; [ -f \"$f\" ] || exit 0; py -3 \"$f\" pre-edit; rc=$?; [ \"$rc\" -eq 2 ] && exit 2; exit 0",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py\"; [ -f \"$f\" ] || exit 0; if command -v py >/dev/null 2>&1 && [ \"$(py -3 -c 'import sys; sys.stdout.write(str(7))' 2>/dev/null)\" = 7 ]; then py -3 \"$f\" pre-edit; elif command -v python3 >/dev/null 2>&1 && [ \"$(python3 -c 'import sys; sys.stdout.write(str(7))' 2>/dev/null)\" = 7 ]; then python3 \"$f\" pre-edit; elif command -v python >/dev/null 2>&1 && [ \"$(python -c 'import sys; sys.stdout.write(str(7))' 2>/dev/null)\" = 7 ]; then python \"$f\" pre-edit; else echo \"harness hook skipped: no working Python interpreter (python3, python, py -3)\" >&2; exit 0; fi; rc=$?; [ \"$rc\" -eq 2 ] && exit 2; exit 0",
             "timeout": 10
           }
         ]
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py\"; [ -f \"$f\" ] || exit 0; py -3 \"$f\" pre-bash; rc=$?; [ \"$rc\" -eq 2 ] && exit 2; exit 0",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py\"; [ -f \"$f\" ] || exit 0; if command -v py >/dev/null 2>&1 && [ \"$(py -3 -c 'import sys; sys.stdout.write(str(7))' 2>/dev/null)\" = 7 ]; then py -3 \"$f\" pre-bash; elif command -v python3 >/dev/null 2>&1 && [ \"$(python3 -c 'import sys; sys.stdout.write(str(7))' 2>/dev/null)\" = 7 ]; then python3 \"$f\" pre-bash; elif command -v python >/dev/null 2>&1 && [ \"$(python -c 'import sys; sys.stdout.write(str(7))' 2>/dev/null)\" = 7 ]; then python \"$f\" pre-bash; else echo \"harness hook skipped: no working Python interpreter (python3, python, py -3)\" >&2; exit 0; fi; rc=$?; [ \"$rc\" -eq 2 ] && exit 2; exit 0",
             "timeout": 10
           }
         ]
@@ -38,7 +38,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py\"; [ -f \"$f\" ] || exit 0; py -3 \"$f\" post-edit; rc=$?; [ \"$rc\" -eq 2 ] && exit 2; exit 0",
+            "command": "f=\"$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py\"; [ -f \"$f\" ] || exit 0; if command -v py >/dev/null 2>&1 && [ \"$(py -3 -c 'import sys; sys.stdout.write(str(7))' 2>/dev/null)\" = 7 ]; then py -3 \"$f\" post-edit; elif command -v python3 >/dev/null 2>&1 && [ \"$(python3 -c 'import sys; sys.stdout.write(str(7))' 2>/dev/null)\" = 7 ]; then python3 \"$f\" post-edit; elif command -v python >/dev/null 2>&1 && [ \"$(python -c 'import sys; sys.stdout.write(str(7))' 2>/dev/null)\" = 7 ]; then python \"$f\" post-edit; else echo \"harness hook skipped: no working Python interpreter (python3, python, py -3)\" >&2; exit 0; fi; rc=$?; [ \"$rc\" -eq 2 ] && exit 2; exit 0",
             "timeout": 60
           }
         ]

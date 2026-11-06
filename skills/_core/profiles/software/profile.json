@@ -260,7 +260,7 @@
       ],
       "plan": "attack",
       "deliverable_section": "attack",
-      "spec_prefix": null,
+      "spec_prefix": "vib",
       "cap_option": "--max-findings",
       "cap": 30,
       "cap_default": 15,

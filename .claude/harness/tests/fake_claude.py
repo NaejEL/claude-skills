@@ -98,6 +98,9 @@ def main(argv):
     os.makedirs(runs_dir, exist_ok=True)
     with open(os.path.join(runs_dir, "%s-simulated.jsonl" % skill), "a", encoding="utf-8") as fh:
         fh.write("{}\n")
+    if not scenario.get("norun") and os.environ.get("HARNESS_CHAIN_ID"):    # a real child records its chain id in its run
+        with open(os.path.join(runs_dir, "%s-simulated.state.json" % skill), "w", encoding="utf-8") as fh:
+            json.dump({"chain_id": os.environ["HARNESS_CHAIN_ID"], "status": "failed" if code else "success"}, fh)
     entry["end"] = time.time()
     entry["exit"] = code
     log(entry)

@@ -15,6 +15,32 @@ def h(root, *args):
 
 
 class ArgumentsTest(helpers.TempDirCase):
+    def test_ep01_the_profiles_are_discovered_once(self):
+        """EP-01: `sf args` reads the profile directory once, whatever the number of names, and the error
+        path of an unknown profile lists the known ones from that same read."""
+        import argparse
+        import contextlib
+        import io
+        from unittest import mock
+        import harness
+        real = profiles.discover
+        for text in ('--profile "software;research"', "--profile zzz;software"):
+            calls = []
+
+            def counted(*a, **k):
+                calls.append(1)
+                return real(*a, **k)
+
+            src = str(self.tmp / helpers.write_output(self.tmp, "sf-arguments.txt", text))
+            ns = argparse.Namespace(root=str(self.tmp), arguments_file=src, via=None)
+            with mock.patch.object(profiles, "discover", side_effect=counted), \
+                    contextlib.redirect_stdout(io.StringIO()):
+                try:
+                    harness.cmd_sf_args(ns)
+                except harness.Usage as exc:
+                    self.assertIn("zzz", str(exc))
+            self.assertEqual(len(calls), 1, text)
+
     def args(self, text):
         src = helpers.write_output(self.tmp, "sf-arguments.txt", text)
         return h(self.tmp, "sf", "args", "--root", str(self.tmp), "--arguments-file", src)

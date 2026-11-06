@@ -173,28 +173,28 @@ class ModelBlockTest(helpers.TempDirCase):
 
     def test_x1_install_agent_states(self):
         dest = self.tmp / ".claude" / "agents" / "factory-verifier.md"
-        self.assertEqual(fusion.install_agent(dest, AGENT, "inherit"), {"state": "créé", "model_block": "written"})
+        self.assertEqual(fusion.install_agent(dest, AGENT, "inherit"), {"state": "created", "model_block": "written"})
         self.assertEqual(models.model_in_block(dest.read_text(encoding="utf-8")), "inherit")
-        self.assertEqual(fusion.install_agent(dest, AGENT, "inherit")["state"], "identique")
+        self.assertEqual(fusion.install_agent(dest, AGENT, "inherit")["state"], "identical")
         # models.json changed: only the block is regenerated.
-        self.assertEqual(fusion.install_agent(dest, AGENT, "haiku"), {"state": "fusionné", "model_block": "updated"})
+        self.assertEqual(fusion.install_agent(dest, AGENT, "haiku"), {"state": "merged", "model_block": "updated"})
         self.assertEqual(dest.read_text(encoding="utf-8"), models.with_model_block(AGENT, "haiku"))
         # Customized outside the block: its text kept, its block regenerated, hence
         # a state of its own (the file was written).
         dest.write_text(dest.read_text(encoding="utf-8") + "My own rule.\n", encoding="utf-8")
         self.assertEqual(fusion.install_agent(dest, AGENT, "opus"),
-                         {"state": "bloc-mis-à-jour", "model_block": "updated"})
+                         {"state": "block-updated", "model_block": "updated"})
         self.assertIn("My own rule.", dest.read_text(encoding="utf-8"))
         self.assertEqual(models.model_in_block(dest.read_text(encoding="utf-8")), "opus")
         # Customized and block already up to date: nothing written, customized-kept.
         written = dest.read_bytes()
         self.assertEqual(fusion.install_agent(dest, AGENT, "opus"),
-                         {"state": "personnalisé-conservé", "model_block": "unchanged"})
+                         {"state": "customized-kept", "model_block": "unchanged"})
         self.assertEqual(dest.read_bytes(), written)
         # Generated before X1 (no block): left untouched.
         dest.write_text(AGENT, encoding="utf-8")
         self.assertEqual(fusion.install_agent(dest, AGENT, "opus"),
-                         {"state": "personnalisé-conservé", "model_block": "absent"})
+                         {"state": "customized-kept", "model_block": "absent"})
         self.assertEqual(dest.read_text(encoding="utf-8"), AGENT)
 
     def test_x1_cli_install_with_model_role_reads_models_json(self):
@@ -203,7 +203,7 @@ class ModelBlockTest(helpers.TempDirCase):
         src = helpers.write_output(self.tmp, "factory-verifier.md", AGENT)
         res = check_ok(self, helpers.harness(["sf", "install", "--dest", ".claude/agents/factory-verifier.md",
                                               "--source", src, "--model-role", "factory.verifier"], self.tmp))
-        self.assertEqual((res[".claude/agents/factory-verifier.md"], res["model"]), ("créé", "haiku"))
+        self.assertEqual((res[".claude/agents/factory-verifier.md"], res["model"]), ("created", "haiku"))
         self.assertFalse((self.tmp / src).exists())
         installed = (self.tmp / ".claude" / "agents" / "factory-verifier.md").read_text(encoding="utf-8")
         self.assertEqual(models.model_in_block(installed), "haiku")

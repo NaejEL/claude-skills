@@ -107,7 +107,7 @@ class StampTest(helpers.TempDirCase):
         self.assertEqual({i["id"] for i in merged["inputs"]}, {"factorySpec", "labProtocol"})
         labels = [t["label"] for t in merged["tasks"]]
         self.assertEqual(len(labels), len(set(labels)))
-        self.assertIn("Lab: tests unitaires", labels)
+        self.assertIn("Lab: unit tests", labels)
         # EP-05: an apply with the second profile leaves the settings of the first one.
         self.assertEqual(h(self.tmp, "sf", "apply", "--root", str(self.tmp), "--stacks", "python", "--profiles",
                            "software").returncode, 0)

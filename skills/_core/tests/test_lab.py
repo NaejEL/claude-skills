@@ -47,14 +47,28 @@ class InstallTest(helpers.TempDirCase):
         tasks = json.loads(read(self.tmp / ".vscode" / "tasks.json"))
         self.assertEqual([i["id"] for i in tasks["inputs"]], ["labProtocol"])
         self.assertEqual([t["label"] for t in tasks["tasks"]],
-                         ["Lab: run headless", "Lab: run headless (YOLO)", "Lab: tests unitaires",
-                          "Lab: nouvelle expérience (session)"])
+                         ["Lab: run headless", "Lab: run headless (YOLO)", "Lab: unit tests",
+                          "Lab: new experiment (session)"])
         self.assertEqual(tasks["tasks"][0]["windows"]["command"], "pwsh -File ci/lab.ps1 ${input:labProtocol}")
         self.assertEqual(tasks["tasks"][1]["windows"]["command"], "pwsh -File ci/lab.ps1 ${input:labProtocol} -Yolo")
         self.assertEqual(read(self.tmp / ".gitignore"), "lab-logs/\nexperiments/results/\n.harness/runs/\n.harness/tmp/\n")
         snapshot = {p.name: read(p) for p in self.tmp.rglob("*") if p.is_file()}
         self.assertEqual(set(lab.apply(self.tmp, "py -3 -m pytest -q", "py -3 -m pytest -q").values()), {fusion.IDENTICAL})
         self.assertEqual(snapshot, {p.name: read(p) for p in self.tmp.rglob("*") if p.is_file()})
+
+    def test_al02_the_french_labels_already_written_are_the_same_tasks(self):
+        """AL-02: a tasks.json written with the French labels gets no duplicate of the English ones."""
+        lab.apply(self.tmp, "py -3 -m pytest -q", "py -3 -m pytest -q")
+        path = self.tmp / ".vscode" / "tasks.json"
+        tasks = json.loads(read(path))
+        french = {"Lab: unit tests": "Lab: tests unitaires", "Lab: new experiment (session)": "Lab: nouvelle expérience (session)"}
+        for task in tasks["tasks"]:
+            task["label"] = french.get(task["label"], task["label"])
+        write(path, json.dumps(tasks))
+        lab.apply(self.tmp, "py -3 -m pytest -q", "py -3 -m pytest -q")
+        self.assertEqual([t["label"] for t in json.loads(read(path))["tasks"]],
+                         ["Lab: run headless", "Lab: run headless (YOLO)", "Lab: tests unitaires",
+                          "Lab: nouvelle expérience (session)"])
 
     def test_al02_existing_settings_and_gitignore_are_completed_not_replaced(self):
         """AL-01, AL-03: existing keys, comments and lines are preserved; the missing ones are added."""
@@ -68,7 +82,7 @@ class InstallTest(helpers.TempDirCase):
 
     def test_al02_without_a_test_command_there_is_no_test_task(self):
         """AL-02: the test task exists only with a detected test command."""
-        self.assertNotIn("Lab: tests unitaires", [t["label"] for t in lab.lab_tasks()])
+        self.assertNotIn("Lab: unit tests", [t["label"] for t in lab.lab_tasks()])
 
     def test_al04_generated_ci_scripts_are_never_overwritten(self):
         """AL-04: a different existing script is customized-kept and untouched."""
@@ -149,6 +163,17 @@ class CiScriptTest(helpers.TempDirCase):
         proc, log = self.run_script(["experiments/EXP-1.md"], "Statut : PROPOSE\n")
         self.assertEqual(proc.returncode, 1)
         self.assertFalse(log.exists())
+
+    def test_al07_only_the_exact_first_status_line_counts(self):
+        """AL-07: `Statut : PRE-ENREGISTRE` elsewhere in the file, or a longer status line, does not pass."""
+        for text in ("Statut : PROPOSE\nnote: Statut : PRE-ENREGISTRE\n", "Statut : PRE-ENREGISTRE ET PLUS\n",
+                     "Status: PROPOSED\nStatus: PRE-REGISTERED\n", "Statut : PROPOSE\n  Statut : PRE-ENREGISTRE\n"):
+            proc, log = self.run_script(["experiments/EXP-1.md"], text)
+            self.assertEqual(proc.returncode, 1, text)
+            self.assertFalse(log.exists(), text)
+        for text in ("# EXP\n  Status: PRE-REGISTERED  \r\n", "Statut : PRE-ENREGISTRE\n"):
+            proc, _log = self.run_script(["experiments/EXP-1.md"], text)
+            self.assertEqual(proc.returncode, 7, text)
 
     def test_al07_call_max_turns_allow_list_and_exit_code(self):
         """AL-07: --max-turns 150, allow list with the interpreter, lab-logs/, exit code propagated."""

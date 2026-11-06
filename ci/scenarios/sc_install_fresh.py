@@ -1,6 +1,7 @@
 # install-fresh: installation of /software-factory on toy-py, replayed (9 assertions).
 
 import json
+import re
 from collections import OrderedDict
 from pathlib import Path
 
@@ -43,7 +44,7 @@ def run(ctx):
     ctx.check(3, same == [] and installed == version, "differences=%s core=%s installed=%s" % (same[:5], version, installed))
 
     got = {
-        "settings": ordered(ctx.read(".claude/settings.json").replace(ctx.interp, "{PY}")),
+        "settings": ordered(_generic_hooks(ctx.read(".claude/settings.json"))),
         "tasks": ordered(ctx.read(".vscode/tasks.json")),
     }
     want = {
@@ -88,7 +89,7 @@ def run(ctx):
     hooks2 = ctx.json(ctx.k("hooks", "install", "--root", ".", "--py", ctx.interp), "second hooks install")
     status = ctx.git("status", "--porcelain")
     ctx.check(8, second.get("changes") == [] and check_core.returncode == 0
-              and all(v not in ("créé", "fusionné") for v in hooks2.get("entries", {}).values())
+              and all(v not in ("created", "merged") for v in hooks2.get("entries", {}).values())
               and status.strip() == "",
               "changes=%s core_check=%s hooks=%s status=%r" % (len(second.get("changes", [])), check_core.returncode,
                                                                hooks2, status.strip()))
@@ -98,6 +99,20 @@ def run(ctx):
     lines = ctx.journal(journal)
     ctx.check(9, valid.returncode == 0 and any(l.get("agent") == "harness-scout" for l in lines),
               "validate=%d agents=%s" % (valid.returncode, [l.get("agent") for l in lines if "agent" in l]))
+
+
+def _generic_hooks(text):
+    """settings.json with each hook command's interpreter chain (detected interpreter, then the run-time
+    fallbacks python3, python, py -3: it depends on the machine) replaced by `{RUN <hook>}`."""
+    data = json.loads(text)
+    for entry in data.get("hooks", {}).get("PreToolUse", []):
+        for hook in entry.get("hooks", []):
+            command = hook.get("command", "")
+            chain = re.search(r"(?:if|elif) command -v .*?; else .*?exit 0; fi", command)
+            name = re.search(r'"\$f" ([a-z-]+);', command)
+            if chain and name:
+                hook["command"] = command.replace(chain.group(0), "{RUN %s}" % name.group(1))
+    return json.dumps(data)
 
 
 def _same_tree(a, b):

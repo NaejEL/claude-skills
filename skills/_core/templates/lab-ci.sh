@@ -42,7 +42,9 @@ if [ ! -f "$protocol" ]; then
     exit 1
 fi
 
-if ! grep -Eq "^[[:space:]]*(Status[[:space:]]*:[[:space:]]*PRE-REGISTERED|Statut[[:space:]]*:[[:space:]]*PRE-ENREGISTRE)" "$protocol"; then
+# The first status line, exactly as `labrun.entry` reads it (stripped, whole line).
+status_line="$(grep -i -m1 -E '^[[:space:]]*(status|statut)' "$protocol" | tr -d '\r' | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+if [ "$status_line" != "Status: PRE-REGISTERED" ] && [ "$status_line" != "Statut : PRE-ENREGISTRE" ]; then
     echo "Protocol not pre-registered: '$protocol' does not contain 'Status: PRE-REGISTERED' (or the French 'Statut : PRE-ENREGISTRE')." >&2
     echo "A CI cycle requires a protocol approved by the PI." >&2
     exit 1

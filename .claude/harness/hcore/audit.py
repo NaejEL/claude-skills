@@ -150,6 +150,7 @@ def _fill(p: Profile) -> Profile:
     prof, lens_set = profiles.find_set(_LENS_SET_OF[p.skill])
     units, lenses = profiles.lens_set_of(prof, lens_set["name"])
     return p._replace(
+        spec_prefix=lens_set.get("spec_prefix") or p.spec_prefix,     # SPEC-vib-* : declared by the vibecode set
         units=tuple(units),
         auditors=tuple(Auditor(l["name"], l.get("axis") or l["name"], l["prefix"]) for l in lenses),
         auditor_roles={l["name"]: l["model_role"] for l in lenses if l["model_role"] != "audit.auditor"})
@@ -311,7 +312,20 @@ def new_state(skill: str, parsed: Dict[str, Any], git_absent: bool, factory: boo
         "consolidated": None,
         "readjusted": 0,
         "audit_skill": p.skill,
+        "status": "running",
     }
+
+
+def close_failed(run: Path, exc: BaseException) -> None:
+    """A run opened by `audit start` that then failed on its input: status `failed`, with the reason
+    (never left `running` in .harness/runs/). A state that cannot be rewritten is left as it is."""
+    from . import runs   # local: runs imports the journal, which imports the gates
+    try:
+        state = runs.load_state(run)
+        state.update(status="failed", error=str(exc) or exc.__class__.__name__)
+        runs.save_state(run, state)
+    except (OSError, ValueError):
+        pass
 
 
 def _norm_file(path: str) -> str:

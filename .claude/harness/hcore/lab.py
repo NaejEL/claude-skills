@@ -73,12 +73,12 @@ def lab_tasks(test_command: Optional[str] = None, test_windows: Optional[str] = 
          "windows": {"command": "pwsh -File ci/lab.ps1 ${input:labProtocol} -Yolo"}, "problemMatcher": []},
     ]
     if test_command:
-        test: Dict[str, Any] = {"label": "Lab: tests unitaires", "type": "shell", "command": test_command,
+        test: Dict[str, Any] = {"label": "Lab: unit tests", "type": "shell", "command": test_command,
                                 "problemMatcher": []}
         if test_windows and test_windows != test_command:
             test["windows"] = {"command": test_windows}
         tasks.append(test)
-    tasks.append({"label": "Lab: nouvelle expérience (session)", "type": "shell",
+    tasks.append({"label": "Lab: new experiment (session)", "type": "shell",
                   "command": "echo '%s'" % REMINDER, "problemMatcher": []})
     return tasks
 

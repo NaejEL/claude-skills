@@ -42,6 +42,86 @@ class TableTest(helpers.TempDirCase):
             self.assertIsNotNone(hit, command)
             self.assertEqual(hit.name, "file-delete", command)
 
+    def test_hg02_globs_pass_only_under_the_scratch_folder(self):
+        """HG-02: a glob whose literal prefix is inside <root>/.harness/tmp/ is deletable; any other glob stays blocked."""
+        check = scope.deletable_factory(self.tmp, None)
+        for command in ("rm -rf .harness/tmp/*", "rm .harness/tmp/*.py", "rm -f ./.harness/tmp/sub/a?.txt",
+                        "rm %s/.harness/tmp/*" % self.tmp.as_posix()):
+            self.assertIsNone(guard.analyze(command, deletable=check), command)
+        self.assertIsNone(guard.analyze("Remove-Item .harness/tmp/* -Recurse -Force", powershell=True, deletable=check))
+        for command in ("rm -rf *", "rm src/*.py", "rm .harness/*", "rm .harness/tmp*", "rm .harness/tmp/../*",
+                        "rm .harness/tmp/.*", "rm .harness/tmp/..*", "rm .harness/tmp/[.][.]", "rm .harness/tmp/$X/*",
+                        "rm .harness/tmp/{a,b}*", "rm dist/*", "rm *.harness/tmp/x", "rm .harness/tmp/x/../../*"):
+            hit = guard.analyze(command, deletable=check)
+            self.assertIsNotNone(hit, command)
+            self.assertEqual(hit.name, "file-delete", command)
+
+    def test_hg03_a_heredoc_body_is_data_only_for_a_quoted_plain_delimiter_and_a_reader(self):
+        """HG-03: strict whitelist; the body is data only for `cat`/`tee`/`py`/`python`/`git commit -F -` with 'WORD'."""
+        check = scope.deletable_factory(self.tmp, None)
+        body = "git push --force origin main\nrm -rf /\n"
+        for opener, word in (("cat <<'EOF'", "EOF"), ('cat <<"EOF"', "EOF"), ("cat <<-'EOF'", "EOF"),
+                             ("cat > out.txt <<'EOF'", "EOF"), ("tee out.txt <<'EOF'", "EOF"),
+                             ("py -3 - <<'PY'", "PY"), ("python3 - <<'PY'", "PY"), ("python <<'PY'", "PY"),
+                             ("FOO=1 py - <<'PY'", "PY"), ("git commit -F - <<'EOF'", "EOF"),
+                             ("git commit --file=- <<'EOF'", "EOF"), ("git commit -F- <<'EOF'", "EOF"),
+                             ("cd x && cat <<'EOF'", "EOF")):
+            self.assertIsNone(guard.analyze("%s\n%s%s\n" % (opener, body, word), deletable=check), opener)
+        self.assertIsNone(guard.analyze("cat <<-'EOF'\n\t%s\tEOF\n" % body.replace("\n", "\n\t"), deletable=check))
+        self.assertIsNone(guard.analyze("cat <<'EOF'\r\n%sEOF\r\n" % body.replace("\n", "\r\n"), deletable=check))
+        for opener in ("bash <<'EOF'", "sh <<EOF", "cat <<'EOF' | sh", "cat <<EOF | bash", "sudo bash <<EOF",
+                       "cat <<EOF", "cat <<-EOF", 'cat <<"EOF" | tee x', "cat <<\\EOF", "cat <<'EOF' <<'TWO'",
+                       "git commit -m x <<'EOF'", "echo hi # <<'EOF'", "echo hi # <<EOF", "#<<EOF", "echo # note <<EOF",
+                       "sudo -u root bash <<EOF", "cat <<EOF | sudo -u root sh", "timeout 5 bash <<EOF", "bash<<EOF",
+                       "cat <<EOF | (sh)", "cat <<EOF | { sh; }", "cat <<EOF | ssh host sh", "bash -s -- -abc <<EOF",
+                       "source /dev/stdin <<EOF", ". /dev/stdin <<EOF", "source /dev/stdin <<'EOF'",
+                       "cat <<'EOF' > >(sh)", "cat <<'EOF' >(sh)", "tee >(bash) <<'EOF'", "cat <(true) <<'EOF'"):
+            self.assertIsNotNone(guard.analyze("%s\n%sEOF\n" % (opener, body), deletable=check), opener)
+        # an escaped or odd delimiter: the real terminator is found, what follows it is analysed
+        self.assertIsNotNone(guard.analyze("cat <<E\\OF\nx\nEOF\nrm -rf src\n", deletable=check))
+        self.assertIsNotNone(guard.analyze("cat <<E\\OF\n'\nEOF\nrm -rf src\n", deletable=check))
+        # the opening line and what follows the terminator are still analysed
+        self.assertIsNotNone(guard.analyze("cat <<'EOF' > x; git push -f\nhello\nEOF\n", deletable=check))
+        self.assertIsNotNone(guard.analyze("cat <<'EOF'\nhello\nEOF\ngit push -f\n", deletable=check))
+        self.assertIsNotNone(guard.analyze("cat <<EOF; rm -rf src\nhello\nEOF\n", deletable=check))
+        self.assertIsNone(guard.analyze("echo $((1<<2))\ngit status\n", deletable=check))
+        self.assertIsNotNone(guard.analyze("echo $((1<<2))\ngit push -f\n", deletable=check))
+
+    def test_hg03_an_unquoted_heredoc_body_is_analysed(self):
+        """HG-03: `$( )` and backticks run in an unquoted heredoc body; the body is analysed as commands."""
+        check = scope.deletable_factory(self.tmp, None)
+        for opener in ("cat <<EOF", "cat <<-EOF"):
+            self.assertIsNotNone(guard.analyze("%s\nhi $(git push -f)\nEOF\n" % opener, deletable=check), opener)
+            self.assertIsNotNone(guard.analyze("%s\nhi `git push -f` there\nEOF\n" % opener, deletable=check), opener)
+        self.assertIsNotNone(guard.analyze("cat <<EOF\n$(rm -rf /)\nEOF\n", deletable=check))
+        for opener in ("cat <<'EOF'", 'cat <<"EOF"'):
+            self.assertIsNone(guard.analyze("%s\nhi $(git push -f) `rm -rf /`\nEOF\n" % opener, deletable=check), opener)
+        self.assertIsNotNone(guard.analyze("cat <<EOF\ndon't $(rm -rf /)\nEOF\n", deletable=check))
+        self.assertIsNotNone(guard.analyze("bash <<EOF\nrm -rf /\nEOF\n", deletable=check))
+
+    def test_hg03_here_strings_fed_to_a_shell_or_source_are_commands(self):
+        """HG-03: `bash <<< 'cmd'` and `source <<< 'cmd'` run the string; `cat <<< 'cmd'` does not."""
+        check = scope.deletable_factory(self.tmp, None)
+        for command in ("bash <<< 'rm -rf x'", "sh <<<'git push -f'", 'bash -s <<< "rm -rf x"', "source <<< 'rm -rf x'"):
+            self.assertIsNotNone(guard.analyze(command, deletable=check), command)
+        for command in ("cat <<< 'rm -rf x'", "bash <<< 'echo hi'", "read x <<< 'git push -f'"):
+            self.assertIsNone(guard.analyze(command, deletable=check), command)
+
+    def test_hg03_the_real_hook_follows_the_whitelist(self):
+        """HG-03: through `hook.py pre-bash`, bypasses exit 2 and plain data heredocs exit 0."""
+        blocked = ("echo hi # <<EOF\nrm -rf src\nEOF\n", "cat <<E\\OF\nx\nEOF\nrm -rf src\n",
+                   "sudo -u root bash <<EOF\nrm -rf src\nEOF\n", "bash<<EOF\nrm -rf src\nEOF\n",
+                   "bash <<< 'rm -rf src'", "cat <<EOF\n$(rm -rf /)\nEOF\n", "cat <<'EOF' | sh\nrm -rf src\nEOF\n",
+                   "rm -rf .harness/tmp/../src")
+        for command in blocked:
+            res = phase4.hook("pre-bash", {"tool_name": "Bash", "tool_input": {"command": command}, "session_id": "s1"}, self.tmp)
+            self.assertEqual(res.returncode, 2, command)
+        passed = ("cat <<'EOF'\nrm -rf /\nEOF\n", "py -3 - <<'EOF'\nprint('rm -rf x')\nEOF\n",
+                  "git commit -F - <<'EOF'\nmention rm -rf\nEOF\n", "rm -rf .harness/tmp/x", "rm .harness/tmp/*.py")
+        for command in passed:
+            res = phase4.hook("pre-bash", {"tool_name": "Bash", "tool_input": {"command": command}, "session_id": "s1"}, self.tmp)
+            self.assertEqual(res.returncode, 0, command)
+
     def test_hg02_the_five_categories_and_the_compound_forms_are_covered(self):
         """HG-02, HG-03: the table holds the five categories, $( ), bash -c, git -C, PowerShell and the allowed deletions."""
         table = rows()
