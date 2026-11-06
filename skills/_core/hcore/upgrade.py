@@ -145,7 +145,7 @@ def layout_file(ctx: Ctx, rel: str, layout: render.Layout, convert_all: bool, ba
         ctx.manage(rel, "generated", after, layout)
         return
     alt = convert.converted(layout, before, cls, rest)
-    ctx.candidates.append({"file": rel, "class": cls, "alt": alt,
+    ctx.candidates.append({"file": rel, "class": cls, "alt": alt, "before_sha": sha_text(before),
                            "alt_entry": dict(kind="generated", blocks=render.block_hashes(alt, layout))})
     ctx.manage(rel, "legacy")
 
@@ -237,11 +237,13 @@ def _installed(data: Optional[Dict[str, Any]], skill: str, root: Path, core_dir:
     return {"commit": None, "describe": None, "core_version": None}
 
 
-def _guard_direction(installed: Dict[str, Any], repo: Dict[str, Any], run: Any) -> Dict[str, Any]:
-    """UP-08."""
+def _guard_direction(installed: Dict[str, Any], repo: Dict[str, Any], run: Any,
+                     current: str = CORE_VERSION) -> Dict[str, Any]:
+    """UP-08. `current` is the version of what is installed: the core for software-factory, the
+    code-index tool for code-index (its stamp holds `tool_version`, not a core version)."""
     result = version.lag(installed["commit"], repo.get("commit"), Path(repo.get("path") or "."),
-                         installed["core_version"], CORE_VERSION, run)
-    newer_core = installed["core_version"] and version.semver(installed["core_version"]) > version.semver(CORE_VERSION)
+                         installed["core_version"], current, run)
+    newer_core = installed["core_version"] and version.semver(installed["core_version"]) > version.semver(current)
     if result["status"] in ("ahead", "diverged") or newer_core:
         raise Stop("project installed by a newer harness (%s) than this repository (%s); "
                    "update claude-skills first (git pull)"
@@ -445,9 +447,7 @@ def _plan_ci(ctx: Ctx, data: Optional[Dict[str, Any]], assets: Path, interpreter
             content = contents[name]
             before = ctx.read(rel) or ""
             after = blocks.upsert_rgkb(before, content)
-            if not blocks.has_layout_blocks(before):          # legacy file: FU-05
-                if name in cx.READONLY_AGENTS:
-                    after = fusion.union_tools(after, cx.READ_TOOLS)
+            # A legacy file keeps its out-of-block `tools:` line: only the rgkb block is written.
             if after != before:
                 ctx.change(rel, "block", after)
             ctx.manage(rel, "legacy" if not blocks.has_layout_blocks(before) else "generated")
@@ -541,7 +541,8 @@ def build_plan(root: Path, skill: str, repo: Dict[str, Any], core_dir: Optional[
     if not equipped and not (skill == SF and requested):
         raise Stop("project not equipped: run /%s" % ("software-factory" if skill == SF else "code-index"))
     installed = _installed(data, skill, root, core_dir)
-    lag = _guard_direction(installed, repo, run) if equipped else {"status": "unknown", "commits": None}
+    current = CORE_VERSION if skill == SF else _asset_module(Path(assets) if assets else CODE_INDEX_ASSETS).TOOL_VERSION
+    lag = _guard_direction(installed, repo, run, current) if equipped else {"status": "unknown", "commits": None}
     ctx = Ctx(root, skill, repo, now or datetime.now(), run)
     if skill == SF:
         out = _plan_sf(ctx, data, resolved, core_dir, profiles_dir, requested, by, params or {}, interpreter,
@@ -675,9 +676,16 @@ def public(plan: Dict[str, Any]) -> Dict[str, Any]:
 def _write_file(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".upgrade-tmp")
-    with open(str(tmp), "w", encoding="utf-8", newline="") as fh:
-        fh.write(text)
-    os.replace(str(tmp), str(path))
+    try:
+        with open(str(tmp), "w", encoding="utf-8", newline="") as fh:
+            fh.write(text)
+        os.replace(str(tmp), str(path))
+    finally:
+        if tmp.exists():                 # an exception between the write and the replace leaves nothing behind
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
     if ".git" in path.parts and "hooks" in path.parts:
         try:
             os.chmod(str(path), 0o755)
@@ -724,6 +732,9 @@ def apply_plan(root: Path, plan_path: Path, decisions: Optional[Dict[str, Any]] 
         for ch in changes:
             if sha_file(root / ch["file"]) != ch["before_sha"]:
                 raise Stop("upgrade plan is stale, the project changed since it was shown; plan again")
+        for cand in wants:               # a conversion candidate is not in `changes`: same check, same sha
+            if "before_sha" in cand and sha_file(root / cand["file"]) != cand["before_sha"]:
+                raise Stop("upgrade plan is stale, %s changed since it was shown; plan again" % cand["file"])
         gate_events: List[Dict[str, Any]] = []
         if plan.get("forced"):
             gate_events = _gate_events(root, CONVERT_OPTION, "user")

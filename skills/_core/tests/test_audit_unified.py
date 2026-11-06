@@ -201,6 +201,20 @@ class UnifiedReplayTest(helpers.TempDirCase):
                              False, [])
         self.assertEqual((repo / "AUDIT.md").read_text(encoding="utf-8"), second)
 
+    def test_so01_the_kept_blocks_follow_the_order_of_the_profiles_in_the_stamp(self):
+        """SO-01: with a stamp `research, software`, a kept block sorts by the stamp, not by audit.PROFILES."""
+        repo = self.tmp / "order"
+        repo.mkdir()
+        stamp = ["research", "software"]
+        unified.assemble(repo, [("ai-lab-audit", "## B\n"), ("legacy-audit", "## A\n"), ("vibecode-audit", "## V\n")],
+                         "2026-10-31", stamp, ["x"], False, [])
+        unified.assemble(repo, [("legacy-audit", "## A2\n")], "2026-10-31", stamp, ["x"], False, [])
+        text = (repo / "AUDIT.md").read_text(encoding="utf-8")
+        at = [text.index("harness:set %s" % s) for s in ("ai-lab-audit", "legacy-audit", "vibecode-audit")]
+        self.assertEqual(at, sorted(at))
+        self.assertIn("## A2", text)
+        self.assertNotIn("## A\n", text)
+
     def test_ad07_e_a4_a_defect_shared_by_two_sets_is_listed_once(self):
         """AD-07, E-A4: legacy-audit and vibecode-audit report the same RG-02 key in one /audit cycle: the
         second set drops it as a duplicate (no validation) and AUDIT.md lists it once."""
@@ -233,9 +247,20 @@ class UnifiedReplayTest(helpers.TempDirCase):
         ids = [g["id"] for g in gaps]
         self.assertEqual(len(ids), len(set(ids)))
         self.assertTrue(all(g["finding"].strip() and g["why"].strip() for g in gaps))
+        # the justification is a sentence, not a placeholder, and no two gaps share one
+        for g in gaps:
+            self.assertGreaterEqual(len(g["why"].split()), 4, g["id"])
+            self.assertNotEqual(g["why"].strip().lower(), g["finding"].strip().lower(), g["id"])
+        self.assertEqual(len({g["why"] for g in gaps}), len(gaps))
         if SPEC.is_file():
-            spec_ids = set(re.findall(r"\bE-[AI][0-9]+\b", SPEC.read_text(encoding="utf-8")))
-            self.assertEqual(set(ids), spec_ids)
+            text = SPEC.read_text(encoding="utf-8")
+            self.assertEqual(set(ids), set(re.findall(r"\bE-[AI][0-9]+\b", text)))
+            # a rule code (AD-07, SO-03...) cited by the spec for a gap is cited by its justification
+            for g in gaps:
+                line = re.search(r"^\s*- `%s` :(.*)$" % re.escape(g["id"]), text, re.M)
+                self.assertIsNotNone(line, g["id"])
+                for code in re.findall(r"\b[A-Z]{2}-[0-9]{2}\b", line.group(1)):
+                    self.assertIn(code, g["why"], "%s must cite %s" % (g["id"], code))
 
 
 if __name__ == "__main__":

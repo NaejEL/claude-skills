@@ -8,7 +8,7 @@ import unittest
 import helpers
 import phase4
 
-STDLIB = {"importlib", "json", "os", "subprocess", "sys", "threading", "datetime"}
+STDLIB = {"importlib", "json", "os", "subprocess", "sys", "threading", "datetime", "time"}
 
 
 class ErrorTest(helpers.TempDirCase):

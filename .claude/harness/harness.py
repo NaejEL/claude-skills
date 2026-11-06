@@ -413,6 +413,15 @@ def cmd_plugin_skill_name(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_plugin_core_path(args: argparse.Namespace) -> int:
+    """PL-04: the core a skill must call (plugin core, project copy, or the _core beside the skill)."""
+    try:
+        emit(plugin.core_path(args.root, args.skill_dir))
+    except ValueError as exc:
+        raise Usage(str(exc))
+    return 0
+
+
 def cmd_plugin_version_guard(args: argparse.Namespace) -> int:
     """PL-03: exit 1 when skills/ changed since the last version bump and version was not raised."""
     result = plugin.version_guard(Path(args.root))
@@ -631,9 +640,10 @@ def cmd_sf_args(args: argparse.Namespace) -> int:
     if forced is not None and rescan:
         raise Usage("--profile and --rescan cannot be used together")
     names = [n.strip() for n in (forced or "").split(";") if n.strip()]
-    unknown = [n for n in names if n not in profiles.discover()]
+    known = profiles.discover()
+    unknown = [n for n in names if n not in known]
     if unknown:
-        raise Usage("unknown profile: %s (known: %s)" % (", ".join(unknown), ", ".join(profiles.discover())))
+        raise Usage("unknown profile: %s (known: %s)" % (", ".join(unknown), ", ".join(known)))
     emit({"profiles": names, "rescan": rescan, "need": rest})
     return 0
 
@@ -1339,31 +1349,36 @@ def cmd_audit_start(args: argparse.Namespace) -> int:
     state["unified"] = bool(args.unified)
     state["imports"] = imports
     run = runs.create(repo, args.skill, state)
-    reg = registry.Registry(runs.registry_path(run))
-    count = audit.register_resumed(resumed, reg) if resumed else 0
-    auditors = []
-    lab_here = audit.lab_present(repo) if args.skill == "ai-lab-audit" else False
-    for a in p.auditors:
-        if a.name in parsed["auditors"]:
-            role = audit.auditor_role(p, a.name)
-            auditors.append(dict(resolved["roles"][role], auditor=a.name, unit=a.unit, prefix=a.prefix, role=role,
-                                 subagent_type=audit.subagent_type(p, a.name, lab_here)))
-    result = {"run": runs.display(run), "repo": str(repo), "skill": args.skill, "units": parsed["units"],
-              "auditors": auditors, "validator": dict(resolved["roles"][p.validator_role], role=p.validator_role),
-              "cap": parsed["cap"], "git_absent": git_absent, "exclude_added": excluded, "factory": factory_here,
-              "lab": lab_here,
-              "resumed": None if resumed is None else {"entries": count, "numbering": resumed["numbering"],
-                                                       "ids": audit.resumed_ids(resumed)},
-              "project_findings": len(project), "allowed_writes": audit.allowed_writes(args.skill)}
-    if args.unified:
-        result["imports"] = imports
-        result["allowed_writes"] = [unified.DELIVERABLE] + result["allowed_writes"][1:]
-    if import_warnings:
-        result["import_warnings"] = import_warnings
-    if resolved["warnings"]:
-        result["model_warnings"] = resolved["warnings"]
-    emit(result)
-    return 0
+    try:
+        reg = registry.Registry(runs.registry_path(run))
+        count = audit.register_resumed(resumed, reg) if resumed else 0
+        auditors = []
+        lab_here = audit.lab_present(repo) if args.skill == "ai-lab-audit" else False
+        for a in p.auditors:
+            if a.name in parsed["auditors"]:
+                role = audit.auditor_role(p, a.name)
+                auditors.append(dict(resolved["roles"][role], auditor=a.name, unit=a.unit, prefix=a.prefix, role=role,
+                                     subagent_type=audit.subagent_type(p, a.name, lab_here)))
+        result = {"run": runs.display(run), "repo": str(repo), "skill": args.skill, "units": parsed["units"],
+                  "auditors": auditors, "validator": dict(resolved["roles"][p.validator_role], role=p.validator_role),
+                  "cap": parsed["cap"], "git_absent": git_absent, "exclude_added": excluded, "factory": factory_here,
+                  "lab": lab_here,
+                  "resumed": None if resumed is None else {"entries": count, "numbering": resumed["numbering"],
+                                                           "ids": audit.resumed_ids(resumed)},
+                  "project_findings": len(project), "allowed_writes": audit.allowed_writes(args.skill)}
+        if args.unified:
+            result["imports"] = imports
+            result["allowed_writes"] = [unified.DELIVERABLE] + result["allowed_writes"][1:]
+        if import_warnings:
+            result["import_warnings"] = import_warnings
+        if resolved["warnings"]:
+            result["model_warnings"] = resolved["warnings"]
+        emit(result)
+        return 0
+    except Exception as exc:
+        # A run opened by this call and then failed on its input is closed, never left `running`.
+        audit.close_failed(run, exc)
+        raise
 
 
 def cmd_audit_auditor(args: argparse.Namespace) -> int:
@@ -1739,7 +1754,7 @@ def cmd_spec_settle(args: argparse.Namespace) -> int:
     done = specfile.apply_defaults(path)
     if done["missing_default"]:
         _stop(root, state.get("skill", "factory-run"), "gate",
-              "non-blocking question(s) without a `Défaut :` line: %s" % ", ".join(done["missing_default"]),
+              "non-blocking question(s) without a `Default:` line (or the legacy `Défaut :`): %s" % ", ".join(done["missing_default"]),
               {"spec": rel}, run)
     if done["applied"]:
         event = gates.decide("factory-run.questions", "auto")
@@ -2030,6 +2045,10 @@ def build_parser() -> argparse.ArgumentParser:
     q.add_argument("--skill", required=True)
     q.add_argument("--skill-dir", default=None, help="${CLAUDE_SKILL_DIR} of the calling skill (not resolved)")
     q.set_defaults(func=cmd_plugin_skill_name)
+    q = plsub.add_parser("core-path", help="core a skill must call: plugin core, .claude/harness/, or _core beside the skill")
+    q.add_argument("--root", default=None, help="the audited or equipped project")
+    q.add_argument("--skill-dir", default=None, help="${CLAUDE_SKILL_DIR} of the calling skill (not resolved)")
+    q.set_defaults(func=cmd_plugin_core_path)
     q = plsub.add_parser("version-guard", help="fails when skills/ changed without a version bump")
     q.add_argument("--root", default=str(HERE.parent.parent))
     q.set_defaults(func=cmd_plugin_version_guard)
@@ -2411,7 +2430,7 @@ def build_parser() -> argparse.ArgumentParser:
     lsub = p.add_subparsers(dest="labcmd", required=True)
     q = lsub.add_parser("apply", help="settings.json deny rules, tasks.json, .gitignore (AL-01 to AL-03)")
     q.add_argument("--root", default=".")
-    q.add_argument("--test-command", default=None, help="detected test command (task 'Lab: tests unitaires')")
+    q.add_argument("--test-command", default=None, help="detected test command (task 'Lab: unit tests')")
     q.add_argument("--test-windows", default=None, help="its windows variant when different")
     q.set_defaults(func=cmd_lab_apply)
     q = lsub.add_parser("ci", help="ci/lab.sh and ci/lab.ps1 (AL-07)")

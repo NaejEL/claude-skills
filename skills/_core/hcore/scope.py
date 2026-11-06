@@ -160,6 +160,30 @@ def deactivate(root: Path, run: str, session: Optional[str]) -> Dict[str, Any]:
     return {"removed": len(stack) - len(kept), "depth": len(kept)}
 
 
+def deactivate_run(root: Path, run: Path) -> int:
+    """A stopped cycle leaves no marker: removes the entries of `run` from every marker, whatever the session."""
+    root, removed = Path(root), 0
+    try:
+        target = Path(run).resolve()
+        found = sorted((root / ACTIVE_DIR).glob("*.json"))
+    except OSError:
+        return 0
+    for path in found:
+        try:
+            stack = _read_marker(path)["stack"]
+            kept = [e for e in stack if (root / e.get("run", "")).resolve() != target]
+            if len(kept) == len(stack):
+                continue
+            if kept:
+                runs.write_atomic(path, json.dumps({"stack": kept}, ensure_ascii=False, indent=1))
+            else:
+                path.unlink()
+            removed += len(stack) - len(kept)
+        except (OSError, ValueError, KeyError, TypeError, AttributeError):
+            continue      # an unreadable marker is not ours to repair here
+    return removed
+
+
 def current(root: Path, session: Optional[str], now: Optional[float] = None) -> Optional[Dict[str, Any]]:
     """The context that applies to a session: the top of its stack, else the project's."""
     now = time.time() if now is None else now
@@ -249,6 +273,21 @@ def deletable_factory(root: Path, ctx: Optional[Dict[str, Any]]) -> Callable[[st
             return False
         return not any(rel == s or rel.startswith(s.rstrip("/") + "/") or s.startswith(rel + "/") for s in snapshot)
 
+    def scratch_glob(target: str) -> bool:
+        """A glob target passes only when its literal prefix (before the first `*`, `?` or `[`)
+        lies inside `<root>/.harness/tmp/`, with no `..`, no other expansion and no pattern able to match `..`."""
+        if re.search(r"[$`{}~]", target) or "[" in target:
+            return False
+        at = min((target.find(c) for c in "*?" if c in target), default=-1)
+        if at < 0:
+            return False
+        segments = target.replace("\\", "/").split("/")
+        if any(s.startswith("..") or (s.startswith(".") and s[1:2] in ("*", "?")) for s in segments):
+            return False
+        rel = normalize(target[:at] + "x", str(root))     # "x" keeps the boundary: `.harness/tmp*` is not inside
+        return rel is not None and rel.startswith(SCRATCH_DIR + "/")
+
+    check.scratch_glob = scratch_glob      # type: ignore[attr-defined]
     return check
 
 

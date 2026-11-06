@@ -334,10 +334,10 @@ class DeliverableTest(EngineCase):
         with self.assertRaises(audit.AuditStop):
             audit.write_text("legacy-audit", self.tmp, dest, "x\nStatut : PRE-ENREGISTRE\n")
         self.assertFalse(dest.exists())
-        self.assertEqual(audit.write_text("legacy-audit", self.tmp, dest, "ok\n")["state"], "créé")
+        self.assertEqual(audit.write_text("legacy-audit", self.tmp, dest, "ok\n")["state"], "created")
         for skill, ok, refused in (("legacy-audit", "specs/SPEC-leg-01-x.md", "specs/SPEC-lab-01-x.md"),
                                    ("ai-lab-audit", "AUDIT-lab.md", "ROADMAP-legacy.md"),
-                                   ("vibecode-audit", ".harness/runs/x.json", "specs/SPEC-vib-01-x.md")):
+                                   ("vibecode-audit", "specs/SPEC-vib-01-x.md", "specs/SPEC-leg-01-x.md")):
             audit.check_writable(skill, self.tmp, self.tmp / ok)
             with self.assertRaises(audit.AuditUsage, msg=refused):
                 audit.check_writable(skill, self.tmp, self.tmp / refused)
@@ -406,17 +406,21 @@ class DeliverableTest(EngineCase):
         mine = specs / "SPEC-leg-03-my-own.md"
         mine.write_text("my own spec\n", encoding="utf-8")
         out = audit.write_spec("legacy-audit", self.tmp, f, sections, 3, "other-slug")
-        self.assertEqual(out, {"file": "specs/SPEC-leg-03-my-own.md", "state": "personnalisé-conservé"})
+        self.assertEqual(out, {"file": "specs/SPEC-leg-03-my-own.md", "state": "customized-kept"})
         self.assertEqual(mine.read_text(encoding="utf-8"), "my own spec\n")
         self.assertFalse((specs / "SPEC-leg-03-other-slug.md").exists())
         out = audit.write_spec("legacy-audit", self.tmp, f, sections, 4, "new")
-        self.assertEqual(out["state"], "créé")
+        self.assertEqual(out["state"], "created")
         self.assertTrue((specs / "SPEC-leg-04-new.md").read_text(encoding="utf-8").startswith("Status: PROPOSED"))
         for bad in ("Bad Slug", "", "x/../y"):
             with self.assertRaises(audit.AuditUsage):
                 audit.write_spec("legacy-audit", self.tmp, f, sections, 5, bad)
-        with self.assertRaises(audit.AuditUsage):
-            audit.write_spec("vibecode-audit", self.tmp, f, sections, 1, "x")
+        # E-A2: the vibecode set declares SPEC-vib-* (item 2 of the backlog B)
+        self.assertIn("specs/SPEC-vib-<nn>-<slug>.md", audit.allowed_writes("vibecode-audit"))
+        vib = findings.adapt("vibecode-auditor", vib_item("ACC-01"))
+        out = audit.write_spec("vibecode-audit", self.tmp, vib, sections, 1, "x")
+        self.assertEqual(out["file"], "specs/SPEC-vib-01-x.md")
+        self.assertTrue((specs / "SPEC-vib-01-x.md").read_text(encoding="utf-8").startswith("Status: PROPOSED"))
 
     def test_au15_readjust_only_once(self):
         """AU-15: 'Readjust' replays the theme gate once, then disappears from the
@@ -697,10 +701,10 @@ class ReplayTest(helpers.TempDirCase):
         out = replay(self, "legacy-audit", self.tmp, fx,
                      keep={"ROADMAP-legacy.md": roadmap,
                            "specs/SPEC-leg-03-gitignore.md": spec_bytes.decode("utf-8")})
-        self.assertEqual(out["specs"][0], {"file": "specs/SPEC-leg-03-gitignore.md", "state": "personnalisé-conservé"})
+        self.assertEqual(out["specs"][0], {"file": "specs/SPEC-leg-03-gitignore.md", "state": "customized-kept"})
         self.assertEqual((out["repo"] / "specs" / "SPEC-leg-03-gitignore.md").read_bytes(), spec_bytes)
         self.assertFalse((out["repo"] / "specs" / "SPEC-leg-03-purge-secrets.md").exists())
-        self.assertEqual(out["specs"][1], {"file": "specs/SPEC-leg-04-purge-secrets.md", "state": "créé"})
+        self.assertEqual(out["specs"][1], {"file": "specs/SPEC-leg-04-purge-secrets.md", "state": "created"})
 
 
 if __name__ == "__main__":

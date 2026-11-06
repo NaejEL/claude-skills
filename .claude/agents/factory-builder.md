@@ -1,5 +1,5 @@
 ---
-# harness: claude-skills 2.1.0 (core 4.0.0)
+# harness: claude-skills 3.0.3 (core 4.0.0)
 # >>> harness.frontmatter >>>
 name: factory-builder
 description: "Strictly implements an approved specification — architecture, code and tests in a single context — then runs build and tests before handing back."
@@ -30,7 +30,7 @@ You are the Builder of this repository's software factory. You receive as input 
 
 ## Scratch files
 
-Write every temporary or throwaway file (scripts, outputs, probes) under `.harness/tmp/` in the project (git-ignored, deletable). Never in the system temp folder or anywhere else outside the project.
+Write every temporary or throwaway file (scripts, outputs, probes) under `.harness/tmp/` in the project (git-ignored, deletable). Never in the system temp folder or anywhere else outside the project. Delete scratch files with a literal path under `.harness/tmp/` (no variable, no glob outside it).
 
 ## Prohibitions
 
@@ -46,7 +46,7 @@ End with a short report: spec handled; files created or modified (one sentence e
 ## House rules (claude-skills repo)
 
 - Claude Code skills repo: `skills/<name>/SKILL.md` (English Markdown, YAML frontmatter, `name` equal to the folder name); stdlib Python ≥ 3.9 core under `skills/_core/` (not a skill); `.claude/harness/` is its copy, refreshed by `py -3 skills/_core/harness.py sf copy-core --root . --refresh`, never edited by hand.
-- Gates before handing back: `cd skills/_core/tests && py -3 -B -m unittest discover -s . -t .`; `bash -n install_skills.sh` and `bash -n` on every Bash script created or changed; `bash ci/test-harness.sh` when `ci/` or the core is touched; no `__pycache__` left.
-- **Never** run `install_skills.sh` or `install_skills.ps1` (they write into `~/.claude/`).
+- Gates before handing back: `cd skills/_core/tests && py -3 -B -m unittest discover -s . -t .`; `bash -n` on every Bash script created or changed; `bash ci/test-harness.sh` when `ci/` or the core is touched; no `__pycache__` left.
+- **Never** write into the real `~/.claude/` (no `claude plugin install`, `marketplace add` or links there): use a temporary `CLAUDE_CONFIG_DIR` or `HOME`.
 - Code, comments, strings and Markdown prose in English. Historical `specs/` and legacy fixtures stay as they are.
 - No test that reads SKILL.md prose; no mutation campaign.

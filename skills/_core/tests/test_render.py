@@ -36,6 +36,21 @@ class PureRenderTest(unittest.TestCase):
         self.assertTrue(any("params" in e for e in errors), errors)
         self.assertEqual(profiles.validate_manifest(profiles.get("software"), profiles.get("software")["_dir"]), [])
 
+    def test_en03_only_a_header_inside_the_header_zone_is_replaced(self):
+        """EN-03: a header-looking line in the body is text, not the header; the real one is replaced in place."""
+        body = "Quote:\n\n    # harness: claude-skills quoted (core 1.0.0)\n"
+        new = render.header("v2", "4.0.0")
+        md = "---\nname: x\n# harness: claude-skills v1 (core 3.0.0)\n---\n\n" + body
+        self.assertEqual(render._set_header(md, "md", new), md.replace("v1 (core 3.0.0)", "v2 (core 4.0.0)"))
+        headless = "---\nname: x\n---\n\n" + body
+        out = render._set_header(headless, "md", new)
+        self.assertEqual(out, "---\n%s\nname: x\n---\n\n" % new + body)
+        sh = "#!/usr/bin/env bash\n# harness: claude-skills v1 (core 3.0.0)\nset -e\necho '# harness: claude-skills x'\n"
+        self.assertEqual(render._set_header(sh, "sh", new), "#!/usr/bin/env bash\n%s\nset -e\necho '# harness: claude-skills x'\n" % new)
+        code_first = "#!/usr/bin/env bash\nset -e\n# harness: claude-skills in-code (core 1.0.0)\n"
+        self.assertEqual(render._set_header(code_first, "sh", new),
+                         "#!/usr/bin/env bash\n%s\nset -e\n# harness: claude-skills in-code (core 1.0.0)\n" % new)
+
     def test_rd05_union_of_profile_tools_and_contributions(self):
         """RD-05: profile tools first, then the contributions in order, no duplicate; tools null stays unrestricted."""
         prof = profiles.get("software")

@@ -96,6 +96,22 @@ class FilesTest(helpers.TempDirCase):
         self.assertIn("STOP-", later.stderr)
         self.assertEqual(runs.load_state(self.tmp / start["run"])["status"], "stopped")
 
+    def test_sx05_a_stop_deactivates_the_scope_marker_of_its_cycle(self):
+        """HK-05: writing a STOP removes the entries of that run from the markers (any session), and only those."""
+        from hcore import scope
+        first = json.loads(helpers.harness(["factory-run", "start"], self.tmp).stdout)["run"]
+        second = json.loads(helpers.harness(["factory-run", "start"], self.tmp).stdout)["run"]
+        scope.activate(self.tmp, "factory-run", first, "s1")
+        scope.activate(self.tmp, "factory-run", second, "s1")
+        scope.activate(self.tmp, "factory-run", first, None)
+        stops.write(self.tmp, "factory-run", "gate", {"reason": "x"}, self.tmp / first, branch="main")
+        active = self.tmp / ".harness" / "runs" / "active"
+        self.assertFalse((active / "project.json").exists())
+        self.assertEqual([e["run"] for e in json.loads((active / "s1.json").read_text(encoding="utf-8"))["stack"]],
+                         [second])
+        stops.write(self.tmp, "factory-run", "gate", {"reason": "y"}, self.tmp / second, branch="main")
+        self.assertEqual(list(active.glob("*.json")), [])
+
     def test_sx05_an_event_without_a_path_is_invalid(self):
         """CA-37: a `stop` event without `path` is refused by the journal schema."""
         self.assertNotEqual(journal.validate_record({"event": "stop", "kind": "gate"}), [])

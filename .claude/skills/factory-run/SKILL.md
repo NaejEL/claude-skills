@@ -1,5 +1,5 @@
 ---
-# harness: claude-skills 2.1.0 (core 4.0.0)
+# harness: claude-skills 3.0.3 (core 4.0.0)
 # >>> harness.frontmatter >>>
 name: factory-run
 description: "Runs one cycle of the software factory (Planner → human gate on the spec → Builder → Verifier with a fix loop) on a need or an approved spec."
@@ -66,4 +66,4 @@ Delivery (gate `factory-run.ship`, unless `--no-ship`): `H factory-run deliver -
 ## House rules (claude-skills repo)
 
 - This repo is the harness itself: it never ships itself autonomously. Always as `--no-ship`: never `factory-run deliver`, commit, push or `ship-pr`. The final report says "review the diff, then commit it yourself".
-- Never run `install_skills.sh` or `install_skills.ps1`.
+- Never write into the real `~/.claude/` (no `claude plugin install`, `marketplace add` or links there).

@@ -30,7 +30,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
-from . import audit, findings, registry, runs
+from . import audit, findings, fusion, profiles, registry, runs
 
 DELIVERABLE = "AUDIT.md"
 TEMPLATE = Path(__file__).resolve().parent.parent / "templates" / "audit" / "unified.json"
@@ -153,6 +153,13 @@ def cycle_peers(repo: Path, run: Path) -> Dict[str, str]:
     return peers
 
 
+def _block_rank(skill: str, profile_names: Sequence[str]) -> Tuple[int, int]:
+    """SO-01: a set block sorts by the position of its profile in the stamp, then by the set order inside a profile."""
+    prof, _ = profiles.find_set(audit._LENS_SET_OF[skill])
+    names = list(profile_names)
+    return (names.index(prof["name"]) if prof["name"] in names else len(names), list(audit.PROFILES).index(skill))
+
+
 def assemble(repo: Path, blocks: Sequence[Tuple[str, str]], date: str, profile_names: Sequence[str],
              lens_names: Sequence[str], sampled: bool, imports: Iterable[Dict[str, str]]) -> Dict[str, Any]:
     """SO-01, SO-04, MG-02, MG-05: writes AUDIT.md. `blocks`: (skill, section text) in the order of the stamp."""
@@ -172,8 +179,7 @@ def assemble(repo: Path, blocks: Sequence[Tuple[str, str]], date: str, profile_n
             old_block = slice_of(before, line_skill)
             if old_block is not None:
                 kept.append((line_skill, old_block))
-    order = {s: i for i, s in enumerate(audit.PROFILES)}
-    all_blocks = sorted(list(blocks) + kept, key=lambda b: order[b[0]]) if kept else list(blocks)
+    all_blocks = sorted(list(blocks) + kept, key=lambda b: _block_rank(b[0], profile_names)) if kept else list(blocks)
     lines: List[str] = []
     lines += [x.replace("$date", date).replace("$profiles", ", ".join(profile_names))
               .replace("$lenses", ", ".join(lens_names))
@@ -193,5 +199,5 @@ def assemble(repo: Path, blocks: Sequence[Tuple[str, str]], date: str, profile_n
     if text != before:
         with open(str(dest), "w", encoding="utf-8", newline="\n") as fh:
             fh.write(text)
-    return {"file": DELIVERABLE, "state": "créé" if not before else "identique" if text == before else "fusionné",
+    return {"file": DELIVERABLE, "state": fusion.CREATED if not before else fusion.IDENTICAL if text == before else fusion.MERGED,
             "imports": sorted(known)}

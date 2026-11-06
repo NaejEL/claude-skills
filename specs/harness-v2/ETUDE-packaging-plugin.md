@@ -66,7 +66,7 @@ L'agent qui a rédigé cette étude n'avait pas d'accès au réseau. Les faits m
   - `install_skills.*` reste, affiche un avertissement de retrait et la commande d'installation du plugin.
   - Il gagne une option qui retire **seulement** les liens qu'il a créés, vers ce dépôt.
   - README : section « Installer » avec les deux voies.
-- **M4 — Version suivante.** `install_skills.*` est retiré, et `rg` est confié à `code-index` (déjà en place).
+- **M4 — Version suivante.** `install_skills.*` est retiré, et `rg` est confié à `code-index` (déjà en place). **Fait le 2026-11-06 (version 3.0.0).**
 - **Projets équipés.** Rien à faire de leur côté : `/harness-doctor --scan` signale le changement de source de version, et `--upgrade` met à jour les blocs.
 
 ## Recettes préalables

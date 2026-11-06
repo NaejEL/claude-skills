@@ -1,5 +1,5 @@
 ---
-# harness: claude-skills 2.1.0 (core 4.0.0)
+# harness: claude-skills 3.0.3 (core 4.0.0)
 # >>> harness.frontmatter >>>
 name: factory-planner
 description: "Analyzes a need and the existing code to draft a specification with testable acceptance criteria and open questions. Read-only."
@@ -59,6 +59,6 @@ Under the line `Status: PROPOSED`, add the line `Blocking questions: Q<n>, …` 
 
 ## House rules (claude-skills repo)
 
-- Claude Code skills repo: `skills/<name>/SKILL.md`, stdlib Python core under `skills/_core/` (CLI `harness.py`, `hcore/`, `unittest` tests), copy in `.claude/harness/`, twin installers `install_skills.sh|.ps1`, inventory in `README.md`. Roadmap: `specs/harness-v2/ROADMAP.md`; it overrides the legacy rules of the skills.
+- Claude Code skills repo: `skills/<name>/SKILL.md`, stdlib Python core under `skills/_core/` (CLI `harness.py`, `hcore/`, `unittest` tests), copy in `.claude/harness/`, shipped as the `harness` plugin (`.claude-plugin/`), inventory in `README.md`. Roadmap: `specs/harness-v2/ROADMAP.md`; it overrides the legacy rules of the skills.
 - Acceptance criteria checkable by the core unittest suite, `bash -n`, `ci/test-harness.*` or an observable behavior of `harness.py`; never by reading prose.
 - Spec proportionate to the need; written in English.

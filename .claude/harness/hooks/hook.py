@@ -23,15 +23,28 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from datetime import datetime
 
 sys.dont_write_bytecode = True
 HERE = os.path.dirname(os.path.abspath(__file__))
 CORE = os.path.dirname(HERE)
+STARTED = time.monotonic()
 BUDGET_S = 5.0
+LINT_MARGIN_S = 0.5      # the lint is killed this long before the budget expires, to report the timeout
 LINT_SUMMARY_LINES = 20
 LINT_SUMMARY_CHARS = 2000
 NAMES = ("pre-edit", "pre-bash", "post-edit")
+
+
+def budget_s():
+    """The hook budget; tests may shorten it (HCORE_TEST_MODE only)."""
+    if os.environ.get("HCORE_TEST_MODE") == "1" and os.environ.get("HCORE_HOOK_BUDGET_S"):
+        try:
+            return float(os.environ["HCORE_HOOK_BUDGET_S"])
+        except ValueError:
+            pass
+    return BUDGET_S
 
 
 def core(name):
@@ -143,20 +156,24 @@ def post_edit(payload, root):
     if rel is None:
         return 0, None
     notes = []
+    deadline = STARTED + budget_s() - LINT_MARGIN_S
     for entry in lint:
         glob = entry.get("glob", "*")
         if not (scope.matches(glob, rel) or scope.matches(glob, rel.rsplit("/", 1)[-1])):
             continue
         argv = [str(a).replace("{file}", os.path.join(root, rel)) for a in entry.get("argv", [])]
+        # The lint never outlives the hook budget: subprocess.run kills the child at the timeout.
+        wanted = float(entry.get("timeout_s", 30))
+        allowed = max(deadline - time.monotonic(), 0.1)
         try:
             res = subprocess.run(argv, cwd=root, capture_output=True, text=True, encoding="utf-8", errors="replace",
-                                 timeout=float(entry.get("timeout_s", 30)))
+                                 timeout=min(wanted, allowed))
             text = "\n".join(((res.stdout or "") + (res.stderr or "")).splitlines()[:LINT_SUMMARY_LINES])
             notes.append("lint %s: exit %d%s" % (argv[0], res.returncode, "\n" + text if text.strip() else ""))
         except FileNotFoundError:
             notes.append("lint %s: command not found (skipped)" % (argv[0] if argv else "?"))
         except subprocess.TimeoutExpired:
-            notes.append("lint %s: timed out after %ss (skipped)" % (argv[0], entry.get("timeout_s", 30)))
+            notes.append("lint %s: timed out after %gs (killed)" % (argv[0], min(wanted, allowed)))
     if notes:
         summary = "\n".join(notes)[:LINT_SUMMARY_CHARS]
         sys.stdout.write(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse",
@@ -173,10 +190,10 @@ def main(argv):
     tool = ""
 
     def expire():
-        report_error(name, tool, root, TimeoutError("budget of %gs exceeded" % BUDGET_S))
+        report_error(name, tool, root, TimeoutError("budget of %gs exceeded" % budget_s()))
         os._exit(0)
 
-    timer = threading.Timer(BUDGET_S, expire)
+    timer = threading.Timer(budget_s(), expire)
     timer.daemon = True
     timer.start()
     try:

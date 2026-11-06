@@ -27,7 +27,7 @@ from .proc import Result
 
 Run = Callable[..., Result]
 MERGED, DELIVERED, IN_PROGRESS, BLOCKED, PROPOSED, READY = (
-    "mergée", "livrée", "en cours", "bloquée", "proposée", "proposée (réponses prêtes)")
+    "merged", "delivered", "in progress", "blocked", "proposed", "proposed (answers ready)")
 STALE_SECONDS = 2 * 3600
 
 

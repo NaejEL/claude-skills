@@ -130,5 +130,5 @@ def run(ctx):
             states[rel] = json.loads(res.stdout).get("state") or res.stdout.strip()
         except ValueError:
             states[rel] = res.stdout.strip()
-    kept = all("conserv" in str(v) for v in states.values())
+    kept = all("customized-kept" in str(v) for v in states.values())
     ctx.check(8, ctx.tree(old) == snapshot and kept, "unchanged=%s states=%s" % (ctx.tree(old) == snapshot, states))

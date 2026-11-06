@@ -155,6 +155,8 @@ def write(root: Path, skill: str, kind: str, details: Dict[str, Any], run: Optio
         if state.get("status") == "running":
             state["status"] = "stopped"        # the activation marker of the run becomes stale (HK-05)
         runs.save_state(Path(run), state)
+        from . import scope        # lazy: scope imports stops
+        scope.deactivate_run(root, Path(run))      # a stopped cycle never leaves its scope marker behind
     return path
 
 

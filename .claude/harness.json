@@ -10,12 +10,12 @@
   ],
   "skills": {
     "software-factory": {
-      "repo_commit": "fb1f40fbbc68584afabcd95370af55298c8c7f09",
-      "repo_describe": "2.1.0",
+      "repo_commit": "2aa0da3a5a1a40e480275190c4320cb1441b734e",
+      "repo_describe": "3.0.3",
       "repo_dirty": true,
       "core_version": "4.0.0",
       "installed_at": "2026-11-01T17:33:07+01:00",
-      "updated_at": "2026-11-02T08:19:19+01:00",
+      "updated_at": "2026-11-06T19:24:08+01:00",
       "options": {
         "stacks": [],
         "interpreter": "py -3",
@@ -31,7 +31,7 @@
           "kind": "generated",
           "blocks": {
             "harness.frontmatter": "65f46aec65e2eae135b8c4c97b45fc36928edf34478d88f70578321b910a28cf",
-            "harness.body": "acb9359017b29380009cd047d2d4c608df36b552bbc5f5237e64b522488ac346"
+            "harness.body": "983d1d1fc48f3f3b92c94c011632362e1ec0a7922aa16f43f2ab154132053677"
           }
         },
         ".claude/agents/factory-planner.md": {
@@ -45,7 +45,7 @@
           "kind": "generated",
           "blocks": {
             "harness.frontmatter": "82498db1f90a57deffbeb087c3fc19e655536d30694914b7482f1d66bbdfd2c5",
-            "harness.body": "373bcc2849988d9732f819170ee541dbdb62290427da891bc7e1e36f0eb7c59f"
+            "harness.body": "87930a18e55d3d014963be011535a11b4711c09b6954f96c333b75996d2f9344"
           }
         },
         ".claude/harness/MANIFEST.json": {

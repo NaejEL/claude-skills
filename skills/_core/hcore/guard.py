@@ -52,10 +52,9 @@ Deletable = Callable[[str], bool]
 
 # ---------------------------------------------------------------- splitting
 
-def split_commands(text: str, powershell: bool = False) -> List[str]:
-    """HG-03: simple commands, split outside quotes on ; && || | & and newlines.
-    Substitutions ($( ) and backticks) are kept inside the piece that holds them."""
-    parts: List[str] = []
+def _split(text: str, powershell: bool = False) -> List[tuple]:
+    """(piece, separator that ended it) for every piece, empty ones included."""
+    parts: List[tuple] = []
     cur: List[str] = []
     quote: Optional[str] = None
     depth = 0
@@ -83,17 +82,161 @@ def split_commands(text: str, powershell: bool = False) -> List[str]:
             depth -= 1
             cur.append(ch)
         elif depth == 0 and ch in ";|&\n":
+            sep = ch
             if ch in "|&" and i + 1 < len(text) and text[i + 1] == ch:
+                sep = ch * 2
                 i += 1
-            parts.append("".join(cur))
+            parts.append(("".join(cur), sep))
             cur = []
         else:
             cur.append(ch)
         i += 1
     if quote:
         raise Unanalyzable("unbalanced quote")
-    parts.append("".join(cur))
-    return [p.strip() for p in parts if p.strip()]
+    parts.append(("".join(cur), ""))
+    return parts
+
+
+def split_commands(text: str, powershell: bool = False) -> List[str]:
+    """HG-03: simple commands, split outside quotes on ; && || | & and newlines.
+    Substitutions ($( ) and backticks) are kept inside the piece that holds them."""
+    return [p.strip() for p, _sep in _split(text, powershell) if p.strip()]
+
+
+HEREDOC = re.compile(r"<<(-?)[ \t]*((?:\\.|'[^'\n]*'|\"[^\"\n]*\"|[^\s;|&<>()'\"\\])+)")
+PLAIN_QUOTED = re.compile(r"'([A-Za-z_][A-Za-z0-9_]*)'|\"([A-Za-z_][A-Za-z0-9_]*)\"")
+MARK = "HDOCMARK"
+# Heredoc bodies are data only for these owners (assignments and output redirections stripped).
+DATA_OWNERS = {"cat": ((), ("-",)), "python": ((), ("-",)), "python3": ((), ("-",)),
+               "py": ((), ("-",), ("-3",), ("-3", "-"))}
+
+
+def _delimiter(raw: str) -> str:
+    """The word the shell compares terminator lines with: quotes and backslashes removed."""
+    out: List[str] = []
+    i = 0
+    while i < len(raw):
+        c = raw[i]
+        if c == "\\" and i + 1 < len(raw):
+            out.append(raw[i + 1])
+            i += 2
+        elif c in "'\"":
+            j = raw.find(c, i + 1)
+            j = len(raw) if j < 0 else j
+            out.append(raw[i + 1:j])
+            i = j + 1
+        else:
+            out.append(c)
+            i += 1
+    return "".join(out)
+
+
+def _owns_data(line: str, opener: str) -> bool:
+    """Is the heredoc opened by `opener` on `line` fed to a command that only reads it as data
+    (`cat`, `tee <file>`, `py`, `python`, `git commit -F -`)? Anything else: the body is analysed."""
+    try:
+        if line.count(opener) != 1 or ">(" in line or "<(" in line:   # process substitution may run the body
+            return False
+        pieces = _split(line.replace(opener, " %s " % MARK, 1))
+        if any(sep in ("|", "|&") for _p, sep in pieces):
+            return False
+        mine = [p for p, _sep in pieces if MARK in p]
+        if len(mine) != 1:
+            return False
+        toks = [t for t in tokens(mine[0]) if t != MARK]
+    except Unanalyzable:
+        return False
+    while toks and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", toks[0]):
+        toks = toks[1:]
+    kept: List[str] = []
+    skip = False
+    for t in toks:
+        if skip:
+            skip = False
+        elif re.match(r"^[0-9]?>>?$", t):
+            skip = True
+        elif not re.match(r"^[0-9]?>>?[^&]", t):
+            kept.append(t)
+    if not kept:
+        return False
+    head, rest = kept[0], tuple(kept[1:])
+    if head in DATA_OWNERS:
+        return rest in DATA_OWNERS[head]
+    if head == "tee":
+        return len(rest) == 1 and not rest[0].startswith("-")
+    if head == "git" and rest[:1] == ("commit",):
+        args = rest[1:]
+        return "--file=-" in args or "-F-" in args or any(
+            args[k] == "-F" and args[k + 1] == "-" for k in range(len(args) - 1))
+    return False
+
+
+def strip_heredocs(text: str):
+    """The text without the bodies of its heredocs, and the bodies that are still commands.
+    A body is data only for a quoted plain delimiter, no `#` before the `<<`, and an owner that
+    just reads it (`_owns_data`); every other body is returned to be analysed as commands."""
+    out: List[str] = []
+    bodies: List[str] = []
+    pending: List[tuple] = []
+    quote: Optional[str] = None
+    hashed = False
+    i = 0
+    while i < len(text):
+        ch = text[i]
+        if quote:
+            out.append(ch)
+            if ch == "\\" and quote == '"' and i + 1 < len(text):
+                out.append(text[i + 1])
+                i += 1
+            elif ch == quote:
+                quote = None
+        elif ch in "'\"":
+            quote = ch
+            out.append(ch)
+        elif ch == "\\" and i + 1 < len(text):
+            out.append(text[i:i + 2])
+            i += 1
+        elif text.startswith("<<<", i):
+            out.append("<<<")      # a here-string, not a heredoc
+            i += 3
+            continue
+        elif text.startswith("<<", i):
+            line = "".join(out).rsplit("\n", 1)[-1]
+            found = None if line.count("((") > line.count("))") else HEREDOC.match(text, i)   # `$((1<<2))` is not one
+            if found:
+                plain = PLAIN_QUOTED.fullmatch(found.group(2)) is not None and not hashed
+                pending.append((_delimiter(found.group(2)), bool(found.group(1)), plain, found.group(0)))
+                out.append(found.group(0))
+                i = found.end()
+                continue
+            out.append(ch)
+        elif ch == "\n" and pending:
+            line = "".join(out).rsplit("\n", 1)[-1]
+            data = len(pending) == 1 and pending[0][2] and _owns_data(line, pending[0][3])
+            out.append("\n")
+            hashed = False
+            i += 1
+            for word, dash, _plain, _text in pending:
+                body: List[str] = []
+                while i < len(text):
+                    end = text.find("\n", i)
+                    row = text[i:] if end < 0 else text[i:end]
+                    i = len(text) if end < 0 else end + 1
+                    if (row.lstrip("\t") if dash else row).rstrip("\r") == word:
+                        break
+                    body.append(row)
+                if not data:
+                    bodies.append("\n".join(body))
+            pending = []
+            continue
+        else:
+            if ch == "#":
+                hashed = True
+            elif ch == "\n":
+                hashed = False
+            out.append(ch)
+        i += 1
+    return "".join(out), bodies
 
 
 def substitutions(piece: str, powershell: bool = False) -> List[str]:
@@ -147,6 +290,13 @@ def analyze(command: str, powershell: bool = False, deletable: Optional[Deletabl
     if depth > MAX_DEPTH:
         raise Unanalyzable("nesting too deep")
     check = deletable or (lambda _target: False)
+    bodies: List[str] = []
+    if not powershell:
+        command, bodies = strip_heredocs(command)
+    for body in bodies:      # a heredoc that is not plain data is analysed as commands
+        hit = _body(body, powershell, check, depth)
+        if hit:
+            return hit
     for piece in split_commands(command, powershell):
         for inner in substitutions(piece, powershell):
             hit = analyze(inner, powershell, check, depth + 1)
@@ -155,6 +305,25 @@ def analyze(command: str, powershell: bool = False, deletable: Optional[Deletabl
         hit = _simple(piece, powershell, check, depth)
         if hit:
             return hit
+    return None
+
+
+def _body(body: str, powershell: bool, check: Deletable, depth: int) -> Optional[Violation]:
+    """A heredoc body as commands; when it does not parse as a whole, line by line, quotes
+    dropped when a row still does not parse (a stray quote must not hide a command)."""
+    try:
+        return analyze(body, powershell, check, depth + 1)
+    except Unanalyzable:
+        for row in body.split("\n"):
+            try:
+                hit = analyze(row, powershell, check, depth + 1)
+            except Unanalyzable:
+                try:      # still stray quotes: read the row without any
+                    hit = analyze(row.replace("'", " ").replace('"', " "), powershell, check, depth + 1)
+                except Unanalyzable:
+                    continue
+            if hit:
+                return hit
     return None
 
 
@@ -187,7 +356,9 @@ def _simple(piece: str, powershell: bool, deletable: Deletable, depth: int) -> O
                 if at + 1 < len(toks):
                     return analyze(" ".join(toks[at + 1:]) if name in POWERSHELLS else toks[at + 1],
                                    name in POWERSHELLS, deletable, depth + 1)
-        return None
+        return _here_string(toks, deletable, depth) if name in SHELLS else None
+    if name in ("source", "."):
+        return _here_string(toks, deletable, depth)
     if name == "cmd":
         for at, tok in enumerate(toks[1:], 1):
             if tok.lower() in ("/c", "/k", "/r") and at + 1 < len(toks):
@@ -209,6 +380,16 @@ def _simple(piece: str, powershell: bool, deletable: Deletable, depth: int) -> O
         return _delete(name, toks[1:], fragment, powershell, deletable)
     if name == "find":
         return _find(toks[1:], fragment, deletable)
+    return None
+
+
+def _here_string(toks: List[str], deletable: Deletable, depth: int) -> Optional[Violation]:
+    """`bash <<< 'cmd'` and `source <<< 'cmd'` run the here-string as commands."""
+    for at, tok in enumerate(toks):
+        if tok == "<<<" and at + 1 < len(toks):
+            return analyze(toks[at + 1], False, deletable, depth + 1)
+        if tok.startswith("<<<") and len(tok) > 3:
+            return analyze(tok[3:], False, deletable, depth + 1)
     return None
 
 
@@ -289,11 +470,16 @@ def _git(raw: Sequence[str], fragment: str, deletable: Deletable) -> Optional[Vi
 
 
 def _targets_ok(targets: Sequence[str], fragment: str, deletable: Deletable) -> Optional[Violation]:
-    """Category 5: every target must be resolvable and generated."""
+    """Category 5: every target must be resolvable and generated. A glob passes only
+    when the callback vouches for it (`scratch_glob`: literal prefix inside the scratch dir)."""
     if not targets:
         return Violation(5, fragment)
+    scratch_glob = getattr(deletable, "scratch_glob", None)
     for target in targets:
-        if SHELL_META.search(target) or not deletable(target):
+        if SHELL_META.search(target):
+            if scratch_glob is None or not scratch_glob(target):
+                return Violation(5, fragment)
+        elif not deletable(target):
             return Violation(5, fragment)
     return None
 

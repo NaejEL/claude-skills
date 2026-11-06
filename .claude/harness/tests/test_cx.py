@@ -144,6 +144,22 @@ class RegisterTest(helpers.TempDirCase):
         self.assertEqual(set(cx.register(self.tmp, ["py", "-3"]).values()), {fusion.IDENTICAL})
         self.assertEqual(snapshot, {p: read(self.tmp / p) for p in snapshot})
 
+    def test_cx15_english_labels_and_the_french_ones_already_written_are_the_same_tasks(self):
+        """CX-15: the tasks and the search prompt are English; a tasks.json written with the French labels
+        gets no duplicate on a second installation."""
+        cx.register(self.tmp, ["py", "-3"])
+        path = self.tmp / ".vscode" / "tasks.json"
+        tasks = json.loads(read(path))
+        self.assertEqual([t["label"] for t in tasks["tasks"]], ["Index: reindex", "Index: status", "Index: search",
+                                                                 "Index: diagnostics", "Index: git hooks"])
+        self.assertEqual(tasks["inputs"][0]["description"], "Pattern or symbol name to search")
+        french = ["Index: réindexer", "Index: état", "Index: chercher", "Index: diagnostic", "Index: hooks git"]
+        for task, label in zip(tasks["tasks"], french):
+            task["label"] = label
+        write(path, json.dumps(tasks))
+        cx.register(self.tmp, ["py", "-3"])
+        self.assertEqual([t["label"] for t in json.loads(read(path))["tasks"]], french)
+
     def test_cx06_existing_server_entry_is_customized_kept(self):
         """CX-06: an rgkb entry that differs is never replaced; other servers and keys are preserved."""
         write(self.tmp / ".mcp.json", '{"mcpServers": {"rgkb": {"command": "mine"}, "other": {}}}')

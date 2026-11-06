@@ -200,6 +200,15 @@ class ArbitrationTest(helpers.TempDirCase):
         self.assertEqual(listed["audit.software.framing"]["headless"], "stop")
         self.assertEqual(listed["audit.software.order"]["headless"], "default")
 
+    def test_ad08_e_a5_the_two_software_gates_are_two_policy_kinds(self):
+        """AD-08, E-A5: the milestone framing (`legacy`) stops a headless audit, the attack order (`vibecode`)
+        takes its default: two policy kinds, so the two gates stay, one per set, and no gate is duplicated."""
+        listed = {g["id"]: g for g in json.loads(h(self.tmp, "gate", "list").stdout)["gates"]}
+        self.assertNotEqual(listed["audit.software.framing"]["headless"], listed["audit.software.order"]["headless"])
+        software = [g for g in listed if g.startswith("audit.software.")]
+        self.assertEqual(sorted(software), ["audit.software.assignment", "audit.software.framing",
+                                            "audit.software.order"])
+
     def test_ar04_ep01_forcing_a_profile_skips_the_scout_unknown_is_an_error(self):
         """AR-04, EP-01: `--profile` on the entry point is stamped by=forced; an unknown profile -> exit 2."""
         ok = h(self.tmp, "stamp", "add", "--root", str(self.tmp), "--profiles", "software;research", "--by", "forced")

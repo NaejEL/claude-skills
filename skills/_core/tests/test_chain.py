@@ -162,6 +162,18 @@ class SpawnTest(helpers.TempDirCase):
         self.assertEqual(result["exit_code"], 0)
         self.assertIn("max turns", chain.failure(result))
 
+    def test_ch01_a_child_that_exits_0_without_creating_a_run_is_a_failure(self):
+        """CH-01: exit 0, no is_error, no STOP, but the skill never opened a run -> the chain is a failure."""
+        phase4.scenario(self.tmp, {"SPEC-a.md": {"action": "open", "norun": True}})
+        card = out(self, self.spawn())
+        result = chain.wait(self.work, card["id"], 60)
+        self.assertEqual((result["status"], result["exit_code"], result["child_run"]), ("done", 0, None))
+        self.assertIn("created no run", chain.failure(result))
+        phase4.scenario(self.tmp, {"SPEC-a.md": {"action": "open"}})
+        good = chain.wait(self.work, out(self, self.spawn())["id"], 60)
+        self.assertIsNotNone(good["child_run"])
+        self.assertIsNone(chain.failure(good))
+
     def test_ch01_a_dead_wrapper_ends_the_wait_instead_of_looping_forever(self):
         """CH-01: the wrapper vanished before writing its record -> the chain is failed and the wait returns."""
         folder = self.work / ".harness" / "runs"

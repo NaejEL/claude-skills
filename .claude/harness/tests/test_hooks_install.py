@@ -63,7 +63,7 @@ class InstallTest(helpers.TempDirCase):
         self.assertIn("PostToolUse", json.loads(self.settings().read_text(encoding="utf-8"))["hooks"])
 
     def test_hk02_a_harness_entry_edited_by_the_user_is_kept(self):
-        """HK-02, CA-26: a different entry of the harness is `personnalisé-conservé`, never rewritten."""
+        """HK-02, CA-26: a different entry of the harness is `customized-kept`, never rewritten."""
         hooks_install.apply(self.tmp, "python")
         path = self.settings()
         data = json.loads(path.read_text(encoding="utf-8"))
@@ -79,6 +79,22 @@ class InstallTest(helpers.TempDirCase):
         hooks_install.apply(self.tmp, "python")
         result = hooks_install.apply(self.tmp, "py -3")
         self.assertEqual(result["entries"]["pre-bash"], fusion.KEPT)
+
+    def test_hk02_a_command_with_the_old_hard_coded_interpreter_is_migrated_in_place(self):
+        """HK-02: the entries generated before the run-time fallback (`py -3 "$f" <name>`) are rewritten, nothing else is."""
+        old = ('f="$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py"; [ -f "$f" ] || exit 0; py -3 "$f" %s; rc=$?; '
+               '[ "$rc" -eq 2 ] && exit 2; exit 0')
+        data = {"hooks": {"PreToolUse": [
+            {"matcher": hooks_install.EDIT_TOOLS, "hooks": [{"type": "command", "command": old % "pre-edit", "timeout": 10}]},
+            {"matcher": hooks_install.SHELL_TOOLS, "hooks": [{"type": "command", "command": old % "pre-bash", "timeout": 99}]}]}}
+        path = self.settings(json.dumps(data))
+        result = hooks_install.apply(self.tmp, "py -3")
+        self.assertEqual(result["entries"]["pre-edit"], fusion.MERGED)
+        self.assertEqual(result["entries"]["pre-bash"], fusion.KEPT)        # the timeout was customized
+        written = json.loads(path.read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
+        self.assertEqual(written[0]["hooks"][0]["command"], hooks_install.command_for("py -3", "pre-edit"))
+        self.assertEqual(written[1]["hooks"][0]["command"], old % "pre-bash")
+        self.assertEqual(hooks_install.apply(self.tmp, "py -3")["entries"]["pre-edit"], fusion.IDENTICAL)
 
     def test_hk02_cli_with_a_lint_file(self):
         """HK-02, HL-01: `hooks install --lint-file` writes hooks.lint (consumed file) then merges the three entries."""
@@ -119,6 +135,56 @@ class CommandTest(helpers.TempDirCase):
             self.assertNotEqual(res.returncode, 2, name)
             res = self.run_command(name, payload, empty, "definitely-not-an-interpreter")
             self.assertNotEqual(res.returncode, 2, name)
+
+    def test_hk03_the_interpreter_falls_back_python3_python_py_at_run_time(self):
+        """HK-03: the detected interpreter first, then python3, python, `py -3`: the first on the PATH runs the hook."""
+        project = self.tmp / "p"
+        (project / ".claude" / "harness" / "hooks").mkdir(parents=True)
+        (project / ".claude" / "harness" / "hooks" / "hook.py").write_text("# stub\n", encoding="utf-8")
+        payload = {"tool_name": "Bash", "tool_input": {"command": "git status"}, "session_id": "s"}
+        bins = self.tmp / "bin"
+        bins.mkdir()
+        for exe, code in (("python3", 2), ("python", 0)):       # exit 2 = "this one ran"
+            script = bins / exe
+            script.write_bytes(('#!/bin/sh\n[ "$1" = "-c" ] && { printf 7; exit 0; }\nexit %d\n' % code).encode("utf-8"))
+            script.chmod(0o755)
+        command = hooks_install.command_for("definitely-not-an-interpreter", "pre-bash")
+        self.assertIn("python3", command)
+        self.assertIn("py -3", command)
+        self.assertEqual(command.count('py -3 "$f"'), 1)
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=str(project), PATH=str(bins) + os.pathsep + os.environ["PATH"])
+        res = subprocess.run([find_bash(), "-c", command], input=json.dumps(payload), capture_output=True, text=True,
+                             env=env, timeout=60)
+        self.assertEqual(res.returncode, 2, res.stderr)
+        (bins / "python3").unlink()
+        res = subprocess.run([find_bash(), "-c", hooks_install.command_for("py -3", "pre-bash")],
+                             input=json.dumps(payload), capture_output=True, text=True, env=env, timeout=60)
+        self.assertEqual(res.returncode, 0, res.stderr)          # `python` ran (exit 0), `py -3` did not need to exist
+
+    def test_hk03_an_interpreter_that_does_not_run_is_skipped_and_none_warns(self):
+        """HK-03: a stub on the PATH that exits 0 without running anything (Windows Store python3) is
+        skipped; none runs -> warning, exit 0."""
+        project = self.tmp / "p"
+        (project / ".claude" / "harness" / "hooks").mkdir(parents=True)
+        (project / ".claude" / "harness" / "hooks" / "hook.py").write_text("# stub\n", encoding="utf-8")
+        payload = {"tool_name": "Bash", "tool_input": {"command": "git status"}, "session_id": "s"}
+        bins = self.tmp / "bin"
+        bins.mkdir()
+        (bins / "python3").write_bytes(b"#!/bin/sh\nexit 0\n")                  # the Store stub: exit 0, runs nothing
+        (bins / "python").write_bytes(b'#!/bin/sh\n[ "$1" = "-c" ] && { printf 7; exit 0; }\nexit 2\n')   # really runs
+        (bins / "py").write_bytes(b"#!/bin/sh\nexit 9\n")                                       # shadows a real launcher
+        for exe in ("python3", "python", "py"):
+            (bins / exe).chmod(0o755)
+        command = hooks_install.command_for("definitely-not-an-interpreter", "pre-bash")
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=str(project), PATH=str(bins) + os.pathsep + os.environ["PATH"])
+        res = subprocess.run([find_bash(), "-c", command], input=json.dumps(payload), capture_output=True, text=True,
+                             env=env, timeout=60)
+        self.assertEqual(res.returncode, 2, res.stderr)           # python ran, python3 was skipped
+        (bins / "python").write_bytes(b"#!/bin/sh\nexit 9\n")
+        res = subprocess.run([find_bash(), "-c", command], input=json.dumps(payload), capture_output=True, text=True,
+                             env=env, timeout=60)
+        self.assertEqual(res.returncode, 0, res.stderr)
+        self.assertEqual(len([ln for ln in res.stderr.splitlines() if "no working Python" in ln]), 1, res.stderr)
 
     def test_hk03_a_wanted_blocking_still_exits_2(self):
         """HK-03: the exit code 2 of the hook is kept for a blocked command."""

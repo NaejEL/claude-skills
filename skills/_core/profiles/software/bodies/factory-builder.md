@@ -20,7 +20,7 @@ You are the Builder of this repository's software factory. You receive as input 
 
 ## Scratch files
 
-Write every temporary or throwaway file (scripts, outputs, probes) under `.harness/tmp/` in the project (git-ignored, deletable). Never in the system temp folder or anywhere else outside the project.
+Write every temporary or throwaway file (scripts, outputs, probes) under `.harness/tmp/` in the project (git-ignored, deletable). Never in the system temp folder or anywhere else outside the project. Delete scratch files with a literal path under `.harness/tmp/` (no variable, no glob outside it).
 
 ## Prohibitions
 

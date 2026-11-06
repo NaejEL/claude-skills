@@ -58,6 +58,8 @@ class ListTest(helpers.TempDirCase):
         self.assertEqual(rows["SPEC-ready.md"]["status"], queue_mod.READY)
         self.assertEqual(rows["SPEC-proposed.md"]["status"], queue_mod.PROPOSED)
         self.assertEqual((rows["SPEC-approved.md"]["status"], rows["SPEC-approved.md"]["approved"]), (queue_mod.PROPOSED, True))
+        self.assertEqual({r["status"] for r in rows.values()} - {"merged", "delivered", "in progress", "blocked",
+                                                                  "proposed", "proposed (answers ready)"}, set())
         self.assertTrue(rows["SPEC-cycle-x.md"]["errors"] and rows["SPEC-cycle-y.md"]["errors"])
         self.assertTrue(any("unknown dependency SPEC-nowhere" in e for e in listing["errors"]))
         self.assertFalse(queue_mod.eligible(rows["SPEC-cycle-x.md"]))

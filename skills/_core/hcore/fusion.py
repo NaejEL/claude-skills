@@ -22,8 +22,8 @@
 # - SF-03: .gitignore completed without duplicating a line (factory-logs/,
 #   .harness/runs/).
 # - SF-04: state of each file: created / merged / identical /
-#   customized-kept (the state values below are the French labels shared by
-#   all the skills and are kept as is). An unchanged file is not rewritten
+#   customized-kept (the state values below are shared by all the skills).
+#   An unchanged file is not rewritten
 #   (second application byte-for-byte identical).
 # - Tolerant reading: UTF-8 BOM and JSONC (comments, trailing commas)
 #   accepted, as VS Code and Windows tools write them. A strict JSON file is
@@ -37,7 +37,7 @@
 #   The upgrade of a copy (CO-03 to CO-06) lives in history.py and upgrade.py.
 # - X1: a generated agent file carries its model in the harness.model block
 #   of its frontmatter (install_agent). The block is regenerated in place even
-#   in a customized file, which is then "bloc-mis-à-jour" (written, its text
+#   in a customized file, which is then "block-updated" (written, its text
 #   outside the block kept); a file without the block (generated before) is kept.
 
 from __future__ import annotations
@@ -50,11 +50,11 @@ from typing import Any, Callable, Dict, Iterable, List, NamedTuple, Optional, Se
 
 from . import jsonc, models, profiles
 
-CREATED = "créé"
-MERGED = "fusionné"
-IDENTICAL = "identique"
-KEPT = "personnalisé-conservé"
-BLOCK_UPDATED = "bloc-mis-à-jour"
+CREATED = "created"
+MERGED = "merged"
+IDENTICAL = "identical"
+KEPT = "customized-kept"
+BLOCK_UPDATED = "block-updated"
 
 # PX-04, PF-05: the deny rules, the .gitignore lines, the tasks and the input of
 # the base installation are profile data (the fallback profile), unchanged.
@@ -130,6 +130,15 @@ def op_add_key(path: Sequence[str], key: str, value: Any) -> Op:
     return run
 
 
+# Labels written before the English translation: an existing task with one of them is the same task
+# (no duplicate on a second installation).
+LEGACY_TASK_LABELS = {
+    "Index: réindexer": "Index: reindex", "Index: état": "Index: status", "Index: chercher": "Index: search",
+    "Index: diagnostic": "Index: diagnostics", "Index: hooks git": "Index: git hooks",
+    "Lab: nouvelle expérience (session)": "Lab: new experiment (session)", "Lab: tests unitaires": "Lab: unit tests",
+}
+
+
 def op_tasks(inputs: Iterable[Dict[str, Any]], tasks: Iterable[Dict[str, Any]],
              version: str = "2.0.0") -> Op:
     """FU-01: tasks.json, inputs deduplicated by id and tasks by label (an
@@ -146,7 +155,7 @@ def op_tasks(inputs: Iterable[Dict[str, Any]], tasks: Iterable[Dict[str, Any]],
         for item in inputs:
             if item["id"] not in ids:
                 have_inputs.append(json.loads(json.dumps(item)))
-        labels = {t.get("label") for t in have_tasks if isinstance(t, dict)}
+        labels = {LEGACY_TASK_LABELS.get(t.get("label"), t.get("label")) for t in have_tasks if isinstance(t, dict)}
         for task in tasks:
             if task["label"] not in labels:
                 have_tasks.append(json.loads(json.dumps(task)))

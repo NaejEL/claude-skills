@@ -300,7 +300,8 @@ def run_batch(root: Path, patterns: List[str], parallel: int, target: str, polic
             for s, v in saved["specs"].items():
                 if s in batch.status:
                     batch.status[s] = {"building": "queued", "shipping": "delivered", "failed": "queued",
-                                       "conflict": "delivered"}.get(v, v)
+                                       "conflict": "delivered",
+                                       "ineligible": "queued"}.get(v, v)   # re-evaluated just below: it may be eligible now
                     batch.info[s] = saved.get("info", {}).get(s, {})
         journal.append(journal_path, {"event": "autonomy", "value": policy, "source": "flag"})
         listing = queue_mod.scan(run, root, target)

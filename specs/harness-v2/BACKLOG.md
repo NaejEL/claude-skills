@@ -318,41 +318,51 @@ Spec : `specs/SPEC-phase1-fin-L8-L14.md` (APPROUVEE), qui renvoie aux sections �
 - **À noter** : un cycle `/brainstorm` ne crée un dossier `.harness/runs/` que s'il atteint sa gate finale. Un test de l'usine du dépôt (`test_repo_factory`, UF-01) compare les blocs `harness.model` des agents au `.claude/models.json` local de l'utilisateur (non versionné) : il échoue tant que les agents n'ont pas été régénérés avec ces modèles.
 - **Recettes restantes (utilisateur)** : R4 (`/code-index` deux fois sur une fixture personnalisée), R5 (`/ai-lab` sur un `lab-models.json`), R6 (chaque audit sur fixture), R7 (`/brainstorm` interactif).
 
-- Mineur (relecture L8-L14, 2026-10-31) : `lab-ci.sh` cherche `Statut : PRE-ENREGISTRE` par grep sur n'importe quelle ligne, alors que `labrun.entry` exige la ligne exacte.
-- Mineur (relecture Phase 2, 2026-11-01) : `SPEC-vib-*` non produit (E-A2, SO-02/AD-08/AD-10) ; `allowed_writes` de vibecode-audit n'inclut pas `SPEC-vib-*`.
-- Mineur (relecture Phase 2) : l'ordre des sections de `AUDIT.md` diffère de SO-01 (blocs conservés à l'intérieur de chaque jeu ; tri par `audit.PROFILES`, pas par ordre du tampon).
-- Mineur (relecture Phase 2) : cadrage en deux gates au lieu d'une seule (AD-08/E-A5).
-- Mineur (relecture Phase 2) : le test des écarts attendus (`expected-gaps.json`) ne vérifie que les identifiants.
-- Mineur (relecture Phase 2) : `loop.route --models` avec un rôle hors profil rend un exit 2 peu explicite.
-- Mineur (relecture Phase 2) : `cmd_sf_args` appelle `profiles.discover()` deux fois.
+- Mineur (relecture L8-L14, 2026-10-31) : `lab-ci.sh` cherche `Statut : PRE-ENREGISTRE` par grep sur n'importe quelle ligne, alors que `labrun.entry` exige la ligne exacte. **Fixed (plugin 3.0.2)**: both scripts compare the first status line, whole and stripped, with the lines `labrun.entry` accepts.
+- Mineur (relecture Phase 2, 2026-11-01) : `SPEC-vib-*` non produit (E-A2, SO-02/AD-08/AD-10) ; `allowed_writes` de vibecode-audit n'inclut pas `SPEC-vib-*`. **Fixed (plugin 3.0.2)**: the vibecode lens set declares `spec_prefix: vib`, `audit.py` reads it from the set (`allowed_writes` and `write_spec` follow); the /audit skill writes them only when `legacy` is active too; E-A2 in `expected-gaps.json` updated.
+- Mineur (relecture Phase 2) : l'ordre des sections de `AUDIT.md` diffère de SO-01 (blocs conservés à l'intérieur de chaque jeu ; tri par `audit.PROFILES`, pas par ordre du tampon). **Fixed (plugin 3.0.2)**: `unified.assemble` sorts kept blocks by the position of their profile in the stamp.
+- Mineur (relecture Phase 2) : cadrage en deux gates au lieu d'une seule (AD-08/E-A5). **Skipped on purpose (plugin 3.0.2)**: the two gates answer different policy kinds (`audit.software.framing` = milestones, headless `stop`; `audit.software.order` = attack order, headless `default`); they are asked in one call (4 questions at most). A test pins the distinction.
+- Mineur (relecture Phase 2) : le test des écarts attendus (`expected-gaps.json`) ne vérifie que les identifiants. **Fixed (plugin 3.0.2)**: each justification is a sentence, unique, and cites the rule codes the spec cites for its gap.
+- Mineur (relecture Phase 2) : `loop.route --models` avec un rôle hors profil rend un exit 2 peu explicite. **Already fixed** (the message names the role and the allowed roles of the profile); regression test added (plugin 3.0.2).
+- Mineur (relecture Phase 2) : `cmd_sf_args` appelle `profiles.discover()` deux fois. **Fixed (plugin 3.0.2)**: one `profiles.discover()` call.
 
 ---
 
 ### Revue de code Phase 3 : mineurs à reprendre (2026-11-01)
 
-- `union_tools` sur un agent en lecture seule `legacy` touche la ligne `tools:` hors bloc (`upgrade.py:434-440`).
-- Le candidat de conversion n'est pas revérifié contre le sha du plan à l'application (`upgrade.py:719-729`).
-- Le `TOOL_VERSION` de code-index est comparé à `CORE_VERSION` dans la garde UP-08 (`upgrade.py:232`).
-- Un fichier `*.upgrade-tmp` peut rester après une exception (`upgrade.py:666`).
-- `migrate` réécrit tout `findings.jsonl` (`migrate.py:61-65`).
-- `_set_header` reconnaît une ligne d'en-tête hors de la zone d'en-tête (`render.py:200-211`).
-- Reprise d'un lot (`--resume`) : le statut `ineligible` est conservé tel quel.
-- `hook.py` post-edit : le budget de 5 s est plus court que `timeout_s` (30 s) du lint, ce qui peut laisser un lint orphelin.
-- `.claude/settings.json` : le hook code en dur `py -3` ; le filet de sécurité est silencieusement inactif sous Linux/macOS sans le lanceur `py`.
+- `union_tools` sur un agent en lecture seule `legacy` touche la ligne `tools:` hors bloc (`upgrade.py:434-440`). **Fixed (plugin 3.0.1).**
+- Le candidat de conversion n'est pas revérifié contre le sha du plan à l'application (`upgrade.py:719-729`). **Fixed (plugin 3.0.1).**
+- Le `TOOL_VERSION` de code-index est comparé à `CORE_VERSION` dans la garde UP-08 (`upgrade.py:232`). **Fixed (plugin 3.0.1).**
+- Un fichier `*.upgrade-tmp` peut rester après une exception (`upgrade.py:666`). **Fixed (plugin 3.0.1).**
+- `migrate` réécrit tout `findings.jsonl` (`migrate.py:61-65`). **Already fixed** (`registries_text` returns None when the content is unchanged); test added (plugin 3.0.1).
+- `_set_header` reconnaît une ligne d'en-tête hors de la zone d'en-tête (`render.py:200-211`). **Fixed (plugin 3.0.1).**
+- Reprise d'un lot (`--resume`) : le statut `ineligible` est conservé tel quel. **Fixed (plugin 3.0.1).**
+- `hook.py` post-edit : le budget de 5 s est plus court que `timeout_s` (30 s) du lint, ce qui peut laisser un lint orphelin. **Fixed (plugin 3.0.1)**: the lint is bounded by the hook budget.
+- `.claude/settings.json` : le hook code en dur `py -3` ; le filet de sécurité est silencieusement inactif sous Linux/macOS sans le lanceur `py`. **Fixed (plugin 3.0.1)**: detected interpreter, then python3, python, `py -3` at run time.
 - `eval` n'est pas analysé par la garde (hors périmètre par conception, risque I3).
-- `chain` : un enfant sorti en 0 sans aucun run n'est pas compté comme un échec (seuls `is_error` et un wrapper mort le sont).
+- `chain` : un enfant sorti en 0 sans aucun run n'est pas compté comme un échec (seuls `is_error` et un wrapper mort le sont). **Fixed (plugin 3.0.1).**
 - `test_fb04_a_spec_whose_dependency_is_in_the_batch_waits_for_its_merge` : un échec isolé sous charge (`git worktree add failed`), qui ne se reproduit pas seul.
-- Essai réel de `/audit` (hello world) : le chemin `_core/harness.py` cité par le skill n'existe pas dans le projet, et l'agent s'est rabattu sur `.claude/harness/harness.py`.
-- Essai réel de `/audit` : après une erreur de nommage de champ (`difficulty` au lieu de la taille), un run `vibecode-audit` est resté orphelin dans `.harness/runs/`.
-- Phase 7 : la garde de version se repère sur `-G '"version"'` : un commit qui modifie une autre ligne du manifeste contenant `"version"` déplace la base. Une baisse de version passe aussi pour une hausse.
+- Essai réel de `/audit` (hello world) : le chemin `_core/harness.py` cité par le skill n'existe pas dans le projet, et l'agent s'est rabattu sur `.claude/harness/harness.py`. **Fixed (plugin 3.0.2)**: `plugin core-path --root --skill-dir` returns the plugin core, else `.claude/harness/harness.py`, else the `_core` beside the skill; the /audit skill uses it.
+- Essai réel de `/audit` : après une erreur de nommage de champ (`difficulty` au lieu de la taille), un run `vibecode-audit` est resté orphelin dans `.harness/runs/`. **Fixed for `audit start` (plugin 3.0.2)**: a run opened by `audit start` that then fails is closed (`status: failed`, `error`); audit run states now carry `status: running`. A later step that rejects an output (`audit auditor`, `audit validator`) keeps its run on purpose: the same run is retried (relaunch rules).
+- Phase 7 : la garde de version se repère sur `-G '"version"'` : un commit qui modifie une autre ligne du manifeste contenant `"version"` déplace la base. Une baisse de version passe aussi pour une hausse. **Fixed (plugin 3.0.1)**: baseline = last change of the parsed value, a decrease fails.
 - Phase 7 : la détection du mode plugin suppose que `CLAUDE_SKILL_DIR` reste le chemin du lien, non résolu (recette R1). Si Claude Code le résolvait un jour, une installation par liens rendrait `harness:<skill>`.
 - Phase 7 : `test_repo_factory` ne teste plus l'idempotence du bloc modèle (`harness.model`), car ce bloc a disparu au passage en core 4.0.
 - Corrigé en Phase 7 : `queue.scan` plantait quand le worktree d'une spec mergée était retiré pendant le parcours. C'était la cause des échecs intermittents de fb02, fb04 et fb05.
-- English translation (2026-11-02): user-visible French labels remain in `hcore/cx.py` (`Index: réindexer`, the search prompt) and `hcore/lab.py` (`Lab: nouvelle expérience`); French state words in `fusion.py`, `hooks_install.py`, `queue.py` (`créé`, `fusionné`, `mergée`); French quotes in `audit.py` comments; `unified.py:1742` cites only `Défaut :`; `brainstorm` keeps `SUJET`, `[énoncé]` and the quoted heading "non retenus dans ce cycle".
-- English translation: the guard rejects globs, so a recursive delete of `.harness/tmp/` with a `*` glob is blocked (naming the folder passes).
-- Real use: the Bash guard analyses the body of a heredoc as commands (a Python heredoc quoting a delete command was blocked).
+- English translation (2026-11-02): user-visible French labels remain in `hcore/cx.py` (`Index: réindexer`, the search prompt) and `hcore/lab.py` (`Lab: nouvelle expérience`); French state words in `fusion.py`, `hooks_install.py`, `queue.py` (`créé`, `fusionné`, `mergée`); French quotes in `audit.py` comments; `unified.py:1742` cites only `Défaut :`; `brainstorm` keeps `SUJET`, `[énoncé]` and the quoted heading "non retenus dans ce cycle". **Fixed (plugin 3.0.2)** except `Factory: nouvelle spec (session)` (software profile, not listed in the backlog B spec; the legacy labels of cx, lab and factory tasks are recognised by `fusion.LEGACY_TASK_LABELS`, add the factory one with its translation). State words are now `created`, `merged`, `identical`, `customized-kept`, `block-updated`, `updated`; queue statuses are English; the `Défaut :` stop message cites `Default:` too; brainstorm SKILL labels are English.
+- English translation: the guard rejects globs, so a recursive delete of `.harness/tmp/` with a `*` glob is blocked (naming the folder passes). **Fixed (plugin 3.0.1)**: globs pass under `.harness/tmp/`.
+- Real use: the Bash guard analyses the body of a heredoc as commands (a Python heredoc quoting a delete command was blocked). **Fixed (plugin 3.0.1)**: only the opening line is analysed, unless it feeds a shell.
 - English translation: `test_px03` no longer compares the extracted Phase 2 sentences (the French BASE2 copies are legacy fixtures); it only checks the inventory is well formed.
-- Real use: a cycle whose Builder hits the Bash guard stops (`destructive`) without deactivating its scope marker; `factory-run` could run `deactivate` on that stop.
+- Real use: a cycle whose Builder hits the Bash guard stops (`destructive`) without deactivating its scope marker; `factory-run` could run `deactivate` on that stop. **Fixed (plugin 3.0.1)**: writing a STOP deactivates the scope marker of its run.
+
+### M4 and BACKLOG parts A-C: remaining minors (2026-11-06)
+
+- Fixed by hand after part C: the hook wrapper's interpreter check is now `[ "$(X -c 'import sys; sys.stdout.write(str(7))')" = 7 ]`; the Windows Store `python`/`python3` stub exits 0 without running anything and passed the former `-c ""` check, which silently disabled the safety net when the first candidate was missing. `hooks install` also recognises the 3.0.3 wrapper form as legacy.
+- Guard, out of scope by design: `echo '...' | sh`, `cat <<'EOF' | eval`, a heredoc written to a script then run (`cat <<'EOF' >x.sh; bash x.sh`), Python heredoc bodies (`os.system(...)` inside `py - <<'EOF'`), writes such as `tee ../../etc/x`.
+- Guard, accepted false positives of the strict whitelist: `command cat <<'EOF'`, `git -C x commit -F - <<'EOF'`, `cat -- <<'EOF'`, `cat <<'EOF' # comment`, any unquoted `cat <<EOF` whose body mentions a delete command.
+- Audit: only `audit start` closes its run as `failed`; `audit auditor` / `audit validator` keep it open because the same run is retried (decision of part B).
+- Remaining French: the `Factory: nouvelle spec (session)` task label (software `profile.json`, `ci/fixtures/expected/install-fresh/tasks.json`); `personnalisé-conservé` in `skills/software-factory/SKILL.md:70`; the state-word comment of `fusion.py:7`.
+- README migration (Linux): the `case` pattern `"$clone"/skills/*` does not match when `<clone>` is written with a trailing slash.
+- `migrate` (part A item 6) needed no change: it already skips the write when the content is identical (covered by `test_upgrade.py`).
 
 ## 9. Phase 3 — état (2026-11-01)
 
@@ -400,3 +410,7 @@ Points d'attention pour la suite :
 - Les chaînes `claude -p "/factory-run …"` et le corps de l'orchestrateur généré gardent la forme courte (P3 : elle fonctionne en headless) ; le nom effectif n'est pas propagé dans les copies projet, qui ne connaissent pas le mode d'installation.
 - Échecs préexistants de `test_repo_factory` (6 tests, `.claude/agents`, `ci/factory.sh`), antérieurs à cette phase (commit c3c3f3d) ; ils ne dépendent pas des fichiers modifiés ici.
 - `history.json` régénéré, `.claude/harness/` rafraîchi. M4 reste hors périmètre.
+- Real use (M4 cycle): a Verifier's `Remove-Item $base -Recurse -Force` on its scratch folder was blocked (a variable target is unresolvable, by design). **Fixed (plugin 3.0.1)**: the Builder and Verifier templates (both profiles) say to delete scratch files with a literal path under `.harness/tmp/`.
+
+- Guard regression of part A (plugin 3.0.2): in an unquoted heredoc (`<<EOF`, `<<-EOF`) the body is data except its `$( )` and backtick substitutions, which are analysed as commands; a quoted delimiter keeps the whole body as data; a heredoc fed to a shell is still fully analysed. **Fixed.**
+- Guard bypasses of parts A and B (plugin 3.0.3): a heredoc body is data only for a quoted plain delimiter (`<<'WORD'`), no unquoted `#` before the `<<`, and an owner that just reads it (`cat`, `tee <file>`, `py`/`python`/`python3`, `git commit -F -`) with no pipe on the line; every other body (unquoted or odd delimiters, shells with options or glued `<<`, `source /dev/stdin`) is analysed as commands, line by line when it does not parse. Here-strings fed to a shell or `source` are analysed. The hook wrapper skips an interpreter whose `-c ""` fails (Windows Store stub) and warns on stderr when none runs. **Fixed.**

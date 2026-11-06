@@ -85,6 +85,16 @@ class RoutingTest(helpers.TempDirCase):
         self.assertIn("profile research is not active", res.stderr)
         self.assertEqual(self.start("x", "--profile", "zzz").returncode, 2)
 
+    def test_lp05_models_with_a_role_outside_the_profile_names_the_role_and_the_allowed_ones(self):
+        """LP-05, X6: `--models` giving a role the routed profile does not have -> exit 2 naming the role
+        and the allowed roles of that profile."""
+        self.stamp("software")
+        res = self.start('ajouter un bouton --models "lab.neuro=opus"')
+        self.assertEqual(res.returncode, 2)
+        self.assertIn("'lab.neuro'", res.stderr)
+        self.assertIn("factory.builder", res.stderr)
+        self.assertNotIn("lab.director", res.stderr)
+
     def test_lp06_lp07_the_second_instance_forces_research_and_names_the_journal(self):
         """LP-06, LP-07, CA-15, CA-24: `--orchestrator lab-run` is the research instance of the template:
         journal lab-run-*, profile research imposed; every recorded line carries its profile."""

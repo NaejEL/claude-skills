@@ -17,7 +17,9 @@ if (-not (Test-Path -LiteralPath $Protocol -PathType Leaf)) {
     exit 1
 }
 
-if (-not (Select-String -LiteralPath $Protocol -Pattern '^\s*(Status\s*:\s*PRE-REGISTERED|Statut\s*:\s*PRE-ENREGISTRE)' -Quiet)) {
+# The first status line, exactly as `labrun.entry` reads it (stripped, whole line).
+$statusLine = (Select-String -LiteralPath $Protocol -Pattern '^\s*(status|statut)' | Select-Object -First 1 | ForEach-Object { $_.Line.Trim() })
+if (($statusLine -cne 'Status: PRE-REGISTERED') -and ($statusLine -cne 'Statut : PRE-ENREGISTRE')) {
     Write-Error "Protocol not pre-registered: '$Protocol' does not contain 'Status: PRE-REGISTERED' (or the French 'Statut : PRE-ENREGISTRE'). A CI cycle requires a protocol approved by the PI."
     exit 1
 }
