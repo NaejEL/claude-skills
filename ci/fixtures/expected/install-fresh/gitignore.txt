@@ -1,2 +1,3 @@
 factory-logs/
 .harness/runs/
+.harness/tmp/

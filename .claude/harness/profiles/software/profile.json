@@ -17,7 +17,7 @@
       "model_role": "factory.planner",
       "model_default": "inherit",
       "agent_file": ".claude/agents/factory-planner.md",
-      "description": "Analyse un besoin et le code existant pour rédiger un brouillon de spécification avec critères d'acceptation testables et questions ouvertes. Lecture seule.",
+      "description": "Analyzes a need and the existing code to draft a specification with testable acceptance criteria and open questions. Read-only.",
       "body": "bodies/factory-planner.md"
     },
     {
@@ -28,7 +28,7 @@
       "model_role": "factory.builder",
       "model_default": "inherit",
       "agent_file": ".claude/agents/factory-builder.md",
-      "description": "Implémente strictement une spécification approuvée — architecture, code et tests dans un même contexte — puis exécute build et tests avant de rendre la main.",
+      "description": "Strictly implements an approved specification — architecture, code and tests in a single context — then runs build and tests before handing back.",
       "body": "bodies/factory-builder.md"
     },
     {
@@ -39,7 +39,7 @@
       "model_role": "factory.verifier",
       "model_default": "inherit",
       "agent_file": ".claude/agents/factory-verifier.md",
-      "description": "Vérification adversariale d'une implémentation par rapport à sa spec — exécute les tests, cherche à casser, rend un verdict JSON strict. Ne modifie jamais le code.",
+      "description": "Adversarial verification of an implementation against its spec — runs the tests, tries to break it, returns a strict JSON verdict. Never modifies the code.",
       "body": "bodies/factory-verifier.md"
     }
   ],
@@ -82,10 +82,11 @@
       "kind": "spec",
       "dir": "specs",
       "glob": "SPEC-*.md",
-      "status_proposed": "Statut : PROPOSEE",
-      "status_ready": "Statut : APPROUVEE",
-      "status_blocked": "Statut : BLOQUEE",
-      "status_delivered": "Statut : LIVREE",
+      "status_proposed": "Status: PROPOSED",
+      "status_ready": "Status: APPROVED",
+      "status_blocked": "Status: BLOCKED",
+      "status_delivered": "Status: DELIVERED",
+      "status_legacy": {"proposed": "Statut : PROPOSEE", "ready": "Statut : APPROUVEE", "blocked": "Statut : BLOQUEE", "delivered": "Statut : LIVREE"},
       "status_done": null
     }
   ],
@@ -133,7 +134,8 @@
   },
   "gitignore": [
     "factory-logs/",
-    ".harness/runs/"
+    ".harness/runs/",
+    ".harness/tmp/"
   ],
   "tasks": {
     "inputs": [
@@ -174,14 +176,14 @@
     "script": "factory",
     "command": "/factory-run",
     "max_turns": 100,
-    "status_line": "Statut : APPROUVEE",
+    "status_line": "Status: APPROVED",
     "logs_dir": "factory-logs"
   },
   "orchestrator": {
     "name": "factory-run",
     "alias_of": null,
-    "description": "Lance un cycle de l'usine logicielle (Planner → gate humaine sur la spec → Builder → Verifier avec boucle de correction) sur un besoin ou une spec approuvée.",
-    "argument_hint": "<besoin | chemin d'une spec> [--models \"role=modele;...\"] [--autonomy gate|auto] [--ship <cible> | --no-ship] [--worktree]"
+    "description": "Runs one cycle of the software factory (Planner → human gate on the spec → Builder → Verifier with a fix loop) on a need or an approved spec.",
+    "argument_hint": "<need | spec path> [--models \"role=modele;...\"] [--autonomy gate|auto] [--ship <cible> | --no-ship] [--worktree]"
   },
   "gate_namespaces": [],
   "gates": [
@@ -189,8 +191,8 @@
       "id": "audit.software.framing",
       "source": "audit:framing",
       "kind": "b",
-      "options": "2 / 3 / 4 ; risque d'abord / quick wins / fondations / ordre proposé",
-      "default": "3 / risque d'abord",
+      "options": "2 / 3 / 4 ; risk first / quick wins / foundations / proposed order",
+      "default": "3 / risk first",
       "rationale": "computed by PZ-01 and PZ-02: make it reliable first, milestones computed (roadmap 4.2)",
       "headless": "stop"
     },
@@ -198,8 +200,8 @@
       "id": "audit.software.order",
       "source": "audit:order",
       "kind": "b",
-      "options": "Gravité d'abord / Gains rapides / Tout ce qui bloque / Garder l'ordre ; Les détailler / Les lister en une ligne / Les omettre",
-      "default": "Gravité d'abord / Les détailler",
+      "options": "Severity first / Quick wins / Everything that blocks / Keep the order ; Detail them / List them in one line / Omit them",
+      "default": "Severity first / Detail them",
       "rationale": "marked default in the attack order; detailing loses nothing",
       "headless": "default"
     },
@@ -207,8 +209,8 @@
       "id": "audit.software.assignment",
       "source": "audit:assignment",
       "kind": "b",
-      "options": "Jalon 1 / Jalon 2 / Jalon dernier / Exclure de la roadmap",
-      "default": "calcul PZ-02",
+      "options": "Milestone 1 / Milestone 2 / Last milestone / Exclude from roadmap",
+      "default": "PZ-02 computation",
       "rationale": "milestones computed by PZ-02 from the severity, nothing is excluded",
       "headless": "stop",
       "free": true,
@@ -739,7 +741,7 @@
         "id": "software-package",
         "kind": "judgement",
         "weight": 2,
-        "question": "Le projet contient-il un vrai paquet logiciel livrable, distinct d'un corpus de recherche ?"
+        "question": "Does the project contain a real, deliverable software package, distinct from a research corpus?"
       }
     ]
   },

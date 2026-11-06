@@ -1,28 +1,28 @@
-# Le tampon `.claude/harness.json`
+# The `.claude/harness.json` stamp
 
-Fichier **versionné** de chaque projet équipé (aucune donnée propre à une machine : ni chemin absolu, ni clé `rg_path`, `harness.py stamp validate` les refuse). JSON strict, indentation 2, écriture atomique. Schéma `schema_version: 1`.
+**Versioned** file of each equipped project (no machine-specific data: no absolute path, no `rg_path` key, `harness.py stamp validate` refuses them). Strict JSON, 2-space indentation, atomic write. Schema `schema_version: 1`.
 
-| Clé | Contenu |
+| Key | Content |
 | --- | --- |
-| `schema_version` | `1`. Une autre valeur est refusée. |
-| `autonomy` | `gate` ou `auto`. Posée à `auto` si absente ; une valeur existante n'est **jamais** modifiée par l'installation ni par l'upgrade. |
-| `profiles[]` | `{name, added, by}`, en ajout seulement. |
-| `skills` | Un objet par skill qui installe : `software-factory` et/ou `code-index` (`ai-lab` est le profil `research` de `software-factory`). |
-| `migrations[]` | `{id, at, sources: [{path, sha256}]}`, en ajout seulement (registres de run déjà publiés). |
-| `inferred_from` | Facultatif : génération estimée du projet sans tampon (`pre-core`, `core-<v>`) créé par le premier upgrade. |
+| `schema_version` | `1`. Any other value is refused. |
+| `autonomy` | `gate` or `auto`. Set to `auto` if absent; an existing value is **never** modified by installation or upgrade. |
+| `profiles[]` | `{name, added, by}`, append-only. |
+| `skills` | One object per installing skill: `software-factory` and/or `code-index` (`ai-lab` is the `research` profile of `software-factory`). |
+| `migrations[]` | `{id, at, sources: [{path, sha256}]}`, append-only (run registries already published). |
+| `inferred_from` | Optional: estimated generation of the project without a stamp (`pre-core`, `core-<v>`) created by the first upgrade. |
 
 ## `skills.<skill>`
 
-- `repo_commit`, `repo_describe`, `repo_dirty` : version du dépôt claude-skills qui a produit l'installation (`harness.py version`).
-- `core_version` (software-factory) ou `tool_version` (code-index, `TOOL_VERSION` de rgkb).
-- `installed_at` (fixé à la première écriture), `updated_at` (mis à jour par un apply qui change quelque chose) : ISO 8601, heure locale avec décalage, à la seconde.
-- `options` : software-factory `stacks`, `interpreter`, `ci`, `code_index_offered` ; code-index `no_wire`, `hooks`, `interpreter`.
-- `params` (software-factory) : les paramètres `judgement` des profils, rédigés une fois.
-- `contributes` (code-index) : les outils que ce skill ajoute aux agents et aux scripts CI.
-- `files` : `{"<chemin relatif>": {kind: generated|merged|copied|legacy, blocks: {"<bloc>": "<sha256>"}}}`.
+- `repo_commit`, `repo_describe`, `repo_dirty`: version of the claude-skills repository that produced the installation (`harness.py version`).
+- `core_version` (software-factory) or `tool_version` (code-index, rgkb's `TOOL_VERSION`).
+- `installed_at` (set on first write), `updated_at` (updated by an apply that changes something): ISO 8601, local time with offset, to the second.
+- `options`: software-factory `stacks`, `interpreter`, `ci`, `code_index_offered`; code-index `no_wire`, `hooks`, `interpreter`.
+- `params` (software-factory): the profiles' `judgement` parameters, written once.
+- `contributes` (code-index): the tools this skill adds to the agents and CI scripts.
+- `files`: `{"<relative path>": {kind: generated|merged|copied|legacy, blocks: {"<block>": "<sha256>"}}}`.
 
-## Règles
+## Rules
 
-- Un tampon de la Phase 2 (`profiles` seul) passe au schéma 1 : toutes ses clés sont conservées, dans leur ordre, les nouvelles viennent après.
-- Un apply sans changement ne touche pas le tampon (identique octet pour octet) ; un arrêt avant la fin le laisse inchangé, il est écrit en dernier.
-- Un fichier `legacy` est un fichier généré conservé tel quel à la demande de l'utilisateur (gate `upgrade.convert`) : l'upgrade ne le modifie pas, le doctor le signale.
+- A Phase 2 stamp (`profiles` alone) moves to schema 1: all its keys are kept, in their order, the new ones come after.
+- An apply with no change does not touch the stamp (byte-for-byte identical); a stop before the end leaves it unchanged, it is written last.
+- A `legacy` file is a generated file kept as is at the user's request (gate `upgrade.convert`): the upgrade does not modify it, the doctor flags it.

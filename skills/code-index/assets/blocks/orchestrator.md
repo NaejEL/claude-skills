@@ -1,6 +1,6 @@
-## Base de connaissance du dépôt (rgkb)
+## Repository knowledge base (rgkb)
 
-Pour `{{agent}}`, deux points d'ancrage, sans renuméroter les étapes :
+For `{{agent}}`, two anchor points, without renumbering the steps:
 
-- **Avant la première phase qui dépense** (Plan, Cadrage) : `{{interpreter}} .claude/rgkb/rgkb.py status`, puis `{{interpreter}} .claude/rgkb/rgkb.py index` si l'index est périmé : un cadrage sur index périmé produit un plan faux, l'erreur la plus chère de la chaîne.
-- **À la consignation finale**, après approbation : proposer des notes `mcp__rgkb__note_add` pour ce que le code ne dit pas (décision et sa raison, piège, résultat chiffré, zone sensible). `subject` = chemin de fichier ou symbole, sinon sujet libre stable ; `source` = la spec ou le protocole ; un ou deux `tags`. **Une à trois notes par cycle, pas davantage** ; ne jamais consigner ce que l'index retrouve seul. Le rapport final cite les notes ajoutées et rappelle que `.knowledge/` se commite.
+- **Before the first phase that spends** (Plan, Scoping): `{{interpreter}} .claude/rgkb/rgkb.py status`, then `{{interpreter}} .claude/rgkb/rgkb.py index` if the index is stale: scoping on a stale index produces a wrong plan, the most expensive error in the chain.
+- **At the final recording**, after approval: propose `mcp__rgkb__note_add` notes for what the code does not say (a decision and its reason, a pitfall, a measured result, a sensitive area). `subject` = file path or symbol, otherwise a stable free-form subject; `source` = the spec or protocol; one or two `tags`. **One to three notes per cycle, no more**; never record what the index finds on its own. The final report cites the notes added and reminds that `.knowledge/` gets committed.

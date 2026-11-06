@@ -13,6 +13,10 @@ import helpers
 from hcore import CORE_VERSION, fusion, journal, jsonc, registry, runs
 
 
+# The reference files predate the scratch folder: the generated block now ends with this line.
+SCRATCH_LINE = ".harness/tmp/\n"
+
+
 def ordered(path):
     return json.dumps(json.loads(path.read_text(encoding="utf-8")))
 
@@ -52,7 +56,7 @@ class FixtureMergeTest(helpers.TempDirCase):
         self.assertEqual(ordered(self.tmp / ".claude" / "settings.json"), ordered(expected / "settings.json"))
         self.assertEqual(ordered(self.tmp / ".vscode" / "tasks.json"), ordered(expected / "tasks.json"))
         self.assertEqual((self.tmp / ".gitignore").read_text(encoding="utf-8"),
-                         (expected / "gitignore.txt").read_text(encoding="utf-8"))
+                         (expected / "gitignore.txt").read_text(encoding="utf-8") + SCRATCH_LINE)
         self.assertEqual(set(states.values()), {fusion.MERGED})
 
     def test_sf01_third_party_key_kept_and_deny_without_duplicate(self):
@@ -106,7 +110,7 @@ class FixtureMergeTest(helpers.TempDirCase):
         self.assertEqual(ordered(self.tmp / ".claude" / "settings.json"), ordered(expected / "fresh-settings.json"))
         self.assertEqual(ordered(self.tmp / ".vscode" / "tasks.json"), ordered(expected / "fresh-tasks.json"))
         self.assertEqual((self.tmp / ".gitignore").read_text(encoding="utf-8"),
-                         (expected / "fresh-gitignore.txt").read_text(encoding="utf-8"))
+                         (expected / "fresh-gitignore.txt").read_text(encoding="utf-8") + SCRATCH_LINE)
         self.assertEqual(set(states.values()), {fusion.CREATED})
 
     def test_sf01_invalid_json_not_overwritten(self):
@@ -187,10 +191,11 @@ class TolerantReadTest(helpers.TempDirCase):
     def test_sf03_gitignore_crlf_kept(self):
         """SF-03."""
         path = self.put(".gitignore", "node_modules/\r\ndist/\r\n", newline="")
+        expected = b"node_modules/\r\ndist/\r\nfactory-logs/\r\n.harness/runs/\r\n.harness/tmp/\r\n"
         fusion.apply(self.tmp, [])
-        self.assertEqual(path.read_bytes(), b"node_modules/\r\ndist/\r\nfactory-logs/\r\n.harness/runs/\r\n")
+        self.assertEqual(path.read_bytes(), expected)
         fusion.apply(self.tmp, [])
-        self.assertEqual(path.read_bytes(), b"node_modules/\r\ndist/\r\nfactory-logs/\r\n.harness/runs/\r\n")
+        self.assertEqual(path.read_bytes(), expected)
 
     def test_sf04_all_or_nothing_when_one_file_is_invalid(self):
         """SF-04: unreadable tasks.json -> neither settings.json nor .gitignore touched."""

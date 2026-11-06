@@ -31,6 +31,17 @@ class TableTest(helpers.TempDirCase):
                 wrong.append((row["command"], "allow", hit.name))
         self.assertEqual(wrong, [])
 
+    def test_hg02_the_scratch_folder_is_deletable_and_nothing_else_is_new(self):
+        """HG-02: everything under <root>/.harness/tmp/ may be deleted; other temp folders and outside paths stay blocked."""
+        check = scope.deletable_factory(self.tmp, None)
+        for command in ("rm -rf .harness/tmp/x", "rm .harness/tmp/a.py", "rm -r .harness/tmp", "rm -rf ./.harness/tmp/a/b"):
+            self.assertIsNone(guard.analyze(command, deletable=check), command)
+        for command in ("rm C:/tmp/a.py", "rm /tmp/a.py", "rm -rf ..", "rm ../other/.harness/tmp/a",
+                        "rm -rf .harness/tmp/../..", "rm sub/.harness/tmp/a", "rm .harness/tmpx/a", "rm -rf .harness"):
+            hit = guard.analyze(command, deletable=check)
+            self.assertIsNotNone(hit, command)
+            self.assertEqual(hit.name, "file-delete", command)
+
     def test_hg02_the_five_categories_and_the_compound_forms_are_covered(self):
         """HG-02, HG-03: the table holds the five categories, $( ), bash -c, git -C, PowerShell and the allowed deletions."""
         table = rows()

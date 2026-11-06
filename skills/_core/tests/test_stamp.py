@@ -103,7 +103,7 @@ class StampTest(helpers.TempDirCase):
         merged = profiles.merged([soft, res], ["python"], self.tmp, "pytest")
         self.assertIn("Read(./.venv/**)", merged["deny"])
         self.assertIn("Read(./experiments/results/**)", merged["deny"])
-        self.assertEqual(merged["gitignore"], ["factory-logs/", ".harness/runs/", "lab-logs/", "experiments/results/"])
+        self.assertEqual(merged["gitignore"], ["factory-logs/", ".harness/runs/", ".harness/tmp/", "lab-logs/", "experiments/results/"])
         self.assertEqual({i["id"] for i in merged["inputs"]}, {"factorySpec", "labProtocol"})
         labels = [t["label"] for t in merged["tasks"]]
         self.assertEqual(len(labels), len(set(labels)))

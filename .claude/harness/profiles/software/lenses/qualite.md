@@ -1,1 +1,1 @@
-- **(c) `qualite`** (`QUAL-`) — bugs manifestes, gestion d'erreurs absente (catch vides, codes retour ignorés), code mort, duplication massive, fonctions ou fichiers démesurés, TODO/FIXME anciens ;
+- **(c) `qualite`** (`QUAL-`) — obvious bugs, missing error handling (empty catches, ignored return codes), dead code, massive duplication, oversized functions or files, old TODO/FIXME;

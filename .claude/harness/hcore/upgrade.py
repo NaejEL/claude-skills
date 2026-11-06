@@ -47,7 +47,7 @@ BLOCKS_ONLY = ("header", "block", "merge", "copy", "stamp", "local")
 KINDS = BLOCKS_ONLY + ("create", "convert", "migrate")
 LOCK = ".harness/runs/upgrade.lock"
 CONVERT_GATE = "upgrade.convert"
-KEEP_OPTION, CONVERT_OPTION = "Conserver tel quel", "Convertir (sauvegarde)"
+KEEP_OPTION, CONVERT_OPTION = "Keep as is", "Convert (backup)"
 CODE_INDEX_ASSETS = Path(__file__).resolve().parent.parent.parent / "code-index" / "assets"
 
 

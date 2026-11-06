@@ -1,8 +1,8 @@
-## Base de connaissance du dépôt (rgkb)
+## Repository knowledge base (rgkb)
 
-Tu disposes des outils `mcp__rgkb__*` (CLI équivalente : `{{interpreter}} .claude/rgkb/rgkb.py`). Pour `{{agent}}` :
+You have the `mcp__rgkb__*` tools (equivalent CLI: `{{interpreter}} .claude/rgkb/rgkb.py`). For `{{agent}}`:
 
-- Situe-toi avant d'écrire : `mcp__rgkb__definition` et `mcp__rgkb__neighbors` sur les symboles que la spec ou le protocole nomme.
-- Lis `mcp__rgkb__notes` sur les fichiers à modifier.
-- Après modification, réindexe (`mcp__rgkb__reindex` ou `{{interpreter}} .claude/rgkb/rgkb.py index`) pour que le Verifier travaille sur un index à jour.
-- Ne consigne **aucune interprétation** en note : tu rapportes, tu ne conclus pas.
+- Get your bearings before writing: `mcp__rgkb__definition` and `mcp__rgkb__neighbors` on the symbols that the spec or protocol names.
+- Read `mcp__rgkb__notes` on the files to modify.
+- After modifying, reindex (`mcp__rgkb__reindex` or `{{interpreter}} .claude/rgkb/rgkb.py index`) so the Verifier works on an up-to-date index.
+- Record **no interpretation** as a note: you report, you do not conclude.

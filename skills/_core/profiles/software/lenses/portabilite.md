@@ -1,1 +1,1 @@
-- **(b) `portabilite`** (`PORT-`) — chemins absolus « marche sur ma machine », config d'environnement en dur, dépendances non épinglées / obsolètes / vulnérables, scripts non portables Windows/Unix, CI absente, build non reproductible ;
+- **(b) `portabilite`** (`PORT-`) — absolute paths "works on my machine", hard-coded environment config, unpinned / outdated / vulnerable dependencies, scripts not portable across Windows/Unix, missing CI, non-reproducible build;

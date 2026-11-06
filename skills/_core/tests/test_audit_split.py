@@ -131,7 +131,7 @@ class OrderAndColumnsTest(EngineCase):
     def test_au09_column_added_by_the_user_is_kept_on_rewrite(self):
         """AU-09: a resumed table with a column added by the user keeps its header;
         a new row gets an empty cell there, the table stays aligned and reads back."""
-        text = ("## Jalon 1 — Assainir\n| ID | Finding | Note | Sévérité | Taille | Dépend de | Spec | Statut |\n"
+        text = ("## Milestone 1 — Assainir\n| ID | Finding | Note | Severity | Size | Depends on | Spec | Status |\n"
                 "|---|---|---|---|---|---|---|---|\n| LEG-01 | Secrets | à revoir | critical | S | — | — | FAIT |\n")
         parsed = audit.parse_deliverable("legacy-audit", text)
         f = dict(findings.adapt("legacy-auditor", legacy_item("HYG-02", "Gitignore", None, None, "gitignore",
@@ -142,8 +142,8 @@ class OrderAndColumnsTest(EngineCase):
                         "findings": {"LEG-02": {"milestone": 1}}}}
         out = audit.render("legacy-audit", doc)
         lines = out.splitlines()
-        i = lines.index("## Jalon 1 — Assainir")
-        self.assertEqual(lines[i + 1], "| ID | Finding | Note | Sévérité | Taille | Dépend de | Spec | Statut |")
+        i = lines.index("## Milestone 1 — Assainir")
+        self.assertEqual(lines[i + 1], "| ID | Finding | Note | Severity | Size | Depends on | Spec | Status |")
         self.assertEqual(lines[i + 3], "| LEG-01 | Secrets | à revoir | critical | S | — | — | FAIT |")
         self.assertEqual(lines[i + 4], "| LEG-02 | Gitignore |  | major | XS | — | — | A_FAIRE |")
         widths = {len(audit._split_cells(l)) for l in lines[i + 1:i + 5]}

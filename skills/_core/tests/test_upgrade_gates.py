@@ -28,14 +28,14 @@ class GateCatalogTest(helpers.TempDirCase):
             self.assertEqual(listed[gid]["kind"], "b")
         self.assertIn("harness-doctor.upgrade", listed)      # AP-10, UA-02
         self.assertEqual(gates.get("upgrade.convert").skill, "software-factory")
-        self.assertEqual(gates.get("upgrade.convert").default, "Conserver tel quel")
+        self.assertEqual(gates.get("upgrade.convert").default, "Keep as is")
 
     def test_pr01_pr02_pr03_proposal_by_policy(self):
         """PR-01, PR-02, PR-03, CA-24: blocks_only + auto -> default and launch; gate -> ask; other -> never launched,
         with the command and the blocking classes."""
         auto = doctor.proposal(report(True), "auto")
         self.assertEqual((auto["gate"], auto["decision"], auto["launch"]), ("harness-doctor.upgrade-blocks", "default", True))
-        self.assertEqual(auto["event"]["default"], "Lancer l'upgrade")
+        self.assertEqual(auto["event"]["default"], "Run the upgrade")
         asked = doctor.proposal(report(True), "gate")
         self.assertEqual((asked["decision"], asked["launch"]), ("ask", False))
         other = doctor.proposal(report(False), "auto")
@@ -43,13 +43,13 @@ class GateCatalogTest(helpers.TempDirCase):
         self.assertFalse(other["launch"])
         self.assertEqual(other["blockers"], ["convert"])
         self.assertEqual(other["commands"], ["/software-factory --upgrade"])
-        self.assertEqual(other["default"], "Ne rien faire")
+        self.assertEqual(other["default"], "Do nothing")
         self.assertIsNone(doctor.proposal(report(True, 0), "auto"))
 
     def test_pr02_pr03_pr05_headless_fallback_and_journal(self):
         """PR-02, PR-03, PR-05: headless -> default for both gates; every decision is a `gate` event of the doctor's journal."""
-        for gid, expected in (("harness-doctor.upgrade-blocks", "Lancer l'upgrade"),
-                              ("harness-doctor.upgrade-other", "Ne rien faire")):
+        for gid, expected in (("harness-doctor.upgrade-blocks", "Run the upgrade"),
+                              ("harness-doctor.upgrade-other", "Do nothing")):
             res = H(["gate", "decide", "--root", str(self.tmp), "--id", gid], self.tmp)
             self.assertEqual(res.returncode, 0, res.stderr)
             decided = json.loads(res.stdout)

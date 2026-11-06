@@ -66,7 +66,7 @@ class LegacyConvertTest(helpers.TempDirCase):
         events = [e for e in journal.read(self.root / res["applied"]["journal"]) if e.get("event") == "gate"]
         self.assertEqual([(e["id"], e["phase"]) for e in events],
                          [("upgrade.convert", "decision"), ("upgrade.convert", "answer")])
-        self.assertEqual(events[1]["answer"], "Conserver tel quel")
+        self.assertEqual(events[1]["answer"], "Keep as is")
 
     def test_cv04_cv05_convert_flag_converts_with_a_backup(self):
         """CV-04, CV-05: --convert -> converted, the original is in the backup (cmp), logged as a user answer."""
@@ -76,7 +76,7 @@ class LegacyConvertTest(helpers.TempDirCase):
         backup = self.root / res["applied"]["backup"]
         self.assertEqual((backup / ".claude/agents/factory-builder.md").read_bytes(), self.builder)
         events = [e for e in journal.read(self.root / res["applied"]["journal"]) if e.get("event") == "gate"]
-        self.assertEqual(events[-1]["answer"], "Convertir (sauvegarde)")
+        self.assertEqual(events[-1]["answer"], "Convert (backup)")
         self.assertFalse(res["blocks_only"])
 
     def test_cv04_the_decision_file_converts_chosen_files_only(self):

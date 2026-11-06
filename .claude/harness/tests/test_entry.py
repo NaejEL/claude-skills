@@ -75,7 +75,7 @@ class RescanTest(helpers.TempDirCase):
                          ["lab-director", "lab-neuro", "lab-math", "lab-builder", "lab-verifier"])
         director = out["roles"][0]
         self.assertEqual((director["model_role"], director["read_only"]), ("lab.director.cadrage", True))
-        self.assertIn("Directeur de recherche", director["mission_text"])
+        self.assertIn("Research director", director["mission_text"])
         self.assertTrue(out["orchestrator_text"].strip() and out["install_text"].strip())
         self.assertEqual(out["ci"]["max_turns"], 150)
         self.assertEqual(json.loads(h(self.tmp, "profile", "show", "software").stdout)["ci"]["max_turns"], 100)

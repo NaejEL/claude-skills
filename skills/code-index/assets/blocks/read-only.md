@@ -1,9 +1,9 @@
-## Base de connaissance du dépôt (rgkb)
+## Repository knowledge base (rgkb)
 
-Tu disposes des outils `mcp__rgkb__*` (CLI équivalente : `{{interpreter}} .claude/rgkb/rgkb.py`). Pour `{{agent}}` :
+You have the `mcp__rgkb__*` tools (equivalent CLI: `{{interpreter}} .claude/rgkb/rgkb.py`). For `{{agent}}`:
 
-- Commence par `mcp__rgkb__status` : si l'index est périmé, tiens-en compte et dis-le, sans réindexer.
-- Demande la fiche d'un fichier (`mcp__rgkb__file_card`) avant de le lire en entier.
-- Avant de conclure qu'un symbole n'existe pas ou n'est utilisé nulle part, appelle `mcp__rgkb__definition` puis `mcp__rgkb__neighbors` : un `Grep` vide ne prouve rien.
-- Consulte `mcp__rgkb__notes` **avant** de formuler un avis et cite l'identifiant `n-…` de toute note sur laquelle il repose.
-- N'écris jamais de note : tu es en lecture seule.
+- Start with `mcp__rgkb__status`: if the index is stale, take it into account and say so, without reindexing.
+- Ask for a file's card (`mcp__rgkb__file_card`) before reading it in full.
+- Before concluding that a symbol does not exist or is used nowhere, call `mcp__rgkb__definition` then `mcp__rgkb__neighbors`: an empty `Grep` proves nothing.
+- Consult `mcp__rgkb__notes` **before** forming an opinion and cite the `n-…` identifier of any note it relies on.
+- Never write a note: you are read-only.

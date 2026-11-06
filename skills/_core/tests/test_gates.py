@@ -132,15 +132,15 @@ class CliTest(helpers.TempDirCase):
     def test_gt07_decision_then_answer_logged(self):
         """GT-07, CA-10: both events in the run journal, valid schema (JR-02)."""
         d = check_ok(self, self.h("gate", "decide", "--id", "software-factory.code-index"))
-        self.assertEqual((d["decision"], d["headless"], d["options"]), ("ask", "skip", ["installer", "refus"]))
+        self.assertEqual((d["decision"], d["headless"], d["options"]), ("ask", "skip", ["install", "refuse"]))
         self.assertRegex(Path(d["run"]).name, r"^software-factory-[0-9]{8}-[0-9]{6}\.jsonl$")
         a = check_ok(self, self.h("gate", "answer", "--run", d["run"], "--id", "software-factory.code-index",
-                                  "--answer", "installer"))
-        self.assertEqual((a["answer"], a["source"], a["apply"]), ("installer", "user", "answer"))
+                                  "--answer", "install"))
+        self.assertEqual((a["answer"], a["source"], a["apply"]), ("install", "user", "answer"))
         lines = [x for x in journal.read(self.tmp / d["run"]) if x.get("event") == "gate"]
         self.assertEqual([x["phase"] for x in lines], ["decision", "answer"])
         self.assertEqual((lines[0]["answer"], lines[0]["source"]), (None, None))
-        self.assertEqual((lines[1]["answer"], lines[1]["source"], lines[1]["policy"]), ("installer", "user", "gate"))
+        self.assertEqual((lines[1]["answer"], lines[1]["source"], lines[1]["policy"]), ("install", "user", "gate"))
         check_ok(self, self.h("journal", "validate", d["run"]))
         # An answer needs a pending decision.
         again = self.h("gate", "answer", "--run", d["run"], "--id", "software-factory.code-index", "--answer", "x")
@@ -155,8 +155,8 @@ class CliTest(helpers.TempDirCase):
 
     def test_gt06_headless_fallbacks_applied_and_declared(self):
         run = runs.create(self.tmp, "ship-pr", shippr.new_state("main", 3, ["t"]))
-        for gid, apply, answer in (("ship-pr.merge", "default", "Laisser la PR ouverte"),
-                                   ("ship-pr.dirty", "default", "abandonner")):
+        for gid, apply, answer in (("ship-pr.merge", "default", "Leave the PR open"),
+                                   ("ship-pr.dirty", "default", "abandon")):
             check_ok(self, self.h("gate", "decide", "--run", str(run), "--id", gid))
             a = check_ok(self, self.h("gate", "answer", "--run", str(run), "--id", gid, "--headless"))
             self.assertEqual((a["apply"], a["answer"], a["source"]), (apply, answer, "headless"))
@@ -175,9 +175,9 @@ class CliTest(helpers.TempDirCase):
     def test_gate_of_another_skill_and_answer_without_run_refused(self):
         run = runs.create(self.tmp, "ship-pr", shippr.new_state("main", 3, ["t"]))
         self.assertEqual(self.h("gate", "decide", "--run", str(run), "--id", "factory-run.approval").returncode, 2)
-        self.assertEqual(self.h("gate", "answer", "--id", "ship-pr.merge", "--answer", "Merger").returncode, 2)
+        self.assertEqual(self.h("gate", "answer", "--id", "ship-pr.merge", "--answer", "Merge").returncode, 2)
         check_ok(self, self.h("gate", "decide", "--run", str(run), "--id", "ship-pr.merge"))
-        both = self.h("gate", "answer", "--run", str(run), "--id", "ship-pr.merge", "--answer", "Merger", "--headless")
+        both = self.h("gate", "answer", "--run", str(run), "--id", "ship-pr.merge", "--answer", "Merge", "--headless")
         self.assertEqual(both.returncode, 2)
         default = self.h("gate", "answer", "--run", str(run), "--id", "ship-pr.merge", "--default")
         self.assertEqual(default.returncode, 2)
@@ -225,15 +225,15 @@ class VerifierDefectsTest(helpers.TempDirCase):
         gate keeps its free answer."""
         run = runs.create(self.tmp, "ship-pr", shippr.new_state("main", 3, ["t"]))
         check_ok(self, self.h("gate", "decide", "--run", str(run), "--id", "ship-pr.merge"))
-        for bad in ("Merge it now", "merger", "Merger / Laisser la PR ouverte"):
+        for bad in ("Merge it now", "merger", "Merge / Leave the PR open"):
             res = check_ok(self, self.h("gate", "answer", "--run", str(run), "--id", "ship-pr.merge",
                                         "--answer", bad))
             self.assertEqual(res["action"], "reask", bad)
             self.assertIn("not one of the options", res["reason"])
-            self.assertEqual(res["options"], ["Merger", "Laisser la PR ouverte"])
+            self.assertEqual(res["options"], ["Merge", "Leave the PR open"])
         self.assertEqual([x["phase"] for x in journal.read(run) if x.get("event") == "gate"], ["decision"])
-        a = check_ok(self, self.h("gate", "answer", "--run", str(run), "--id", "ship-pr.merge", "--answer", "Merger"))
-        self.assertEqual((a["action"], a["answer"]), ("apply", "Merger"))
+        a = check_ok(self, self.h("gate", "answer", "--run", str(run), "--id", "ship-pr.merge", "--answer", "Merge"))
+        self.assertEqual((a["action"], a["answer"]), ("apply", "Merge"))
         self.assertEqual([x["phase"] for x in journal.read(run) if x.get("event") == "gate"], ["decision", "answer"])
         free = gates.answer("factory-run.need", gates.decide("factory-run.need", "gate"), "user", "Any need at all")
         self.assertEqual(free["answer"], "Any need at all")
@@ -243,25 +243,45 @@ class VerifierDefectsTest(helpers.TempDirCase):
         valid option per question, in order; a per-theme gate takes 1 to 4 options
         of its single list."""
         order = gates.decide("vibecode-audit.order", "gate")
-        ok = gates.answer("vibecode-audit.order", order, "user", "Gains rapides / Les omettre")
-        self.assertEqual(ok["answer"], "Gains rapides / Les omettre")
-        for bad in ("Gains rapides / everything", "Les omettre / Gains rapides", "Gains rapides",
-                    "Gains rapides / Garder l'ordre", "Gains rapides / Les omettre / Les détailler"):
+        ok = gates.answer("vibecode-audit.order", order, "user", "Quick wins / Omit them")
+        self.assertEqual(ok["answer"], "Quick wins / Omit them")
+        for bad in ("Quick wins / everything", "Omit them / Quick wins", "Quick wins",
+                    "Quick wins / Keep the order", "Quick wins / Omit them / Detail them"):
             with self.assertRaises(gates.OffOptions, msg=bad):
                 gates.answer("vibecode-audit.order", order, "user", bad)
         framing = gates.decide("legacy-audit.framing", "gate")
-        self.assertEqual(gates.answer("legacy-audit.framing", framing, "user", "2 / fondations")["answer"],
-                         "2 / fondations")
+        self.assertEqual(gates.answer("legacy-audit.framing", framing, "user", "2 / foundations")["answer"],
+                         "2 / foundations")
         with self.assertRaises(gates.OffOptions):
-            gates.answer("legacy-audit.framing", framing, "user", "fondations / 2")
+            gates.answer("legacy-audit.framing", framing, "user", "foundations / 2")
         assign = gates.decide("legacy-audit.assignment", "gate")
         self.assertEqual(gates.answer("legacy-audit.assignment", assign, "user",
-                                      "Jalon 1 / Jalon 1 / Exclure de la roadmap / Jalon 2")["source"], "user")
-        for bad in ("Jalon 1 / Jalon 1 / Jalon 1 / Jalon 1 / Jalon 2", "Jalon 3"):
+                                      "Milestone 1 / Milestone 1 / Exclude from roadmap / Milestone 2")["source"], "user")
+        for bad in ("Milestone 1 / Milestone 1 / Milestone 1 / Milestone 1 / Milestone 2", "Milestone 3"):
             with self.assertRaises(gates.OffOptions, msg=bad):
                 gates.answer("legacy-audit.assignment", assign, "user", bad)
         self.assertEqual(gates.get("vibecode-audit.order").questions[1],
-                         ("Les détailler", "Les lister en une ligne", "Les omettre"))
+                         ("Detail them", "List them in one line", "Omit them"))
+
+    def test_gt07_a_french_token_gives_the_same_decision_as_the_english_one(self):
+        """GT-07: the former French tokens are still accepted and recorded as the English ones."""
+        for gid, french, english in (
+                ("factory-run.approval", "approbation", "approval"),
+                ("factory-run.approval", "itérer", "iterate"),
+                ("ship-pr.merge", "Merger", "Merge"),
+                ("legacy-audit.assignment", "Jalon 1 / Jalon dernier / Exclure de la roadmap",
+                 "Milestone 1 / Last milestone / Exclude from roadmap"),
+                ("vibecode-audit.order", "Gains rapides / Les omettre", "Quick wins / Omit them")):
+            events = []
+            for token in (french, english):
+                decision = gates.decide(gid, "gate")
+                events.append((decision["decision"], gates.answer(gid, decision, "user", token)))
+            self.assertEqual(events[0][0], events[1][0], gid)
+            self.assertEqual(events[0][1]["answer"], english, gid)
+            self.assertEqual(events[0][1], events[1][1], gid)
+        decision = gates.decide("factory-run.approval", "gate")
+        with self.assertRaises(gates.OffOptions):
+            gates.answer("factory-run.approval", decision, "user", "approbation / refuse")
 
     def test_gt08_free_and_multi_gates_declared_and_defaults_are_options(self):
         """GT-08: the free-answer gates are declared in the catalog; every declared
@@ -284,7 +304,7 @@ class SkillWiringTest(unittest.TestCase):
         for text in (ship, sf):
             # Iteration 2: an off-option answer returns action reask, the skill asks again.
             self.assertIn("`reask`", text)
-            self.assertIn("reposer", text)
+            self.assertRegex(text, r"ask (the|the same) question again")
             self.assertIn("gate decide", text)
             self.assertIn("gate answer", text)
             self.assertIn("--headless", text)

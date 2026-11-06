@@ -1,21 +1,21 @@
 # claude-skills
 
-Skills globaux [Claude Code](https://code.claude.com/docs) personnels, versionnés pour être réutilisés sur plusieurs machines (Windows / Linux / macOS).
+Personal global [Claude Code](https://code.claude.com/docs) skills, versioned so they can be reused across several machines (Windows / Linux / macOS).
 
-## Installer
+## Install
 
-Deux voies coexistent pendant la version 2.0.x. **Ne pas utiliser les deux ensemble** : chaque skill apparaîtrait deux fois.
+Two routes coexist during version 2.0.x. **Do not use both together**: each skill would appear twice.
 
-**Voie 1 — plugin `harness` (recommandée).** Le dépôt est sa propre marketplace (`.claude-plugin/marketplace.json`, source `./`) :
+**Route 1 — the `harness` plugin (recommended).** The repository is its own marketplace (`.claude-plugin/marketplace.json`, source `./`):
 
 ```bash
-claude plugin marketplace add <chemin-ou-url-du-depot>
+claude plugin marketplace add <repository-path-or-url>
 claude plugin install harness@harness
 ```
 
-Les skills sont exposés sous `/harness:<skill>` ; la forme courte (`/ship-pr`) fonctionne aussi. Le cache du plugin est indexé par `version` (`.claude-plugin/plugin.json`) : tout changement sous `skills/` exige une hausse de `version`, sinon `claude plugin update` répond « already at the latest version ». Une garde le vérifie (`harness.py plugin version-guard`, scénario `plugin-guard` de `ci/test-harness.*`). Pour développer : `claude --plugin-dir <dépôt>`. `ripgrep` n'est pas installé d'avance : `code-index` propose lui-même son installation.
+The skills are exposed as `/harness:<skill>`; the short form (`/ship-pr`) works too. The plugin cache is keyed by `version` (`.claude-plugin/plugin.json`): any change under `skills/` requires a `version` bump, otherwise `claude plugin update` answers "already at the latest version". A guard checks this (`harness.py plugin version-guard`, the `plugin-guard` scenario of `ci/test-harness.*`). For development: `claude --plugin-dir <repository>`. `ripgrep` is not installed up front: `code-index` offers to install it itself.
 
-**Voie 2 — liens (dépréciée, retirée à la version suivante).** `install_skills.*` affiche un avertissement de retrait. Pour passer au plugin, retirer d'abord les liens, **seulement ceux que l'installeur a créés vers ce dépôt** (un lien étranger ou un dossier réel n'est jamais touché) :
+**Route 2 — links (deprecated, removed in the next version).** `install_skills.*` prints a removal warning. To switch to the plugin, first remove the links, **only those the installer created towards this repository** (a foreign link or a real folder is never touched):
 
 ```powershell
 .\install_skills.ps1 -Unlink
@@ -25,39 +25,39 @@ Les skills sont exposés sous `/harness:<skill>` ; la forme courte (`/ship-pr`) 
 ./install_skills.sh --unlink
 ```
 
-### Installation par liens
+### Installing by links
 
-Cloner le dépôt puis lier les skills dans `~/.claude/skills` :
+Clone the repository, then link the skills into `~/.claude/skills`:
 
 ```powershell
-# Windows (jonctions, sans droits admin)
+# Windows (junctions, no admin rights)
 .\install_skills.ps1
 ```
 
 ```bash
-# Linux / macOS (liens symboliques)
+# Linux / macOS (symbolic links)
 ./install_skills.sh
 ```
 
-Les scripts sont idempotents : relancer après un `git pull` ou l'ajout d'un skill ne casse rien. Les skills sont disponibles dans toute nouvelle session Claude Code.
+The scripts are idempotent: running them again after a `git pull` or after adding a skill breaks nothing. The skills are available in any new Claude Code session.
 
-Ils installent aussi les **outils externes** dont les skills ont besoin — aujourd'hui le seul est **ripgrep**, requis par `code-index` — en détectant le gestionnaire de paquets de la machine : `winget`, puis `scoop`, puis `chocolatey` sous Windows ; `brew` (ou MacPorts) sous macOS ; `apt`, `dnf`, `paru`/`yay`/`pacman`, `zypper`, `apk`, `xbps`, `nix` sous Linux ; `cargo install` en dernier recours. Le `PATH` de la session est rafraîchi après l'installation. Si rien n'aboutit, les skills restent installés et le script explique quoi faire, sans échouer.
+They also install the **external tools** the skills need — today the only one is **ripgrep**, required by `code-index` — by detecting the machine's package manager: `winget`, then `scoop`, then `chocolatey` on Windows; `brew` (or MacPorts) on macOS; `apt`, `dnf`, `paru`/`yay`/`pacman`, `zypper`, `apk`, `xbps`, `nix` on Linux; `cargo install` as a last resort. The session's `PATH` is refreshed after the installation. If nothing succeeds, the skills stay installed and the script explains what to do, without failing.
 
 ```powershell
-.\install_skills.ps1 -SkipTools   # lier les skills sans toucher aux paquets
+.\install_skills.ps1 -SkipTools   # link the skills without touching packages
 ```
 
 ```bash
 ./install_skills.sh --skip-tools
 ```
 
-La détection du gestionnaire de paquets est **factorisée** et indépendante de ripgrep. Pour ajouter un outil demain : une entrée dans `tool_package` (bash) ou `Get-ToolPackage` (PowerShell), qui donne l'identifiant de paquet par gestionnaire, puis une ligne `ensure_tool` / `Install-ToolIfMissing` dans la section « Outils externes ».
+Package manager detection is **factored out** and independent of ripgrep. To add a tool tomorrow: one entry in `tool_package` (bash) or `Get-ToolPackage` (PowerShell), giving the package identifier per manager, then one `ensure_tool` / `Install-ToolIfMissing` line in the "External tools" section.
 
 ## Skills
 
 ### `software-factory`
 
-Point d'entrée **unique** de l'installation d'une usine multi-agents dans n'importe quel projet. Il détecte les **profils** applicables (voir « Profils »), installe l'usine de chacun et note les profils retenus dans `.claude/harness.json` :
+**Single** entry point for installing a multi-agent factory in any project. It detects the applicable **profiles** (see "Profiles"), installs the factory of each one and records the selected profiles in `.claude/harness.json`:
 
 ```text
 /software-factory
@@ -66,63 +66,65 @@ Point d'entrée **unique** de l'installation d'une usine multi-agents dans n'imp
 /software-factory --upgrade
 ```
 
-`--profile` force les profils et saute le scout ; `--rescan` relance le scout et ne propose que des **ajouts** (un profil disparu est rapporté, jamais retiré). Sans option, un projet déjà équipé est relu depuis `.claude/harness.json` (ou déduit de ses fichiers générés) sans nouveau scout.
+`--profile` forces the profiles and skips the scout; `--rescan` reruns the scout and only proposes **additions** (a profile that has disappeared is reported, never removed). Without options, an already equipped project is read back from `.claude/harness.json` (or deduced from its generated files) with no new scout.
 
-Le skill détecte la stack du projet (C, C#, Python, Node, Docker, Ansible…) et génère :
+The skill detects the project's stack (C, C#, Python, Node, Docker, Ansible…) and generates:
 
-| Fichier généré | Rôle |
+| Generated file | Role |
 | --- | --- |
-| `.claude/agents/factory-planner.md` | Analyse le besoin + le code, rédige la spec, liste ses questions (lecture seule) |
-| `.claude/agents/factory-builder.md` | Implémente strictement la spec approuvée, code + tests, build vert exigé |
-| `.claude/agents/factory-verifier.md` | Vérification adversariale, exécute les tests, verdict JSON (jamais d'édition) |
-| `.claude/skills/factory-run/SKILL.md` | Orchestrateur : Planner → gate humaine sur la spec → Builder → Verifier |
-| `ci/factory.sh` + `ci/factory.ps1` | Entrée CI mince : `claude -p "/factory-run 'specs/SPEC-x.md'"` |
-| `.claude/settings.json` | Règles `permissions.deny` pour économiser les tokens (fusionné) |
-| `.vscode/tasks.json` | Tâches VS Code Factory (fusionné) |
+| `.claude/agents/factory-planner.md` | Analyses the need + the code, writes the spec, lists its questions (read-only) |
+| `.claude/agents/factory-builder.md` | Strictly implements the approved spec, code + tests, green build required |
+| `.claude/agents/factory-verifier.md` | Adversarial verification, runs the tests, JSON verdict (never edits) |
+| `.claude/skills/factory-run/SKILL.md` | Orchestrator: Planner → human gate on the spec → Builder → Verifier |
+| `ci/factory.sh` + `ci/factory.ps1` | Thin CI entry: `claude -p "/factory-run 'specs/SPEC-x.md'"` |
+| `.claude/settings.json` | `permissions.deny` rules to save tokens (merged) |
+| `.vscode/tasks.json` | Factory VS Code tasks (merged) |
 
-Cycle d'un besoin :
+Lifecycle of a request:
 
 ```text
-/factory-run "ajouter l'export CSV des rapports"
+/factory-run "add CSV export of the reports"
 ```
 
-1. **Planner** (contexte séparé) analyse et pose ses questions — **vous êtes le Product Owner** ;
-2. la spec `specs/SPEC-*.md` n'est construite qu'après **votre approbation explicite** ;
-3. **Builder** (contexte frais) implémente code + tests et doit rendre un build vert ;
-4. **Verifier** (contexte vierge, adversarial) exécute les tests et rend un verdict JSON ; en cas de `CHANGES_REQUESTED`, ses issues sont réinjectées au Builder — **3 itérations maximum**, puis échec explicite.
+1. **Planner** (separate context) analyses and asks its questions — **you are the Product Owner**;
+2. the spec `specs/SPEC-*.md` is only built after **your explicit approval**;
+3. **Builder** (fresh context) implements code + tests and must deliver a green build;
+4. **Verifier** (blank context, adversarial) runs the tests and returns a JSON verdict; on `CHANGES_REQUESTED`, its issues are fed back to the Builder — **3 iterations maximum**, then an explicit failure.
 
-En CI : `ci/factory.sh specs/SPEC-x.md` (mode sûr `--permission-mode acceptEdits` + liste blanche d'outils) ou `--yolo` pour `--dangerously-skip-permissions`.
+The spec format uses English keywords (`Status:` with `PROPOSED`/`APPROVED`/`BLOCKED`/`DELIVERED`, `Blocking questions:`, `Files scope:`, `Priority:`, `Depends on:`, `Answer:`, `Default:`, `none`, `## Open questions`); the core writes English. The former French forms (`Statut :`, `PROPOSEE`/`APPROUVEE`/`BLOQUEE`/`LIVREE`, `Questions bloquantes :`, `Périmètre fichiers :`, `Priorité :`, `Dépend de :`, `Réponse :`, `Défaut :`, `aucune`, `## Questions ouvertes`) are still accepted when reading (read-only compatibility).
+
+In CI: `ci/factory.sh specs/SPEC-x.md` (safe mode `--permission-mode acceptEdits` + tool allowlist) or `--yolo` for `--dangerously-skip-permissions`.
 
 ### `harness-doctor`
 
-Diagnostique l'installation du harnais d'un projet, ou d'une arborescence de projets. Dans un projet, il compare la version installée à celle du dépôt claude-skills (retard en commits), signale les blocs divergents (`edited`, `outdated`), les fichiers manquants, les hooks rgkb déclarés mais absents, un `models.json` absent, un `gh` non authentifié et les profils nouveaux (il **propose** `--rescan`, sans le lancer), puis propose `--upgrade` : il le lance (par l'outil Skill, `software-factory` puis `code-index`) quand le diff ne touche que des blocs et que la politique d'autonomie l'autorise.
+Diagnoses the harness installation of a project, or of a tree of projects. In a project, it compares the installed version with that of the claude-skills repository (commits behind), reports divergent blocks (`edited`, `outdated`), missing files, rgkb hooks that are declared but absent, a missing `models.json`, an unauthenticated `gh` and new profiles (it **proposes** `--rescan`, without running it), then proposes `--upgrade`: it runs it (through the Skill tool, `software-factory` then `code-index`) when the diff only touches blocks and the autonomy policy allows it.
 
 ```text
 /harness-doctor
-/harness-doctor --scan ~/projets --depth 3
+/harness-doctor --scan ~/projects --depth 3
 ```
 
-Avec `--scan <racine>`, une ligne par projet équipé : version installée, retard, dernier cycle, commande d'upgrade. Le scan est en lecture seule et ne lance jamais d'upgrade.
+With `--scan <root>`, one line per equipped project: installed version, lag, last cycle, upgrade command. The scan is read-only and never runs an upgrade.
 
 ### `ship-pr`
 
-Pilote le **cycle complet d'une pull request GitHub** depuis la branche courante jusqu'au merge :
+Drives the **complete lifecycle of a GitHub pull request** from the current branch to the merge:
 
 ```text
 /ship-pr main
-/ship-pr develop --rounds 2 --themes "logique;régressions"
+/ship-pr develop --rounds 2 --themes "logic;regressions"
 ```
 
-1. **Préflight** : gh authentifié, remote GitHub, branche ≠ cible, working tree propre, push si nécessaire ;
-2. **PR** créée automatiquement (titre + corps générés depuis les commits) ou reprise si elle existe ;
-3. **Rondes de revue** (3 max, arrêt anticipé à épuisement) : 3 relecteurs parallèles en lecture seule (logique/cas limites, régressions/sites d'appel, cohérence du diff) → validation adversariale de chaque finding par un mini-agent → commentaire inline sur la PR → correctifs commités et poussés → réponse à chaque thread avec le hash du fix puis résolution ;
-4. **Gate humaine** : validation explicite avant `gh pr merge --merge --delete-branch` (commit de merge, branche distante et locale supprimées).
+1. **Preflight**: gh authenticated, GitHub remote, branch ≠ target, clean working tree, push if needed;
+2. **PR** created automatically (title + body generated from the commits) or resumed if it exists;
+3. **Review rounds** (3 max, early stop when exhausted): 3 parallel read-only reviewers (logic/edge cases, regressions/call sites, diff consistency) → adversarial validation of each finding by a mini-agent → inline comment on the PR → fixes committed and pushed → reply to each thread with the fix hash, then resolution;
+4. **Human gate**: explicit approval before `gh pr merge --merge --delete-branch` (merge commit, remote and local branches deleted).
 
-Garde-fous anti-dérive : périmètre strictement limité au diff (pas de refacto, pas de durcissement sécurité spéculatif, pas de nitpick), « zéro finding » est une réponse acceptable, registre cumulatif empêchant un finding rejeté de ressusciter d'une ronde à l'autre.
+Anti-drift safeguards: scope strictly limited to the diff (no refactoring, no speculative security hardening, no nitpicks), "zero findings" is an acceptable answer, cumulative registry preventing a rejected finding from resurfacing from one round to the next.
 
 ### `factory-queue`
 
-Liste les specs de `specs/` avec leur statut dérivé (proposée, bloquée, en cours, livrée, mergée), leurs dépendances (`Dépend de :`) et leur `Priorité :`, puis, avec `run`, les déroule l'une après l'autre : chaque spec éligible est confiée à un processus enfant headless (`claude -p "/factory-run <spec> --ship <cible>"`, contexte neuf), dont la PR est mergée avant de passer à la suivante. `run` exige la politique `auto` ; un enfant arrêté arrête la file. Aucun autre état n'est nécessaire : tout se déduit de `Statut :`, de git et de `.harness/runs/`.
+Lists the specs in `specs/` with their derived status (proposed, blocked, in progress, delivered, merged), their dependencies (`Depends on:`) and their `Priority:`, then, with `run`, runs them one after the other: each eligible spec is handed to a headless child process (`claude -p "/factory-run <spec> --ship <target>"`, fresh context), whose PR is merged before moving on to the next. `run` requires the `auto` policy; a stopped child stops the queue. No other state is needed: everything is deduced from `Status:`, git and `.harness/runs/`.
 
 ```text
 /factory-queue
@@ -131,72 +133,72 @@ Liste les specs de `specs/` avec leur statut dérivé (proposée, bloquée, en c
 
 ### `factory-batch`
 
-Construit plusieurs specs **en parallèle** (`--parallel N`, défaut 2, plafond 4), chacune dans un worktree git créé et suivi par le harnais, puis les livre **une à la fois** : rebase de la branche locale sur la cible, `ship-pr`, merge, rassemblement des journaux du worktree, suppression. Un conflit non trivial arrête le lot (type `conflict`) en conservant le worktree. Non invocable par un autre skill.
+Builds several specs **in parallel** (`--parallel N`, default 2, cap 4), each in a git worktree created and tracked by the harness, then delivers them **one at a time**: rebase of the local branch onto the target, `ship-pr`, merge, collection of the worktree's logs, removal. A non-trivial conflict stops the batch (type `conflict`) and keeps the worktree. Cannot be invoked by another skill.
 
 ```text
 /factory-batch specs/SPEC-leg-*.md --parallel 3 --autonomy auto
 /factory-batch --resume <id>
 ```
 
-#### Coexistence avec vos worktrees
+#### Coexistence with your worktrees
 
-Le harnais ne touche jamais au worktree principal ni à ceux que vous créez vous-même (i3, Orca, `git worktree add`). Il ne crée que des worktrees `factory/<slug>` sous `<dépôt>.harness-wt/`, les inscrit dans un registre commun à tous les worktrees (`<git-common-dir>/harness/worktrees.json`, hors versionnement), et n'opère que sur un chemin **à la fois** inscrit au registre **et** listé par `git worktree list --porcelain` avec la branche enregistrée. Jamais de `git worktree prune`, de `remove --force`, de `move`, `lock` ou `unlock`. `git worktree list` est le seul moyen de voir les siens ; `/factory-run --worktree` construit une spec dans un worktree dédié, supprimé après le merge. Prérequis : `.claude/harness/` et `.claude/settings.json` doivent être commités sur la branche cible.
+The harness never touches the main worktree or the ones you create yourself (i3, Orca, `git worktree add`). It only creates `factory/<slug>` worktrees under `<repository>.harness-wt/`, records them in a registry shared by all worktrees (`<git-common-dir>/harness/worktrees.json`, not versioned), and only operates on a path that is **both** in the registry **and** listed by `git worktree list --porcelain` with the recorded branch. Never `git worktree prune`, `remove --force`, `move`, `lock` or `unlock`. `git worktree list` is the only way to see its own; `/factory-run --worktree` builds a spec in a dedicated worktree, removed after the merge. Prerequisite: `.claude/harness/` and `.claude/settings.json` must be committed on the target branch.
 
 ### `audit`
 
-Audit **unifié et en lecture seule** d'un projet : cartographie, un auditeur par lentille, validation adversariale de chaque finding, priorisation interactive, puis **un seul livrable `AUDIT.md`** et des specs `specs/SPEC-*.md` au format factory.
+**Unified, read-only** audit of a project: mapping, one auditor per lens, adversarial validation of each finding, interactive prioritisation, then **a single `AUDIT.md` deliverable** and `specs/SPEC-*.md` specs in the factory format.
 
 ```text
 /audit
-/audit C:/chemin/projet --profile software --lenses "securite;evolutivite" --max-findings 10
+/audit C:/path/project --profile software --lenses "security;scalability" --max-findings 10
 /audit --profile research --max-questions 4
 ```
 
-Les lentilles viennent des profils actifs : `software` (jeu `legacy` : hygiène, portabilité, qualité, filet de sécurité ; jeu `vibecode` : accès, injection, métier, maintenabilité, évolutivité) et `research` (fidélité, validité, fuites, analogies biologiques, feuille de route). `--lenses` accepte des noms de lentille ou d'axe (`securite` = accès, injection, métier) ; au plus 5 auditeurs en parallèle, par vagues. `AUDIT.md` regroupe l'en-tête (profils, lentilles, complet ou échantillonné), les sections de chaque jeu et une « Suite » ; les anciens livrables (`ROADMAP-legacy.md`, `AUDIT-vibecode.md`, `AUDIT-lab.md`) sont **repris une fois** (ligne `<!-- harness:import … -->`, statuts `FAIT`, `EN_COURS`, `TRANCHEE` préservés), jamais modifiés ni supprimés. Idempotent : mêmes entrées, même `AUDIT.md`.
+Lenses come from the active profiles: `software` (`legacy` set: hygiene, portability, quality, safety net; `vibecode` set: access, injection, business logic, maintainability, scalability) and `research` (fidelity, validity, leaks, biological analogies, roadmap). `--lenses` accepts lens or axis names (`security` = access, injection, business logic); at most 5 auditors in parallel, in waves. `AUDIT.md` groups the header (profiles, lenses, complete or sampled), the sections of each set and a "Next steps" section; the old deliverables (`ROADMAP-legacy.md`, `AUDIT-vibecode.md`, `AUDIT-lab.md`) are **imported once** (`<!-- harness:import … -->` line, statuses `FAIT`, `EN_COURS`, `TRANCHEE` preserved), never modified or deleted. Idempotent: same inputs, same `AUDIT.md`.
 
 ### `legacy-audit`
 
-Skill **alias** de `/audit --profile software` limité aux lentilles `hygiene`, `portabilite`, `qualite`, `filet` (`--categories` devient `--lenses`), conservé pendant la version 2.0.0 puis retiré. Écrit `AUDIT.md` et les specs `SPEC-leg-*`.
+**Alias** skill of `/audit --profile software` limited to the `hygiene`, `portabilite`, `qualite`, `filet` lenses (`--categories` becomes `--lenses`), kept during version 2.0.0 then removed. Writes `AUDIT.md` and the `SPEC-leg-*` specs.
 
 ### `vibecode-audit`
 
-Skill **alias** de `/audit --profile software` limité aux lentilles vibecode (`--axes` développé en lentilles), conservé pendant la version 2.0.0 puis retiré.
+**Alias** skill of `/audit --profile software` limited to the vibecode lenses (`--axes` expanded into lenses), kept during version 2.0.0 then removed.
 
 ### `ai-lab`
 
-Skill **alias** de `/software-factory --profile research`, conservé sans échéance « pour ne rien casser ». Installe le **laboratoire de recherche IA** (profil `research`) : Directeur de recherche, experts neurosciences et maths, Builder, Verifier, le skill `/lab-run` (seconde instance du gabarit d'orchestrateur, profil `research` imposé), `ci/lab.*`, la copie du noyau et l'affectation des modèles par rôle (`.claude/models.json`, clés `lab.*`). Sur un projet déjà équipé du profil `software`, `research` est **ajouté** au tampon `.claude/harness.json`, rien n'est retiré.
+**Alias** skill of `/software-factory --profile research`, kept with no deadline "so as not to break anything". Installs the **AI research lab** (`research` profile): Research Director, neuroscience and maths experts, Builder, Verifier, the `/lab-run` skill (second instance of the orchestrator template, `research` profile enforced), `ci/lab.*`, the core copy and the per-role model assignment (`.claude/models.json`, `lab.*` keys). On a project already equipped with the `software` profile, `research` is **added** to the `.claude/harness.json` stamp, nothing is removed.
 
 ```text
 /ai-lab
-/lab-run "la lecture itérée CA3 améliore-t-elle le rappel par paraphrase ?"
-/lab-run suivant
+/lab-run "does iterated CA3 reading improve paraphrase recall?"
+/lab-run next
 ```
 
 ### `ai-lab-audit`
 
-Skill **alias** de `/audit --profile research` (lentilles `fidelite`, `validite`, `fuites`, `bio`, `route`), conservé pendant la version 2.0.0 puis retiré. Les questions `Q-*` se lancent par `/factory-run --profile research "<question>"`.
+**Alias** skill of `/audit --profile research` (lenses `fidelite`, `validite`, `fuites`, `bio`, `route`), kept during version 2.0.0 then removed. The `Q-*` questions are launched with `/factory-run --profile research "<question>"`.
 
 ### `brainstorm`
 
-Co-réfléchit à une idée en la **challengeant** au lieu de la valider, et **s'arrête** :
+Thinks an idea through with you by **challenging** it instead of validating it, and **stops**:
 
 ```text
-/brainstorm "monter une offre d'audit technique pour des PME"
-/brainstorm "remplacer notre file de messages par du polling" --rounds 2
+/brainstorm "set up a technical audit offer for SMEs"
+/brainstorm "replace our message queue with polling" --rounds 2
 ```
 
-1. **Ancrage** du sujet sur le répertoire courant, budget dur de 12 fichiers lus — reconnaissance écourtée et signalée si le sujet n'a aucun rapport avec le répertoire ; reprise d'un `BRAINSTORM-<slug>.md` antérieur pour ne pas reproposer une piste déjà écartée ;
-2. **5 lentilles parallèles en contexte vierge** à chaque tour (hypothèses implicites, alternatives radicales, contre-exemples et cas limites, coût et faisabilité, effets de second ordre) — chaque piste marquée `[énoncé]` ou `[hors énoncé]`, au moins une piste hors énoncé exigée par tour ;
-3. **Gate humaine à chaque tour** (AskUserQuestion) : creuser / écarter / amender chaque angle, le tour suivant part de vos réponses ;
-4. **Convergence** : synthèse en conversation (idée après confrontation, angles retenus, angles écartés avec leur raison), puis gate finale proposant de l'écrire dans `BRAINSTORM-<slug>.md` — en cas de refus, rien n'est écrit.
+1. **Anchoring** of the topic on the current directory, hard budget of 12 files read — reconnaissance cut short and flagged if the topic has nothing to do with the directory; resumption of an earlier `BRAINSTORM-<slug>.md` so that an already discarded lead is not proposed again;
+2. **5 parallel lenses in a blank context** each round (implicit assumptions, radical alternatives, counter-examples and edge cases, cost and feasibility, second-order effects) — each lead marked `[énoncé]` or `[hors énoncé]`, at least one out-of-statement lead required per round;
+3. **Human gate each round** (AskUserQuestion): dig into / discard / amend each angle, the next round starts from your answers;
+4. **Convergence**: synthesis in the conversation (idea after confrontation, retained angles, discarded angles with their reason), then a final gate offering to write it to `BRAINSTORM-<slug>.md` — if you decline, nothing is written.
 
-**Condition de terminaison** : plafond dur de **3 tours** (`--rounds N` borné à `min(N, 3)`), passage forcé à la convergence au plafond, sortie anticipée observable dès qu'un tour ne produit plus aucun angle hors énoncé nouveau, et **5 pistes retenues au maximum** dans la synthèse. Le rapport final suggère `/factory-run` ou `/lab-run` quand un angle retenu est implémentable, sans jamais lancer la commande. Arrêt en erreur explicite en exécution headless : le skill est intrinsèquement dialogué.
+**Termination condition**: hard cap of **3 rounds** (`--rounds N` bounded to `min(N, 3)`), forced move to convergence at the cap, observable early exit as soon as a round produces no new out-of-statement angle, and **5 retained leads at most** in the synthesis. The final report suggests `/factory-run` or `/lab-run` when a retained angle is implementable, without ever launching the command. Explicit error stop in headless execution: the skill is inherently interactive.
 
-Rebranché sur le noyau `_core` (`hcore/bs.py`) : arguments et plafond de tours, validation du JSON des lentilles, relance unique d'une lentille muette (qui désactive la sortie anticipée du tour), sortie anticipée, plafond de 5 pistes retenues, slug, reprise et rendu de la synthèse sont du code testé. **Aucune écriture avant la gate finale** : le noyau est sans état et la session lui passe le sien sur l'entrée standard ; le journal est écrit avec la synthèse.
+Rewired onto the `_core` core (`hcore/bs.py`): arguments and round cap, validation of the lenses' JSON, single retry of a silent lens (which disables the round's early exit), early exit, cap of 5 retained leads, slug, resumption and rendering of the synthesis are tested code. **No write before the final gate**: the core is stateless and the session passes it its own state on standard input; the journal is written with the synthesis.
 
 ### `code-index`
 
-Installe un **serveur de connaissance local adossé à ripgrep** dans le projet courant, et branche dessus l'usine ou le labo déjà présents :
+Installs a **local knowledge server backed by ripgrep** in the current project, and wires the factory or lab already present to it:
 
 ```text
 /code-index
@@ -204,22 +206,22 @@ Installe un **serveur de connaissance local adossé à ripgrep** dans le projet 
 /code-index --no-wire
 ```
 
-Le serveur (`.claude/rgkb/rgkb.py`) est un programme Python de bibliothèque standard, **sans aucune dépendance à installer** ; seul `rg` doit être disponible. Il s'expose de deux façons équivalentes : un **serveur MCP stdio** déclaré dans `.mcp.json` (outils `mcp__rgkb__search`, `definition`, `symbols`, `neighbors`, `file_card`, `notes`, `note_add`, `status`, `reindex`) et une **CLI** utilisable en Bash comme en headless.
+The server (`.claude/rgkb/rgkb.py`) is a standard-library Python program with **no dependency to install**; only `rg` must be available. It is exposed in two equivalent ways: a **stdio MCP server** declared in `.mcp.json` (tools `mcp__rgkb__search`, `definition`, `symbols`, `neighbors`, `file_card`, `notes`, `note_add`, `status`, `reindex`) and a **CLI** usable from Bash as well as headless.
 
-Tout vit sous `.knowledge/`, **versionné dans le dépôt** — c'est le point : un `git clone` transmet la base de connaissance d'un utilisateur à l'autre, sans rien à reconstruire.
+Everything lives under `.knowledge/`, **versioned in the repository** — that is the point: a `git clone` passes the knowledge base from one user to another, with nothing to rebuild.
 
-| Fichier | Rôle | Vérité |
+| File | Role | Truth |
 |---|---|---|
-| `config.json` | périmètre de l'index (globs, exclusions, plafonds) | source |
-| `config.local.json` | réglages propres à une machine, **seul fichier non versionné** | source |
-| `notes.jsonl` | notes écrites par les humains et les agents | source |
-| `files.jsonl` / `symbols.jsonl` | fichiers indexés, définitions trouvées par ripgrep | dérivé |
-| `graph.json` | arêtes fichier → symbole mentionné | dérivé |
-| `index.sqlite` | cache de requête, reconstruit depuis le texte | dérivé |
+| `config.json` | index scope (globs, exclusions, caps) | source |
+| `config.local.json` | machine-specific settings, **the only unversioned file** | source |
+| `notes.jsonl` | notes written by humans and agents | source |
+| `files.jsonl` / `symbols.jsonl` | indexed files, definitions found by ripgrep | derived |
+| `graph.json` | file → mentioned symbol edges | derived |
+| `index.sqlite` | query cache, rebuilt from the text | derived |
 
-Les sources sont du **texte, une ligne par élément** : un conflit git se lit et se fusionne. `index.sqlite` est déclaré binaire dans `.knowledge/.gitattributes` — en cas de conflit on prend n'importe quel côté et on relance `index --force`, qui le régénère depuis les sources. Une réindexation sans changement de code ne produit **aucun diff**.
+The sources are **text, one line per item**: a git conflict can be read and merged. `index.sqlite` is declared binary in `.knowledge/.gitattributes` — on a conflict take either side and rerun `index --force`, which regenerates it from the sources. A reindex with no code change produces **no diff**.
 
-**Fraîcheur de l'index.** Pendant un cycle `/factory-run` ou `/lab-run`, elle est automatique : vérification avant la première phase qui dépense, réindexation par le Builder après ses modifications. Hors cycle, des **hooks git** s'en chargent :
+**Index freshness.** During a `/factory-run` or `/lab-run` cycle, it is automatic: check before the first phase that spends, reindex by the Builder after its changes. Outside a cycle, **git hooks** take care of it:
 
 ```text
 python .claude/rgkb/rgkb.py hooks install --with-commit
@@ -227,33 +229,33 @@ python .claude/rgkb/rgkb.py hooks status
 python .claude/rgkb/rgkb.py hooks remove
 ```
 
-`post-merge` (donc `git pull`) et `post-rewrite` (rebase) réindexent après coup ; `--with-commit` ajoute `pre-commit`, qui réindexe et met `.knowledge/` à l'index, de sorte que **tout commit porte un index cohérent avec son code**. Les hooks n'écrivent que si le contenu a changé et ne font jamais échouer une opération git ; `RGKB_NO_HOOK=1 git pull` les neutralise ponctuellement. Un hook existant est complété par un bloc délimité, jamais écrasé. `.git/hooks/` n'est pas versionné, mais l'**intention** l'est : `hooks install` écrit `"hooks": "commit"` dans `.knowledge/config.json`, et tout `status` ou `index` réconcilie les hooks locaux avec elle. Un utilisateur qui clone les obtient donc au premier cycle, sans rien lancer. `rgkb.py init` ne réécrit jamais un `config.json` existant, et `hooks install` ne remplace jamais un `config.json` illisible.
+`post-merge` (hence `git pull`) and `post-rewrite` (rebase) reindex after the fact; `--with-commit` adds `pre-commit`, which reindexes and stages `.knowledge/`, so that **every commit carries an index consistent with its code**. The hooks only write if the content has changed and never make a git operation fail; `RGKB_NO_HOOK=1 git pull` neutralises them once. An existing hook is completed with a delimited block, never overwritten. `.git/hooks/` is not versioned, but the **intent** is: `hooks install` writes `"hooks": "commit"` in `.knowledge/config.json`, and any `status` or `index` reconciles the local hooks with it. A user who clones therefore gets them on the first cycle, without running anything. `rgkb.py init` never rewrites an existing `config.json`, and `hooks install` never replaces an unreadable `config.json`.
 
-`post-checkout` est **volontairement absent** : réindexer après un changement de branche salit l'arbre à chaque fois et git refuse le checkout suivant. Avec `pre-commit`, il n'a de toute façon rien à faire.
+`post-checkout` is **deliberately absent**: reindexing after a branch switch dirties the tree every time and git refuses the next checkout. With `pre-commit`, it has nothing to do anyway.
 
-Le câblage (sauf `--no-wire`) ajoute aux agents existants un bloc délimité `<!-- rgkb:debut -->` / `<!-- rgkb:fin -->`, réentrant, sans jamais réécrire leur prompt : fiche de fichier avant de lire un fichier entier, lecture des notes avant de formuler un avis, réindexation après modification pour le Builder, et à la consignation finale d'un cycle une proposition de note (1 à 3 par cycle, jamais ce que l'index retrouve seul). `/software-factory` et `/ai-lab` proposent son installation en fin de parcours (Phase 6b), toujours avec accord explicite.
+The wiring (unless `--no-wire`) adds to the existing agents a delimited, re-entrant `<!-- rgkb:debut -->` / `<!-- rgkb:fin -->` block, without ever rewriting their prompt: file card before reading a whole file, reading the notes before forming an opinion, reindex after modification for the Builder, and at the final logging of a cycle a note proposal (1 to 3 per cycle, never what the index finds on its own). `/software-factory` and `/ai-lab` offer to install it at the end of their run (Phase 6b), always with explicit agreement.
 
-Le skill s'appuie sur le noyau `_core` (`hcore/cx.py`) pour tout ce qui est déterministe : arguments, commande d'installation de `rg`, état du dépôt, copie versionnée du serveur, fusion de `.mcp.json`, `settings.json`, `tasks.json` et de l'exclusion de `config.json`, blocs réentrants, `tools` et `--allowedTools` complétés sans rien retirer. Il exige Python ≥ 3.9.
+The skill relies on the `_core` core (`hcore/cx.py`) for everything deterministic: arguments, the `rg` install command, repository state, versioned copy of the server, merging of `.mcp.json`, `settings.json`, `tasks.json` and the `config.json` exclusion, re-entrant blocks, `tools` and `--allowedTools` completed without removing anything. It requires Python ≥ 3.9.
 
-## Politique d'autonomie
+## Autonomy policy
 
-La clé `autonomy` de `.claude/harness.json` vaut `gate` (chaque décision humaine est posée) ou `auto` (défaut installé par `/software-factory`). L'option `--autonomy gate|auto` des skills la remplace pour une exécution, sans jamais écrire le tampon ; la politique effective est transmise aux skills enchaînés. En `auto`, une gate de type (b) ou (c) prend son défaut justifié, journalisé (la justification figure dans le skill qui pose la gate et dans `harness.py gate list`) ; une gate de type (a) s'évalue sur sa condition d'arrêt. Une boucle `auto` ne demande rien d'autre que ses conditions d'arrêt : spec `BLOQUEE` (question bloquante sans défaut), trois itérations sans approbation, agent mort deux fois, dérive de périmètre répétée, opération destructive, secret, enfant en échec, gate sans défaut.
+The `autonomy` key of `.claude/harness.json` is `gate` (every human decision is asked) or `auto` (default installed by `/software-factory`). The skills' `--autonomy gate|auto` option overrides it for one run, without ever writing the stamp; the effective policy is passed on to chained skills. In `auto`, a type (b) or (c) gate takes its justified default, logged (the justification is in the skill that raises the gate and in `harness.py gate list`); a type (a) gate is evaluated on its stop condition. An `auto` loop asks nothing beyond its stop conditions: `BLOCKED` spec (blocking question with no default), three iterations without approval, agent dead twice, repeated scope drift, destructive operation, secret, failed child, gate with no default.
 
-Chaque arrêt écrit un fichier `.harness/runs/STOP-<horodatage>.md` (en anglais, 40 lignes au plus : où, pourquoi, comment reprendre, la commande exacte), un événement `stop` au journal et sort en code 1 ; le harnais ne les supprime jamais. Les enchaînements : `/audit` → `/factory-queue run` (les specs écrites, dans l'ordre de priorité calculé), `/factory-run` → `/ship-pr` (commit de livraison puis PR), et `/ship-pr` merge **sans question** si cinq conditions sont vraies (aucun finding validé restant, tous les threads résolus, CI verte, cible non protégée, pas de conflit), en postant la décision en commentaire de la PR ; sinon la PR reste ouverte. `/brainstorm` ne lance rien. Ce dépôt reste en `gate` : le harnais ne s'auto-modifie pas en autonomie.
+Each stop writes a `.harness/runs/STOP-<timestamp>.md` file (in English, 40 lines at most: where, why, how to resume, the exact command), a `stop` event in the journal, and exits with code 1; the harness never deletes them. The chains: `/audit` → `/factory-queue run` (the specs written, in the computed priority order), `/factory-run` → `/ship-pr` (delivery commit then PR), and `/ship-pr` merges **without asking** if five conditions are true (no validated finding left, all threads resolved, CI green, target not protected, no conflict), posting the decision as a PR comment; otherwise the PR stays open. `/brainstorm` launches nothing. This repository stays in `gate`: the harness does not modify itself in autonomy.
 
 ## Hooks
 
-`/software-factory` installe dans `.claude/settings.json` (fusion additive, vos hooks et commentaires sont conservés) trois hooks Python stdlib, copiés avec le noyau sous `.claude/harness/hooks/` : un filet Bash/PowerShell **permanent** qui bloque `git push --force`, la suppression de branche, la réécriture d'historique, la destruction de travail non committé et les suppressions de fichiers hors artefacts générés (c'est un filet au mieux, pas une preuve : exécutez-vous-même l'opération voulue dans un terminal) ; pendant `/factory-run`, le contrôle du `Périmètre fichiers :` de la spec (la seconde dérive arrête le cycle) ; pendant `/ship-pr`, la limitation au diff de la PR ; et, si le projet configure un linter (`hooks.lint` de `.claude/harness.json`), un `PostToolUse` de vérification, jamais bloquant. Une erreur interne d'un hook laisse passer l'action et le dit. Les hooks ne valent qu'à la session suivante (ou après revue dans `/hooks`).
+`/software-factory` installs in `.claude/settings.json` (additive merge, your hooks and comments are kept) three stdlib Python hooks, copied with the core under `.claude/harness/hooks/`: a **permanent** Bash/PowerShell safety net that blocks `git push --force`, branch deletion, history rewriting, destruction of uncommitted work and file deletions outside generated artifacts (it is a best-effort net, not a proof: run the intended operation yourself in a terminal); during `/factory-run`, the check of the spec's `Files scope:` (the second drift stops the cycle); during `/ship-pr`, the restriction to the PR's diff; and, if the project configures a linter (`hooks.lint` in `.claude/harness.json`), a verification `PostToolUse`, never blocking. An internal error in a hook lets the action through and says so. The hooks only take effect in the next session (or after review in `/hooks`).
 
-## Profils
+## Profiles
 
-Un **profil** est un dossier de données sous `skills/_core/profiles/<nom>/` (manifeste `profile.json` plus fragments Markdown : rôles, lentilles, orchestrateur, détection) ; il ne contient aucun code. Deux profils sont livrés : `software` (usine logicielle, profil de repli) et `research` (laboratoire de recherche IA). Ajouter un profil = ajouter un dossier ; `harness.py profile validate <dossier>` le contrôle (schéma : `skills/_core/profiles/SCHEMA.md`).
+A **profile** is a data folder under `skills/_core/profiles/<name>/` (`profile.json` manifest plus Markdown fragments: roles, lenses, orchestrator, detection); it contains no code. Two profiles are shipped: `software` (software factory, fallback profile) and `research` (AI research lab). Adding a profile = adding a folder; `harness.py profile validate <folder>` checks it (schema: `skills/_core/profiles/SCHEMA.md`).
 
-Un agent `harness-scout` (sous-agent Explore en lecture seule, modèle économique) détecte les profils applicables : le noyau relève les signaux déterministes et vérifie les preuves de l'agent. Les profils retenus sont notés dans `.claude/harness.json` (clé `profiles`) ; le noyau ne fait qu'ajouter. Une proposition nette est prise par défaut en autonomie `auto`, une proposition ambiguë arrête avec la commande de reprise `--profile`.
+A `harness-scout` agent (read-only Explore sub-agent, economical model) detects the applicable profiles: the core collects the deterministic signals and verifies the agent's evidence. The selected profiles are recorded in `.claude/harness.json` (`profiles` key); the core only adds. A clear proposal is taken by default in `auto` autonomy, an ambiguous proposal stops with the `--profile` resume command.
 
-## Mettre à jour un projet équipé
+## Upgrading an equipped project
 
-Chaque projet équipé porte un tampon **versionné** `.claude/harness.json` : version du dépôt claude-skills qui l'a produit (tag git ou hash), date, skills installés et leurs options, politique d'autonomie, profils actifs, fichiers générés avec le hachage de leurs blocs (`skills/_core/STAMP.md`). Chaque fichier généré commence par un en-tête `harness: claude-skills <version>`, suivi de **blocs délimités** (`harness.frontmatter`, `harness.body`, `harness.profile.<nom>`, `harness.ci`, `rgkb`) ; tout ce qui est hors bloc appartient à l'utilisateur.
+Each equipped project carries a **versioned** `.claude/harness.json` stamp: version of the claude-skills repository that produced it (git tag or hash), date, installed skills and their options, autonomy policy, active profiles, generated files with the hash of their blocks (`skills/_core/STAMP.md`). Each generated file starts with a `harness: claude-skills <version>` header, followed by **delimited blocks** (`harness.frontmatter`, `harness.body`, `harness.profile.<name>`, `harness.ci`, `rgkb`); everything outside a block belongs to the user.
 
 ```text
 /software-factory --upgrade [--convert]
@@ -261,39 +263,39 @@ Chaque projet équipé porte un tampon **versionné** `.claude/harness.json` : v
 /harness-doctor
 ```
 
-`--upgrade` ne régénère que les blocs, préserve tout le hors-bloc (invariant vérifié avant l'écriture), migre les formats (`lab-models.json` vers `models.json`, anciens registres de run vers `.claude/findings.jsonl`), met à jour la copie du noyau `.claude/harness/` dans le même plan que les blocs de tous les profils, **montre le diff complet** puis l'applique, tout ou rien, avec sauvegarde sous `.harness/runs/upgrade-<horodatage>/backup/`. Il est idempotent : relancé sans changement, il ne produit aucun diff. Un fichier généré avant le noyau (sans bloc) est converti sans perte s'il est resté tel que généré ou s'il n'a reçu qu'un ajout en fin de fichier ; sinon la gate `upgrade.convert` propose de le conserver (défaut) ou de le convertir avec sauvegarde (`--convert` pour tous). Un projet sans tampon est détecté par ses fichiers générés, et le tampon est créé à la première mise à jour. Pas de retour en arrière : un projet installé par un harnais plus récent que le dépôt est refusé.
+`--upgrade` only regenerates the blocks, preserves everything outside blocks (invariant checked before writing), migrates the formats (`lab-models.json` to `models.json`, old run registries to `.claude/findings.jsonl`), updates the `.claude/harness/` core copy in the same plan as the blocks of all profiles, **shows the full diff** then applies it, all or nothing, with a backup under `.harness/runs/upgrade-<timestamp>/backup/`. It is idempotent: rerun with no change, it produces no diff. A file generated before the core (without blocks) is converted losslessly if it has stayed as generated or has only received an addition at the end of the file; otherwise the `upgrade.convert` gate offers to keep it (default) or to convert it with a backup (`--convert` for all). A project without a stamp is detected by its generated files, and the stamp is created at the first upgrade. No rollback: a project installed by a harness newer than the repository is refused.
 
-## Noyau `skills/_core/`
+## The `skills/_core/` core
 
-`skills/_core/` n'est pas un skill (il n'a pas de `SKILL.md`) : c'est le noyau déterministe partagé, en Python de bibliothèque standard (≥ 3.9), exposé par une CLI unique `harness.py` et testé par `py -3 -B -m unittest discover -s skills/_core/tests` (ou `python3`). Il porte ce qui ne relève pas du jugement — parsing des blocs JSON de verdict, compteurs d'itérations et de rondes, relance d'un agent mort, fusions de fichiers, séquences `gh`/`git` de `ship-pr`, et pour tous les skills : la primitive de **gate** (politique d'autonomie, catalogue des gates, repli headless), le schéma unique de **finding** (adaptateurs, validateur, conversions en spec, note ou commentaire) avec son registre projet local **`.claude/findings.jsonl`** (exclu de git, une ligne par finding), la détection de **stack** et ses bornes, les tailles et tris **tshirt**, les modèles par rôle (`.claude/models.json`, avec migration de `lab-models.json`), le moteur commun des audits — et écrit le journal de cycle `.harness/runs/<skill>-<horodatage>.jsonl`, exclu de git. Le script d'installation le lie comme les skills, en `~/.claude/skills/_core`, où `ship-pr` l'appelle par `${CLAUDE_SKILL_DIR}/../_core` ; `software-factory` le copie dans chaque projet équipé sous `.claude/harness/` (avec un `MANIFEST.json`, et `history.json` qui reconnaît ses états successifs : `harness.py core history --check`), que le `/factory-run` généré et la CI appellent.
+`skills/_core/` is not a skill (it has no `SKILL.md`): it is the shared deterministic core, in standard-library Python (≥ 3.9), exposed by a single `harness.py` CLI and tested by `py -3 -B -m unittest discover -s skills/_core/tests` (or `python3`). It carries what is not a matter of judgement — parsing of verdict JSON blocks, iteration and round counters, retry of a dead agent, file merges, `ship-pr`'s `gh`/`git` sequences, and for all skills: the **gate** primitive (autonomy policy, gate catalogue, headless fallback), the single **finding** schema (adapters, validator, conversions to spec, note or comment) with its local project registry **`.claude/findings.jsonl`** (excluded from git, one line per finding), **stack** detection and its bounds, **tshirt** sizes and sorts, per-role models (`.claude/models.json`, with migration from `lab-models.json`), the common audit engine — and writes the cycle journal `.harness/runs/<skill>-<timestamp>.jsonl`, excluded from git. The install script links it like the skills, as `~/.claude/skills/_core`, where `ship-pr` calls it through `${CLAUDE_SKILL_DIR}/../_core`; `software-factory` copies it into each equipped project under `.claude/harness/` (with a `MANIFEST.json`, and `history.json` which recognises its successive states: `harness.py core history --check`), which the generated `/factory-run` and the CI call.
 
-## Tester le harnais
+## Testing the harness
 
-Deux niveaux de tests :
+Two levels of tests:
 
-- **Tests unitaires** du noyau : `cd skills/_core/tests && py -3 -B -m unittest discover -s . -t .` (règles isolées, fixtures de `tests/fixtures/`).
-- **Scénarios de bout en bout** : `bash ci/test-harness.sh` ou `pwsh ci/test-harness.ps1`. Un runner Python commun (`ci/scenarios/`, bibliothèque standard seule) rejoue, dans des dossiers temporaires, la séquence d'appels au noyau que prescrivent les SKILL.md et l'orchestrateur généré, sur les projets jouets de `ci/fixtures/`. Les agents sont simulés (sorties figées, le Verifier lance les vrais tests du projet), `gh` est le faux `skills/_core/tests/fake_gh.py` au-dessus d'un dépôt nu local, et `claude` n'est jamais appelé : des cales en tête du PATH comptent tout appel au vrai `gh` ou `claude` (`real_gh_calls`, `real_claude_calls` du rapport).
+- **Unit tests** of the core: `cd skills/_core/tests && py -3 -B -m unittest discover -s . -t .` (isolated rules, fixtures in `tests/fixtures/`).
+- **End-to-end scenarios**: `bash ci/test-harness.sh` or `pwsh ci/test-harness.ps1`. A shared Python runner (`ci/scenarios/`, standard library only) replays, in temporary folders, the sequence of core calls prescribed by the SKILL.md files and the generated orchestrator, on the toy projects in `ci/fixtures/`. The agents are simulated (frozen outputs, the Verifier runs the project's real tests), `gh` is the fake `skills/_core/tests/fake_gh.py` on top of a local bare repository, and `claude` is never called: shims at the head of the PATH count any call to the real `gh` or `claude` (`real_gh_calls`, `real_claude_calls` in the report).
 
-| Scénario | Ce qu'il vérifie |
+| Scenario | What it verifies |
 | --- | --- |
-| `install-fresh` | installation à neuf de `/software-factory` sur un projet Python |
-| `install-skills` | `install_skills.sh` / `.ps1` vers un `HOME` temporaire (liens, idempotence, conflit) |
-| `install-unlink` | `--unlink` / `-Unlink` dans un `HOME` temporaire : seuls les liens vers ce dépôt sont retirés |
-| `plugin-guard` | garde de version du plugin (changement sous `skills/` sans hausse de `version`), nom effectif d'un skill dans les deux modes |
-| `plugin-validate` | `claude plugin validate .` (SKIP sans `claude`) |
-| `upgrade-legacy` | `--upgrade` d'un projet installé à l'ancienne, personnalisations hors bloc conservées |
-| `factory-auto` | cycle `factory-run` complet en `auto` jusqu'au Verifier, et contre-épreuve d'une question bloquante |
-| `stop-iteration3` | arrêt propre à la 3e itération (`STOP-*.md`) |
-| `shippr-automerge` | `ship-pr` sans finding : merge automatique, et les refus (CI rouge, branche protégée, thème muet) |
-| `hook-diff` | le hook PreToolUse de `ship-pr` bloque hors du diff, exécuté par la ligne de `settings.json` |
-| `models-absent`, `models-legacy` | `models.json` absent, migration de `lab-models.json` |
+| `install-fresh` | fresh install of `/software-factory` on a Python project |
+| `install-skills` | `install_skills.sh` / `.ps1` into a temporary `HOME` (links, idempotence, conflict) |
+| `install-unlink` | `--unlink` / `-Unlink` in a temporary `HOME`: only links to this repository are removed |
+| `plugin-guard` | plugin version guard (change under `skills/` without a `version` bump), effective name of a skill in both modes |
+| `plugin-validate` | `claude plugin validate .` (SKIP without `claude`) |
+| `upgrade-legacy` | `--upgrade` of a project installed the old way, out-of-block customisations kept |
+| `factory-auto` | full `factory-run` cycle in `auto` up to the Verifier, and counter-test of a blocking question |
+| `stop-iteration3` | clean stop at the 3rd iteration (`STOP-*.md`) |
+| `shippr-automerge` | `ship-pr` with no finding: automatic merge, and the refusals (red CI, protected branch, silent theme) |
+| `hook-diff` | `ship-pr`'s PreToolUse hook blocks outside the diff, executed through the `settings.json` line |
+| `models-absent`, `models-legacy` | missing `models.json`, migration of `lab-models.json` |
 
-Options : `--list [--verbose]`, `--scenario <id>` (répétable), `--live`, `--keep`, `--fixtures <dossier>`, `--report <fichier>` (PowerShell : `-List`, `-Details`, `-Scenario`, `-Live`, `-Keep`, `-Fixtures`, `-Report`). Une ligne `PASS|FAIL|SKIP <id> <durée>` par scénario ; code de sortie 0 (tout `PASS` ou `SKIP` motivé), 1 (un `FAIL`, ou `--live` sans `claude`), 2 (option ou scénario inconnu). Sous Git Bash sans liens symboliques natifs, `install-skills` est `SKIP` (la couverture Windows passe par le lanceur PowerShell).
+Options: `--list [--verbose]`, `--scenario <id>` (repeatable), `--live`, `--keep`, `--fixtures <folder>`, `--report <file>` (PowerShell: `-List`, `-Details`, `-Scenario`, `-Live`, `-Keep`, `-Fixtures`, `-Report`). One `PASS|FAIL|SKIP <id> <duration>` line per scenario; exit code 0 (all `PASS` or justified `SKIP`), 1 (a `FAIL`, or `--live` without `claude`), 2 (unknown option or scenario). Under Git Bash without native symbolic links, `install-skills` is `SKIP` (Windows coverage goes through the PowerShell launcher).
 
-`--live` ajoute `live-install`, `live-factory` et `live-hook` : le vrai `claude -p` (`--max-turns`, liste blanche d'outils, jamais le contournement des permissions), avec des assertions structurelles seulement. Il consomme l'abonnement et n'est jamais lancé par défaut. `ship-pr` réel reste une recette manuelle sur un dépôt GitHub jetable.
+`--live` adds `live-install`, `live-factory` and `live-hook`: the real `claude -p` (`--max-turns`, tool allowlist, never the permission bypass), with structural assertions only. It consumes the subscription and is never run by default. The real `ship-pr` remains a manual recipe on a disposable GitHub repository.
 
-**`claude plugin eval` ne porte pas ces scénarios** (BACKLOG §5) : il sait préparer une fixture, mais aucun grader n'exécute de commande shell, alors que chaque résultat attendu ici est un état observable par commande (code de sortie, octets d'un fichier, état git, état du faux `gh`, journal). Il suppose en outre un plugin, ce que la Phase 7 n'a pas décidé. Il reste réexaminable pour des évaluations jugées par un LLM (qualité d'une spec).
+**`claude plugin eval` does not carry these scenarios** (BACKLOG §5): it can prepare a fixture, but no grader executes a shell command, whereas every expected result here is a state observable by command (exit code, bytes of a file, git state, state of the fake `gh`, journal). It also assumes a plugin, which Phase 7 had not decided. It remains worth revisiting for LLM-judged evaluations (spec quality).
 
-## Ajouter un skill
+## Adding a skill
 
-Créer `skills/<nom>/SKILL.md` (frontmatter `name` + `description` minimum), relancer le script d'installation, commiter.
+Create `skills/<name>/SKILL.md` (frontmatter `name` + `description` minimum), rerun the install script, commit.

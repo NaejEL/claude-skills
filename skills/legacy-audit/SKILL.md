@@ -1,23 +1,23 @@
 ---
 name: legacy-audit
-description: Alias de /audit pour la dette d'accumulation d'un repo legacy (hygiène, portabilité, qualité, filet de sécurité) — produit désormais AUDIT.md et les specs LEG. À utiliser quand l'utilisateur veut auditer un repo legacy et obtenir une roadmap de remise à niveau.
+description: Alias of /audit for the accumulated debt of a legacy repo (hygiene, portability, quality, safety net) — now produces AUDIT.md and the LEG specs. Use when the user wants to audit a legacy repo and get a modernization roadmap.
 user-invocable: true
 argument-hint: "[REPO] [--categories \"hygiene;portabilite;qualite;filet\"] [--max-specs N] [--models \"role=modele;...\"] [--autonomy gate|auto]"
 ---
 
-# Legacy audit — alias de `/audit`
+# Legacy audit — alias of `/audit`
 
-`/legacy-audit` est un alias de `/audit`, conservé pendant la version 2.0.0 et retiré à la version suivante.
+`/legacy-audit` is an alias of `/audit`, kept during version 2.0.0 and removed in the next version.
 
-Afficher d'abord cette phrase mot pour mot, puis :
+First display this sentence word for word, then:
 
-1. Écrire `$ARGUMENTS` tel quel avec l'outil Write dans `.harness/runs/legacy-audit-arguments.txt` (jamais par le shell), puis appeler `<PY> "${CLAUDE_SKILL_DIR}/../_core/harness.py" audit alias-args --skill legacy-audit --arguments-file .harness/runs/legacy-audit-arguments.txt --skill-dir "${CLAUDE_SKILL_DIR}"` (`<PY>` : voir `/software-factory`). Le champ `arguments` rendu traduit `--categories` en `--lenses`, force `--profile software` et ajoute `--via legacy-audit` ; le champ `invoke` est le nom effectif de `audit` pour l'outil Skill.
-2. Invoquer **en ligne** (sans sous-agent) l'outil Skill sur le skill nommé par `invoke` avec ces arguments. Repli si l'outil Skill est indisponible : lire `${CLAUDE_SKILL_DIR}/../audit/SKILL.md` et suivre ses instructions avec ces arguments.
+1. Write `$ARGUMENTS` as is with the Write tool to `.harness/runs/legacy-audit-arguments.txt` (never through the shell), then call `<PY> "${CLAUDE_SKILL_DIR}/../_core/harness.py" audit alias-args --skill legacy-audit --arguments-file .harness/runs/legacy-audit-arguments.txt --skill-dir "${CLAUDE_SKILL_DIR}"` (`<PY>`: see `/software-factory`). The `arguments` field returned translates `--categories` into `--lenses`, forces `--profile software` and adds `--via legacy-audit`; the `invoke` field is the effective name of `audit` for the Skill tool.
+2. Invoke **inline** (without a sub-agent) the Skill tool on the skill named by `invoke` with these arguments. Fallback if the Skill tool is unavailable: read `${CLAUDE_SKILL_DIR}/../audit/SKILL.md` and follow its instructions with these arguments.
 
-## Défauts en politique `auto` (AP-09)
+## Defaults under the `auto` policy (AP-09)
 
-L'option `--autonomy gate|auto` (AP-03) vaut pour cette exécution seulement et n'écrit jamais `.claude/harness.json` ; elle est transmise à `K gate decide --autonomy` et aux skills enchaînés (AP-04). Défaut de chaque gate de ce skill en `auto`, avec sa justification d'une ligne (celle du catalogue `K gate list`) :
+The `--autonomy gate|auto` option (AP-03) applies to this run only and never writes `.claude/harness.json`; it is passed to `K gate decide --autonomy` and to chained skills (AP-04). Default of each gate of this skill under `auto`, with its one-line justification (the one from the `K gate list` catalog):
 
-- `legacy-audit.framing` → 3 / risque d'abord — close to 'make it reliable first' (roadmap 4.2)
-- `legacy-audit.assignment` → aucun (arrêt) — the computation belongs to Phase 4
-- `legacy-audit.final` → Générer roadmap + specs — the deliverable the audit was run for
+- `legacy-audit.framing` → 3 / risk first — close to 'make it reliable first' (roadmap 4.2) (options: 2, 3, 4, risk first, quick wins, foundations, proposed order)
+- `legacy-audit.assignment` → none (stop) — the computation belongs to Phase 4 (options: Milestone 1 / Milestone 2 / Last milestone / Exclude from roadmap)
+- `legacy-audit.final` → Generate roadmap + specs — the deliverable the audit was run for (options: Generate roadmap + specs / Readjust / Abandon)

@@ -22,14 +22,14 @@ class SizesTest(unittest.TestCase):
         self.assertEqual(tshirt.SIZES, ("XS", "S", "M", "L", "XL"))
         self.assertEqual([tshirt.size_rank(s) for s in tshirt.SIZES], [0, 1, 2, 3, 4])
         # Every level of both scales, as written at BASE1 (legacy-audit:50, ai-lab-audit:66).
-        self.assertEqual(tshirt.DEV_SCALE, {"XS": "< 30 min", "S": "< 2 h", "M": "demi-journée",
-                                            "L": "1-2 jours", "XL": "à découper"})
-        self.assertEqual(tshirt.GPU_SCALE, {"XS": "quelques minutes GPU", "S": "< 1 h", "M": "demi-journée de runs",
-                                            "L": "plusieurs jours", "XL": "hors de portée du matériel"})
+        self.assertEqual(tshirt.DEV_SCALE, {"XS": "< 30 min", "S": "< 2 h", "M": "half a day",
+                                            "L": "1-2 days", "XL": "to be split"})
+        self.assertEqual(tshirt.GPU_SCALE, {"XS": "a few GPU minutes", "S": "< 1 h", "M": "half a day of runs",
+                                            "L": "several days", "XL": "beyond the reach of the hardware"})
         self.assertEqual(list(tshirt.DEV_SCALE), list(tshirt.SIZES))
         # The labels are data (templates/deliverables.json), not code strings.
         source = (helpers.CORE / "hcore" / "tshirt.py").read_text(encoding="utf-8")
-        self.assertNotIn("à découper", source)
+        self.assertNotIn("to be split", source)
         with self.assertRaises(tshirt.SizeError):
             tshirt.size_rank("XXL")
 

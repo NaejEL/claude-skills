@@ -65,7 +65,7 @@ class MigrationTest(helpers.TempDirCase):
 
     def test_mg02_mg05_imports_are_recorded_and_a_second_run_changes_nothing(self):
         """MG-02, MG-04, MG-05, CA-21: each import is recorded as `<!-- harness:import … sha256=… -->` plus a
-        `Repris depuis` line; a second run (same date, same outputs) gives a byte-identical AUDIT.md with
+        `Imported from` line; a second run (same date, same outputs) gives a byte-identical AUDIT.md with
         the same three import lines; the previous files and the existing spec stay identical."""
         blocks, imports = self.import_all()
         self.assertEqual(len(imports), 3)
@@ -74,8 +74,8 @@ class MigrationTest(helpers.TempDirCase):
         self.assertEqual(first["state"], "créé")
         body = text.decode("utf-8")
         self.assertEqual(body.count("<!-- harness:import "), 3)
-        self.assertEqual(body.count("Repris depuis : "), 3)
-        self.assertIn("Repris depuis : AUDIT-lab.md", body)
+        self.assertEqual(body.count("Imported from: "), 3)
+        self.assertIn("Imported from: AUDIT-lab.md", body)
         # second run: nothing left to import, the blocks come back from AUDIT.md.
         again_blocks, again_imports = [], []
         for skill in OLD:

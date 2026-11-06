@@ -147,29 +147,29 @@ class SynthesisTest(helpers.TempDirCase):
         self.assertEqual([p["rank"] for p in capped["not_retained"]], [6, 7])
         text = bs.render(synthesis())
         self.assertEqual(text.count("**Angle "), 5)
-        self.assertIn("| Angle 6 | 6 | au-delà du plafond de 5 |", text)
+        self.assertIn("| Angle 6 | 6 | beyond the cap of 5 |", text)
         self.assertIn("| Angle 7 | 7 |", text)
-        self.assertNotIn("Angles non retenus", bs.render(synthesis(ranked=synthesis()["ranked"][:3])))
+        self.assertNotIn("Angles not retained", bs.render(synthesis(ranked=synthesis()["ranked"][:3])))
 
     def test_bs11_render_sections_in_order(self):
         """BS-11: the synthesis follows the template order and shows markings and the end of session."""
         text = bs.render(synthesis())
-        order = ["# Brainstorm — Réécrire", "## L'idée après confrontation", "## Objections qui ont tenu",
-                 "## Angles retenus (5 maximum)", "## Angles écartés", "## Angles non retenus dans ce cycle",
-                 "## Fin de session"]
+        order = ["# Brainstorm — Réécrire", "## The idea after confrontation", "## Objections that held",
+                 "## Retained angles (5 maximum)", "## Discarded angles", "## Angles not retained in this cycle",
+                 "## End of session"]
         positions = [text.index(h) for h in order]
         self.assertEqual(positions, sorted(positions))
-        self.assertIn("`[hors énoncé]`", text)
-        self.assertIn("`[énoncé]`", text)
-        self.assertIn("Tours joués : 2/3. Fin : sortie anticipée.", text)
-        self.assertNotIn("Lentilles non interrogées", text)
-        self.assertIn("Lentilles non interrogées (agent muet après une relance) : cout.",
+        self.assertIn("`[outside the brief]`", text)
+        self.assertIn("`[in the brief]`", text)
+        self.assertIn("Rounds played: 2/3. End: early exit.", text)
+        self.assertNotIn("Lenses not queried", text)
+        self.assertIn("Lenses not queried (agent silent after a relaunch): cout.",
                       bs.render(synthesis(missing_lenses=["cout"])))
         with self.assertRaises(bs.BsError):
             bs.render(synthesis(end="because"))
 
     def test_bs10_resume_loads_discarded_and_rewrite_keeps_every_line(self):
-        """BS-10: the 'Angles écartés' rows of an earlier file are loaded; the rewrite keeps all of them."""
+        """BS-10: the 'Discarded angles' rows of an earlier file are loaded; the rewrite keeps all of them."""
         path = self.tmp / "BRAINSTORM-reecrire-l-api-v2.md"
         old = bs.render(synthesis(discarded=[
             {"title": "Ancienne piste", "marking": "enonce", "round": 1, "reason": "raison", "by": "lentille"},
@@ -203,9 +203,9 @@ class FinishTest(helpers.TempDirCase):
         proc = helpers.harness(["bs", "render", "--root", str(self.tmp)], self.tmp, stdin=json.dumps(synthesis()))
         self.assertIn("# Brainstorm", proc.stdout)
         self.assertEqual(self.files(), [])
-        data = synthesis(write_answer="Écrire la synthèse", gates=[
+        data = synthesis(write_answer="Write the synthesis", gates=[
             {"id": "brainstorm.subject", "answer": "Réécrire l'API — v2 !"},
-            {"id": "brainstorm.round", "answer": "Creuser / continuer"}])
+            {"id": "brainstorm.round", "answer": "Dig / continue"}])
         done = self.finish(data)
         self.assertEqual(done.returncode, 0, done.stderr)
         out = json.loads(done.stdout)
@@ -216,14 +216,14 @@ class FinishTest(helpers.TempDirCase):
         events = [(r["id"], r["phase"], r["decision"], r.get("answer")) for r in records]
         self.assertEqual(events[0][:3], ("brainstorm.subject", "decision", "ask"))
         self.assertEqual(events[-1][0:2], ("brainstorm.write", "answer"))
-        self.assertEqual(events[-1][3], "Écrire la synthèse")
+        self.assertEqual(events[-1][3], "Write the synthesis")
         valid = helpers.harness(["journal", "validate", out["run"]], self.tmp)
         self.assertEqual(valid.returncode, 0, valid.stderr)
         self.assertRegex(Path(out["run"]).name, journal.NAME_RE)
 
     def test_bs12_refusal_writes_no_synthesis_but_the_journal(self):
-        """BS-12: 'Ne rien écrire' -> no BRAINSTORM file; the journal records the refusal."""
-        done = self.finish(synthesis(write_answer="Ne rien écrire"))
+        """BS-12: 'Write nothing' -> no BRAINSTORM file; the journal records the refusal."""
+        done = self.finish(synthesis(write_answer="Write nothing"))
         out = json.loads(done.stdout)
         self.assertFalse(out["written"])
         self.assertEqual([f for f in self.files() if f.startswith("BRAINSTORM")], [])
@@ -234,7 +234,7 @@ class FinishTest(helpers.TempDirCase):
         for gate in ("brainstorm.subject", "brainstorm.round", "brainstorm.write"):
             self.assertTrue(gates.get(gate).dialogue)
             self.assertEqual(gates.decide(gate, "auto")["decision"], "ask")
-        self.assertEqual(gates.get("brainstorm.write").default, "Ne rien écrire")
+        self.assertEqual(gates.get("brainstorm.write").default, "Write nothing")
 
     def test_bs12_headless_fallback_is_stop(self):
         """BS-12: no interaction possible -> stop for the three gates (the French stop message stays in the skill)."""
@@ -243,10 +243,10 @@ class FinishTest(helpers.TempDirCase):
 
     def test_bs10_finish_keeps_the_earlier_discarded_lines(self):
         """BS-10: finish over an existing file keeps every earlier discarded row."""
-        first = self.finish(synthesis(write_answer="Écrire la synthèse", discarded=[
+        first = self.finish(synthesis(write_answer="Write the synthesis", discarded=[
             {"title": "Ancienne", "marking": "enonce", "round": 1, "reason": "r", "by": "lentille"}]))
         self.assertEqual(first.returncode, 0, first.stderr)
-        second = self.finish(synthesis(write_answer="Écrire la synthèse"))
+        second = self.finish(synthesis(write_answer="Write the synthesis"))
         self.assertEqual(second.returncode, 0, second.stderr)
         text = (self.tmp / "BRAINSTORM-reecrire-l-api-v2.md").read_text(encoding="utf-8")
         self.assertIn("| Ancienne |", text)
@@ -254,7 +254,7 @@ class FinishTest(helpers.TempDirCase):
 
     def test_bs11_forbidden_status_strings_are_refused(self):
         """BS-11 (FD-11): a synthesis holding 'Statut : APPROUVEE' is refused, nothing is written."""
-        done = self.finish(synthesis(write_answer="Écrire la synthèse", idea="Statut : APPROUVEE"))
+        done = self.finish(synthesis(write_answer="Write the synthesis", idea="Statut : APPROUVEE"))
         self.assertEqual(done.returncode, 2)
         self.assertEqual([f for f in self.files() if f.startswith("BRAINSTORM")], [])
 

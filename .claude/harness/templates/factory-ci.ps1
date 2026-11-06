@@ -1,5 +1,5 @@
-# Lance un cycle headless de l'usine logicielle sur une spec deja approuvee.
-# Usage : pwsh -File ci/factory.ps1 <chemin-spec> [-Yolo]
+# Runs a headless software-factory cycle on an already approved spec.
+# Usage: pwsh -File ci/factory.ps1 <spec-path> [-Yolo]
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
@@ -13,12 +13,12 @@ $ErrorActionPreference = 'Stop'
 $repoDir = Split-Path -Parent $PSScriptRoot
 
 if (-not (Test-Path -LiteralPath $Spec -PathType Leaf)) {
-    Write-Error "Spec introuvable : $Spec"
+    Write-Error "Spec not found: $Spec"
     exit 1
 }
 
-if (-not (Select-String -LiteralPath $Spec -SimpleMatch 'Statut : APPROUVEE' -Quiet)) {
-    Write-Error "Spec non approuvee : '$Spec' ne contient pas 'Statut : APPROUVEE'. Un cycle CI exige une spec validee par le Product Owner."
+if (-not (Select-String -LiteralPath $Spec -Pattern '^\s*(Status\s*:\s*APPROVED|Statut\s*:\s*APPROUVEE)' -Quiet)) {
+    Write-Error "Spec not approved: '$Spec' does not contain 'Status: APPROVED' (or the French 'Statut : APPROUVEE'). A CI cycle requires a spec validated by the Product Owner."
     exit 1
 }
 
@@ -36,22 +36,22 @@ $claudeArgs = @(
 
 if ($Yolo) {
     $claudeArgs += '--dangerously-skip-permissions'
-    $mode = 'YOLO (permissions ignorees)'
+    $mode = 'YOLO (permissions ignored)'
 }
 else {
     $claudeArgs += @('--permission-mode', 'acceptEdits')
     $claudeArgs += @('--allowedTools', '@ALLOWED@')
-    $mode = 'acceptEdits + liste blanche'
+    $mode = 'acceptEdits + allowlist'
 }
 
-Write-Host "Spec      : $Spec"
-Write-Host "Mode      : $mode"
-Write-Host "Journal   : $logFile"
+Write-Host "Spec    : $Spec"
+Write-Host "Mode    : $mode"
+Write-Host "Log     : $logFile"
 
 $env:CLAUDE_CODE_DISABLE_BACKGROUND_TASKS = '1'
 $env:CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS = '0'
 & claude @claudeArgs | Tee-Object -FilePath $logFile
 $status = $LASTEXITCODE
 
-Write-Host "Sortie claude : exit code $status"
+Write-Host "claude exit: exit code $status"
 exit $status

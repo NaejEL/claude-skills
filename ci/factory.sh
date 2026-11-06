@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# harness: claude-skills ed251d2 (core 4.0.0)
+# harness: claude-skills 2.1.0 (core 4.0.0)
 # >>> harness.ci >>>
-# Lance un cycle headless de l'usine logicielle sur une spec deja approuvee.
-# Usage : ci/factory.sh <chemin-spec> [--yolo]
+# Runs a headless software-factory cycle on an already approved spec.
+# Usage: ci/factory.sh <spec-path> [--yolo]
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -15,17 +15,17 @@ for arg in "$@"; do
             yolo=1
             ;;
         -h | --help)
-            echo "Usage : ci/factory.sh <chemin-spec> [--yolo]"
+            echo "Usage: ci/factory.sh <spec-path> [--yolo]"
             exit 0
             ;;
         -*)
-            echo "Option inconnue : $arg" >&2
-            echo "Usage : ci/factory.sh <chemin-spec> [--yolo]" >&2
+            echo "Unknown option: $arg" >&2
+            echo "Usage: ci/factory.sh <spec-path> [--yolo]" >&2
             exit 2
             ;;
         *)
             if [ -n "$spec" ]; then
-                echo "Un seul chemin de spec est attendu (recu en trop : $arg)" >&2
+                echo "A single spec path is expected (extra argument received: $arg)" >&2
                 exit 2
             fi
             spec="$arg"
@@ -34,19 +34,19 @@ for arg in "$@"; do
 done
 
 if [ -z "$spec" ]; then
-    echo "Chemin de la spec approuvee manquant." >&2
-    echo "Usage : ci/factory.sh <chemin-spec> [--yolo]" >&2
+    echo "Path of the approved spec is missing." >&2
+    echo "Usage: ci/factory.sh <spec-path> [--yolo]" >&2
     exit 2
 fi
 
 if [ ! -f "$spec" ]; then
-    echo "Spec introuvable : $spec" >&2
+    echo "Spec not found: $spec" >&2
     exit 1
 fi
 
-if ! grep -q "Statut : APPROUVEE" "$spec"; then
-    echo "Spec non approuvee : '$spec' ne contient pas 'Statut : APPROUVEE'." >&2
-    echo "Un cycle CI exige une spec validee par le Product Owner." >&2
+if ! grep -Eq "^[[:space:]]*(Status[[:space:]]*:[[:space:]]*APPROVED|Statut[[:space:]]*:[[:space:]]*APPROUVEE)" "$spec"; then
+    echo "Spec not approved: '$spec' does not contain 'Status: APPROVED' (or the French 'Statut : APPROUVEE')." >&2
+    echo "A CI cycle requires a spec validated by the Product Owner." >&2
     exit 1
 fi
 
@@ -64,15 +64,15 @@ else
     cmd+=(--allowedTools "Read,Glob,Grep,Write,Edit,Bash(git *),Bash(py *)")
 fi
 
-echo "Spec      : $spec"
-echo "Mode      : $([ "$yolo" -eq 1 ] && echo 'YOLO (permissions ignorees)' || echo 'acceptEdits + liste blanche')"
-echo "Journal   : $log_file"
+echo "Spec    : $spec"
+echo "Mode    : $([ "$yolo" -eq 1 ] && echo 'YOLO (permissions ignored)' || echo 'acceptEdits + allowlist')"
+echo "Log     : $log_file"
 
 set +e
 "${cmd[@]}" | tee "$log_file"
 status="${PIPESTATUS[0]}"
 set -e
 
-echo "Sortie claude : exit code $status"
+echo "claude exit: exit code $status"
 exit "$status"
 # <<< harness.ci <<<

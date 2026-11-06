@@ -50,7 +50,7 @@ class Stopped(RuntimeError):
 
 # SX-04: kind -> (resume steps, command pattern).
 RESUME = {
-    "blocked": (["Fill the `Réponse :` line of every open question in the spec.", "Run the command below."],
+    "blocked": (["Fill the `Answer:` line of every open question in the spec.", "Run the command below."],
                 "/factory-run {spec}"),
     "iterations": (["Read the remaining issues above.", "Run the command below to start a new cycle."],
                    "/factory-run {spec}"),
@@ -58,7 +58,7 @@ RESUME = {
               "/factory-run {spec}"),
     "profile": (["Pick the profile that fits the project.", "Run the command below."],
                 "/software-factory --profile {profile}"),
-    "drift": (["Fix `Périmètre fichiers` in the spec, or the implementation.", "Run the command below."],
+    "drift": (["Fix `Files scope` in the spec, or the implementation.", "Run the command below."],
               "/factory-run {spec}"),
     "destructive": (["No agent command resumes this stop.",
                      "Run the destructive operation yourself in a terminal if it is wanted.",

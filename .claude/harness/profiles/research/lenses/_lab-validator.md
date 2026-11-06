@@ -1,3 +1,3 @@
-## Phase 3 — Validation adversariale
+## Phase 3 — Adversarial validation
 
-Pour chaque finding de `to_validate`, un **mini-agent validateur** (effort faible, rôle `validator`) le conteste : la preuve existe-t-elle à cet endroit ? le journal ou l'architecture contiennent-ils déjà la réponse (un validateur de `validite`/`route`/`bio` **grep le journal** pour la question posée avant de confirmer) ? vrai problème ou choix délibéré documenté ? nature, sévérité et taille plausibles ? Sortie :
+For each finding in `to_validate`, a **mini validator agent** (low effort, role `validator`) challenges it: does the evidence exist at that place? do the journal or the architecture already contain the answer (a `validite`/`route`/`bio` validator **greps the journal** for the question asked before confirming)? real problem or documented deliberate choice? plausible nature, severity and size? Output:

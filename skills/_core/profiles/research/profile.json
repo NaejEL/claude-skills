@@ -136,11 +136,17 @@
       "kind": "protocol",
       "dir": "experiments",
       "glob": "EXP-*.md",
-      "status_proposed": "Statut : PROPOSE",
-      "status_ready": "Statut : PRE-ENREGISTRE",
-      "status_blocked": "Statut : BLOQUE",
-      "status_delivered": "Statut : TERMINE",
-      "status_done": "Statut : TERMINE"
+      "status_proposed": "Status: PROPOSED",
+      "status_ready": "Status: PRE-REGISTERED",
+      "status_blocked": "Status: BLOCKED",
+      "status_delivered": "Status: DONE",
+      "status_done": "Status: DONE",
+      "status_legacy": {
+        "proposed": "Statut : PROPOSE",
+        "ready": "Statut : PRE-ENREGISTRE",
+        "blocked": "Statut : BLOQUE",
+        "delivered": "Statut : TERMINE"
+      }
     },
     {
       "kind": "journal",
@@ -209,14 +215,15 @@
   "gitignore": [
     "lab-logs/",
     "experiments/results/",
-    ".harness/runs/"
+    ".harness/runs/",
+    ".harness/tmp/"
   ],
   "tasks": {
     "inputs": [
       {
         "id": "labProtocol",
         "type": "promptString",
-        "description": "Chemin du protocole pré-enregistré (experiments/EXP-*.md)"
+        "description": "Path of the pre-registered protocol (experiments/EXP-*.md)"
       }
     ],
     "tasks": [
@@ -241,7 +248,7 @@
       {
         "label": "Lab: nouvelle expérience (session)",
         "type": "shell",
-        "command": "echo 'Ouvrir Claude Code et taper : /lab-run \"<votre question>\"  ou  /lab-run suivant'",
+        "command": "echo 'Open Claude Code and type: /lab-run \"<your question>\"  or  /lab-run suivant'",
         "problemMatcher": []
       }
     ],
@@ -254,7 +261,7 @@
     "script": "lab",
     "command": "/lab-run",
     "max_turns": 150,
-    "status_line": "Statut : PRE-ENREGISTRE",
+    "status_line": "Status: PRE-REGISTERED",
     "logs_dir": "lab-logs"
   },
   "orchestrator": {
@@ -269,17 +276,17 @@
       "id": "audit.research.framing",
       "source": "audit:research-framing",
       "kind": "b",
-      "options": "specs / lister / ignorer les mineures ; fiabiliser / moins cher / feuille de route / ordre proposé",
-      "default": "specs / fiabiliser",
-      "rationale": "specs when a factory is present, otherwise lister; make it reliable first",
+      "options": "specs / list / ignore minors ; make reliable / cheaper / roadmap / proposed order",
+      "default": "specs / make reliable",
+      "rationale": "specs when a factory is present, otherwise list; make it reliable first",
       "headless": "stop"
     },
     {
       "id": "audit.research.selection",
       "source": "audit:research-selection",
       "kind": "b",
-      "options": "Toutes / Seulement la mieux classée / Aucune",
-      "default": "Toutes",
+      "options": "All / Only the best ranked / None",
+      "default": "All",
       "rationale": "the cap applies afterwards",
       "headless": "stop",
       "repeat": 4
@@ -618,13 +625,13 @@
         "id": "scientific-corpus",
         "kind": "judgement",
         "weight": 2,
-        "question": "Le projet est-il un corpus scientifique (journal daté, architecture, tableau des résultats) ?"
+        "question": "Is the project a scientific corpus (dated journal, architecture, results table)?"
       },
       {
         "id": "gpu-declared",
         "kind": "judgement",
         "weight": 1,
-        "question": "Un matériel GPU est-il déclaré dans la documentation ?"
+        "question": "Is GPU hardware declared in the documentation?"
       }
     ]
   },

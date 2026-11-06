@@ -10,12 +10,12 @@
   ],
   "skills": {
     "software-factory": {
-      "repo_commit": "ed251d2ec30fa7654c46fda73bf8262f901e0487",
-      "repo_describe": "ed251d2",
-      "repo_dirty": false,
+      "repo_commit": "fb1f40fbbc68584afabcd95370af55298c8c7f09",
+      "repo_describe": "2.1.0",
+      "repo_dirty": true,
       "core_version": "4.0.0",
       "installed_at": "2026-11-01T17:33:07+01:00",
-      "updated_at": "2026-11-01T17:33:07+01:00",
+      "updated_at": "2026-11-02T08:19:19+01:00",
       "options": {
         "stacks": [],
         "interpreter": "py -3",
@@ -30,22 +30,22 @@
         ".claude/agents/factory-builder.md": {
           "kind": "generated",
           "blocks": {
-            "harness.frontmatter": "4f7fa1733dd7cb30c74d238a04248e37bdbae61fc03d6da52f70a7f81c0c3960",
-            "harness.body": "d5666ec09e8128d3b7c6259a8c5821b316e8b8f4a231f76c439e46efdf7005b6"
+            "harness.frontmatter": "65f46aec65e2eae135b8c4c97b45fc36928edf34478d88f70578321b910a28cf",
+            "harness.body": "acb9359017b29380009cd047d2d4c608df36b552bbc5f5237e64b522488ac346"
           }
         },
         ".claude/agents/factory-planner.md": {
           "kind": "generated",
           "blocks": {
-            "harness.frontmatter": "5d316e29443081f09f3e1d5e1ee274ae7df6c18cf27798754cbb9f923077c51f",
-            "harness.body": "a96d8221df6f141c4d14ca989c287c91dc906e6ab03da1836fa4d289b5544019"
+            "harness.frontmatter": "587256655d15328bc6761845ab9cbdcc529efe12b5cb775b0fc96fc9579a35a3",
+            "harness.body": "2bfe9bb00e3c223752fff915d91f9133a4b048c1c7c9c5d046d28ded3bba88c4"
           }
         },
         ".claude/agents/factory-verifier.md": {
           "kind": "generated",
           "blocks": {
-            "harness.frontmatter": "57fd6a75448daa38a267b40386ebc9241e36b181748bf9984793787e96d0924e",
-            "harness.body": "ecd6541b3bcb42165362a0662eaafb5201308af1aea402469e25104c9edbef70"
+            "harness.frontmatter": "82498db1f90a57deffbeb087c3fc19e655536d30694914b7482f1d66bbdfd2c5",
+            "harness.body": "373bcc2849988d9732f819170ee541dbdb62290427da891bc7e1e36f0eb7c59f"
           }
         },
         ".claude/harness/MANIFEST.json": {
@@ -57,8 +57,8 @@
         ".claude/skills/factory-run/SKILL.md": {
           "kind": "generated",
           "blocks": {
-            "harness.frontmatter": "3e852a073b4de01cc3d61e89481ec64466ffdd4c1c7fcd94dbc483098217a31e",
-            "harness.profile.software": "088f87ba88d573066393d895a96cc4752e8d8c506073cc76abef6d544212ccde"
+            "harness.frontmatter": "cd4e9561b47ff6e20a603c8981c7bf9c8c8a3859b82fe21ef3eb7a063f107100",
+            "harness.profile.software": "b1d3b75561acc9efd8eee7b7dcdf4d9f446e883c75e15363dc9e3b39e5ce96cb"
           }
         },
         ".gitignore": {
@@ -70,13 +70,13 @@
         "ci/factory.ps1": {
           "kind": "generated",
           "blocks": {
-            "harness.ci": "3aab3d08d9e730f6751aa43a4c85e511cf01a9ed6c49ae46408dc04d4c861fb6"
+            "harness.ci": "d7c0a4bceeca31ed4384cecdddf435c3c66bddc57b7709f1fe14a5f924182cec"
           }
         },
         "ci/factory.sh": {
           "kind": "generated",
           "blocks": {
-            "harness.ci": "76fce16cf3735e2c55de1ec358143b88a54b993180f66640ac48519885b85c19"
+            "harness.ci": "604119ce1349d82623a0ba81e9437dd4eccaeefaa71c6048c68b63f3137a0fe3"
           }
         }
       }

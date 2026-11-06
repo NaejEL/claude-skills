@@ -176,7 +176,7 @@ class ArbitrationTest(helpers.TempDirCase):
         clear = json.loads(self.decide("software-factory.profiles").stdout)
         ans = h(self.tmp, "gate", "answer", "--root", str(self.tmp), "--run", clear["run"], "--id",
                 "software-factory.profiles", "--headless")
-        self.assertEqual((ans.returncode, json.loads(ans.stdout)["answer"]), (0, "proposition"))
+        self.assertEqual((ans.returncode, json.loads(ans.stdout)["answer"]), (0, "proposal"))
 
     def test_ar03_ap02_the_audit_prioritisation_gates_take_their_default_under_auto(self):
         """AR-03 replaced by AP-02: the phase 1 guard is gone, an audit prioritisation gate under auto takes
