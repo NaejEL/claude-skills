@@ -89,6 +89,10 @@ class PureRenderTest(unittest.TestCase):
 class CiScriptRunTest(helpers.TempDirCase):
     """The rendered ci/factory.sh and ci/lab.sh with a fake `claude`: root-anchored, stderr logged, exit kept."""
 
+    def setUp(self) -> None:
+        super().setUp()
+        self.tmp = self.tmp.resolve()   # one path form on both sides: the temp folder may sit under a symlink (macOS)
+
     def project(self, template: str, rel: str, status: str):
         repo = self.tmp / "repo"
         (repo / "ci").mkdir(parents=True)
@@ -121,7 +125,7 @@ class CiScriptRunTest(helpers.TempDirCase):
                 elsewhere.mkdir(exist_ok=True)
                 res, log = self.run_script(repo, env, rel, "specs/SPEC-x.md", elsewhere)     # from the repository root
                 self.assertEqual(res.returncode, 3, res.stderr)
-                self.assertIn("cwd=%s" % repo.resolve(), log)
+                self.assertIn("cwd=%s" % repo, log)
                 self.assertIn("ERR-LINE", log)
                 self.assertIn("%s/specs/SPEC-x.md" % repo, log)
                 res, log = self.run_script(repo, env, rel, "repo/specs/SPEC-x.md", self.tmp)  # from the current folder
@@ -129,6 +133,7 @@ class CiScriptRunTest(helpers.TempDirCase):
                 self.assertIn("%s/repo/specs/SPEC-x.md" % self.tmp, log)
 
 
+@unittest.skipUnless(uf.REPO_OK, uf.SKIP_REPO)
 class LayoutTest(helpers.TempDirCase):
     def setUp(self) -> None:
         super().setUp()
