@@ -10,12 +10,12 @@
   ],
   "skills": {
     "software-factory": {
-      "repo_commit": "efeba9f4a9dc82a519656e88065d49b3492735b1",
-      "repo_describe": "2.1.2",
+      "repo_commit": "757d07534886e6f3c23c95d7f48d3279f422e8e4",
+      "repo_describe": "2.1.3",
       "repo_dirty": true,
-      "core_version": "4.0.2",
+      "core_version": "4.0.3",
       "installed_at": "2026-11-01T17:33:07+01:00",
-      "updated_at": "2026-11-11T20:38:22+01:00",
+      "updated_at": "2026-11-11T21:57:46+01:00",
       "options": {
         "stacks": [],
         "interpreter": "py -3",
@@ -70,13 +70,13 @@
         "ci/factory.ps1": {
           "kind": "generated",
           "blocks": {
-            "harness.ci": "d7c0a4bceeca31ed4384cecdddf435c3c66bddc57b7709f1fe14a5f924182cec"
+            "harness.ci": "885762def7af42cd43b60c6c5ff230b7e7d8f9562efe15c3bb10d4cb116af4c8"
           }
         },
         "ci/factory.sh": {
           "kind": "generated",
           "blocks": {
-            "harness.ci": "604119ce1349d82623a0ba81e9437dd4eccaeefaa71c6048c68b63f3137a0fe3"
+            "harness.ci": "af7a9a7c1ecfd247f29efcace0d950dc2b7e364a8e5d634a24234572be0cb099"
           }
         }
       }
@@ -90,6 +90,26 @@
         {
           "path": ".harness/runs/ship-pr-20261111-201649.registry.jsonl",
           "sha256": "6e69b179eade9ab2f5ff35ac1a00b91c5362b9ea52a600ffc9f0d3dc4dc0b470"
+        }
+      ]
+    },
+    {
+      "id": "run-registries",
+      "at": "2026-11-11T21:41:09+01:00",
+      "sources": [
+        {
+          "path": ".harness/runs/ship-pr-20261111-204537.registry.jsonl",
+          "sha256": "61c7b00ed63bb4f250ca717c250cb91201cfe5399af276e5886a2eb9d45b2694"
+        }
+      ]
+    },
+    {
+      "id": "run-registries",
+      "at": "2026-11-11T21:57:46+01:00",
+      "sources": [
+        {
+          "path": ".harness/runs/ship-pr-20261111-215313.registry.jsonl",
+          "sha256": "2c4e9a92ef2860beac6a808b5107a761650ba44456b128fd5b684eec8bd38938"
         }
       ]
     }
