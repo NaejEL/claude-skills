@@ -1,11 +1,11 @@
 {
   "core_version": "4.0.2",
   "repo": {
-    "commit": "efeba9f4a9dc82a519656e88065d49b3492735b1",
+    "commit": "7e9c13466dffaf6cb092f896acca0aa4510ee4aa",
     "describe": "2.1.2",
     "dirty": true
   },
-  "entry": "9b7577b8c5bd8c8a247eb81a035028be7acd5fdd3a7b0eeb5990f6b020a7dd5f",
+  "entry": "09df1e0e3418c5b39f5ba50e86e3e262571bd0da95ad995b92d7832a19753129",
   "files": {
     "STAMP.md": "5f8cf7bbbb0ad66444cef1743d8b145bcb7f77941034309811852aafdd6fe7be",
     "harness.py": "b5d181d4b11bdc1b0024cc70d990a4b8cfa955445e6fbbf42f895d78bc665df1",
@@ -26,7 +26,7 @@
     "hcore/findings.py": "8ce0a9f13e2d758d33777453f60c73c7bcabcbab348e4c734e3fc747fd40d563",
     "hcore/fusion.py": "3cc12f7525516c809772a8c5c98b8346148dfbec2b53ea7e290d5b40d4a0bc48",
     "hcore/gates.py": "d3af66a7ca3e95eb1aa1d8de669419adf931e45e5aa489f76f2368fd1e4d9d5c",
-    "hcore/ghflow.py": "93c17992610a1490af8d970e0b8546a185f1f27c0683785341b6f424e051f281",
+    "hcore/ghflow.py": "aad01493d4e29e92bfdd77181d9d5046d7a01dea5c20d197d2baec3663d63f14",
     "hcore/guard.py": "e041f001ee10201fccc3564ef2fe76375dd1b9baa2adf6066abea280a60d60ed",
     "hcore/history.py": "afde047d7503710d45f3abfc030c3d7337880fb50066565587b801a3cae6fd0e",
     "hcore/hooks_install.py": "d0240fb6454dd9e3f59d81998a9e591775f91e52d8d4bfa0a13d0ae1147638b5",
@@ -61,7 +61,7 @@
     "hcore/verdicts.py": "cb5e559959df95a2612ce7b6247796430d512f23dc5afd1e181c447a0029af91",
     "hcore/version.py": "0d0b0661ca6cf13c14ff77b812d933d6d4165c4ec159cf9abdb5bfd384a304f0",
     "hcore/worktrees.py": "eeb0a59586f17ebdbe6f8d5b42f70c3ffd43389b466fe776841bf48c6ed3fe20",
-    "history.json": "0a4eb767af848c08db6f0157142b3f5204e68d81d6daee6777805eb19de39b6c",
+    "history.json": "6f29ba8b636dcede722abfee697cffaf2bbcc3ae31c553fd43f428108e1f1a12",
     "hooks/hook.py": "79f55a2b6ef4e32293a35e343d3a3c3ea29ec2162e8c071e69c69eabe85678a6",
     "profiles/SCHEMA.md": "6149a7e6a97f51ff5b647c2755c2a1772782237818113b6056e18fb3fc5b1d48",
     "profiles/research/install.md": "9c3b8d98052220107e14554c6fccf7e44729866ba9049ed413a6c41a527b064d",
@@ -148,7 +148,7 @@
     "tests/test_findings.py": "9a694d89b55b3412e7b872f8f3be6628ad2d3979e3f4ad2537d021c7bb8e99b5",
     "tests/test_fusion.py": "ced9bfde5e5a78832678d9e6921eb2aaf29de67f2b3db68c1fb25508042abf91",
     "tests/test_gates.py": "5c8babe3d1c8953daa6133b1c35f9a3e9462f070098e12f700846ea027cb63a9",
-    "tests/test_ghflow.py": "f7cc6da413a4c80335aef81a97e12422e11ea4574422a5b78aa869c326d17ca7",
+    "tests/test_ghflow.py": "37ebc02cd2c375dd60b5583f999501c44c136d0107190dc4dcd88c6cac42d181",
     "tests/test_hook_errors.py": "d01feb7f82a9553f34dc63f8282c28b8c31ee049fafee8ffa76c4a9a9742b067",
     "tests/test_hook_guard.py": "c6b405a2ff116e00f83676d0bfaef694ba30be9bc74019cf3618db8df5e8ad88",
     "tests/test_hook_lint.py": "78c2796b8c8751d56a9ef7d09aadcd90648920d2768cf2226866d27a7fcbc500",
