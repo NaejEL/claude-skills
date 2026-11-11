@@ -10,12 +10,12 @@
   ],
   "skills": {
     "software-factory": {
-      "repo_commit": "2aa0da3a5a1a40e480275190c4320cb1441b734e",
-      "repo_describe": "2.1.1",
+      "repo_commit": "efeba9f4a9dc82a519656e88065d49b3492735b1",
+      "repo_describe": "2.1.2",
       "repo_dirty": true,
-      "core_version": "4.0.1",
+      "core_version": "4.0.2",
       "installed_at": "2026-11-01T17:33:07+01:00",
-      "updated_at": "2026-11-11T18:10:31+01:00",
+      "updated_at": "2026-11-11T20:38:22+01:00",
       "options": {
         "stacks": [],
         "interpreter": "py -3",
@@ -81,5 +81,17 @@
         }
       }
     }
-  }
+  },
+  "migrations": [
+    {
+      "id": "run-registries",
+      "at": "2026-11-11T20:38:22+01:00",
+      "sources": [
+        {
+          "path": ".harness/runs/ship-pr-20261111-201649.registry.jsonl",
+          "sha256": "6e69b179eade9ab2f5ff35ac1a00b91c5362b9ea52a600ffc9f0d3dc4dc0b470"
+        }
+      ]
+    }
+  ]
 }
