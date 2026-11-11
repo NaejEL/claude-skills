@@ -74,11 +74,54 @@ class InstallTest(helpers.TempDirCase):
         self.assertEqual(result["entries"]["pre-edit"], fusion.KEPT)
         self.assertEqual(path.read_bytes(), before)
 
-    def test_hk02_the_interpreter_change_regenerates_nothing_by_itself(self):
-        """HK-06: a new interpreter is a different entry: kept as customized, reported (the upgrade decides)."""
+    def test_hk07_the_command_is_the_same_on_every_machine(self):
+        """HK-07: the interpreter is picked when the hook runs; installing from another D5 interpreter changes nothing."""
         hooks_install.apply(self.tmp, "python")
-        result = hooks_install.apply(self.tmp, "py -3")
+        before = self.settings().read_bytes()
+        for py in ("py -3", "python3"):
+            result = hooks_install.apply(self.tmp, py)
+            self.assertEqual(result["entries"]["pre-bash"], fusion.IDENTICAL, py)
+        self.assertEqual(self.settings().read_bytes(), before)
+        command = hooks_install.command_for("py -3", "pre-bash")
+        self.assertIn('for c in python python3 py; do a=; [ "$c" = py ] && a=-3; ', command)
+        self.assertIn('sys.exit(sys.version_info < (3, 9))', command)
+        self.assertIn('for c in /opt/venv/bin/python python python3 py; do',
+                      hooks_install.command_for("/opt/venv/bin/python", "pre-bash"))
+        self.assertIn("for c in '/c/My Venv/python.exe' python python3 py; do",
+                      hooks_install.command_for('"/c/My Venv/python.exe"', "pre-bash"))
+
+    def legacy_settings(self, py, timeout=10):
+        def entry(matcher, name):
+            command = ('f="$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py"; [ -f "$f" ] || exit 0; %s "$f" %s; '
+                       'rc=$?; [ "$rc" -eq 2 ] && exit 2; exit 0' % (py, name))
+            return {"matcher": matcher, "hooks": [{"type": "command", "command": command, "timeout": timeout}]}
+        data = {"hooks": {"PreToolUse": [entry(hooks_install.EDIT_TOOLS, "pre-edit"),
+                                         entry(hooks_install.SHELL_TOOLS, "pre-bash"),
+                                         {"matcher": "Bash", "hooks": [{"type": "command", "command": "echo user-hook"}]}]}}
+        return self.settings(json.dumps(data, indent=2))
+
+    def test_hk07_an_entry_generated_with_a_fixed_interpreter_is_updated_in_place(self):
+        """HK-07: the earlier generated entry (`py -3` written in it) is rewritten at its place; the user hook stays."""
+        path = self.legacy_settings("py -3")
+        result = hooks_install.apply(self.tmp, "python")
+        self.assertEqual(result["entries"], {"pre-edit": hooks_install.UPDATED, "pre-bash": hooks_install.UPDATED})
+        groups = json.loads(path.read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
+        self.assertEqual([g["matcher"] for g in groups], [hooks_install.EDIT_TOOLS, hooks_install.SHELL_TOOLS, "Bash"])
+        self.assertEqual(groups[1]["hooks"][0]["command"], hooks_install.command_for("python", "pre-bash"))
+        self.assertEqual(groups[2]["hooks"][0]["command"], "echo user-hook")
+        self.assertEqual(hooks_install.apply(self.tmp, "py -3")[".claude/settings.json"], fusion.IDENTICAL)
+
+    def test_hk07_an_earlier_entry_edited_by_the_user_is_still_kept(self):
+        """HK-07, HK-02: an earlier entry with another change than its interpreter stays `personnalisé-conservé`."""
+        path = self.legacy_settings("py -3", timeout=30)
+        before = path.read_bytes()
+        result = hooks_install.apply(self.tmp, "python")
         self.assertEqual(result["entries"]["pre-bash"], fusion.KEPT)
+        self.assertEqual(path.read_bytes(), before)
+        edited = self.legacy_settings("py -3 -X dev; echo")
+        before = edited.read_bytes()
+        self.assertEqual(hooks_install.apply(self.tmp, "python")["entries"]["pre-bash"], fusion.KEPT)
+        self.assertEqual(edited.read_bytes(), before)
 
     def test_hk02_cli_with_a_lint_file(self):
         """HK-02, HL-01: `hooks install --lint-file` writes hooks.lint (consumed file) then merges the three entries."""
@@ -131,6 +174,54 @@ class CommandTest(helpers.TempDirCase):
             shutil.copytree(str(src), str(dest), ignore=shutil.ignore_patterns("__pycache__"))
         payload = {"tool_name": "Bash", "tool_input": {"command": "git push --force"}, "session_id": "s"}
         res = self.run_command("pre-bash", payload, project, '"%s"' % sys.executable.replace("\\", "/"))
+        self.assertEqual(res.returncode, 2, res.stderr)
+
+    def guarded_project(self):
+        project = self.tmp / "p"
+        (project / ".claude" / "harness").mkdir(parents=True)
+        import shutil
+        for item in ("hooks", "hcore"):
+            shutil.copytree(str(helpers.CORE / item), str(project / ".claude" / "harness" / item),
+                            ignore=shutil.ignore_patterns("__pycache__"))
+        return project
+
+    def link(self, target, link):
+        try:
+            os.symlink(target, str(link))
+        except (OSError, NotImplementedError):
+            self.skipTest("symlinks unavailable")
+
+    def test_hk07_an_interpreter_below_the_floor_is_skipped(self):
+        """HK-07, D5: a `python` that answers but fails the 3.9 floor is skipped for the next candidate."""
+        project = self.guarded_project()
+        bin_dir = self.tmp / "bin"
+        bin_dir.mkdir()
+        old = bin_dir / "python"
+        old.write_text('#!/bin/sh\ncase "$*" in *version_info*) exit 1;; esac\nexit 0\n', encoding="utf-8")
+        old.chmod(0o755)
+        self.link(sys.executable, bin_dir / "python3")
+        payload = {"tool_name": "Bash", "tool_input": {"command": "git push --force"}, "session_id": "s"}
+        command = hooks_install.command_for("python3", "pre-bash")
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=str(project), PATH=str(bin_dir) + os.pathsep + os.environ["PATH"])
+        res = subprocess.run([find_bash(), "-c", command], input=json.dumps(payload), capture_output=True, text=True,
+                             env=env, timeout=60)
+        self.assertEqual(res.returncode, 2, res.stderr)
+
+    def test_hk07_an_interpreter_path_with_spaces_stays_whole(self):
+        """HK-07: a venv path containing a space is probed and run as one word."""
+        project = self.guarded_project()
+        spaced = self.tmp / "my venv"
+        spaced.mkdir()
+        self.link(sys.executable, spaced / "python")
+        payload = {"tool_name": "Bash", "tool_input": {"command": "git push --force"}, "session_id": "s"}
+        command = hooks_install.command_for(str(spaced / "python").replace("\\", "/"), "pre-bash")
+        self.assertIn("'%s'" % str(spaced / "python").replace("\\", "/"), command)
+        empty = self.tmp / "empty-path"
+        empty.mkdir()
+        env = dict(os.environ, CLAUDE_PROJECT_DIR=str(project), PATH=str(empty))  # no fallback interpreter
+        import shutil
+        res = subprocess.run([shutil.which(find_bash()) or find_bash(), "-c", command], input=json.dumps(payload), capture_output=True, text=True,
+                             env=env, timeout=60)
         self.assertEqual(res.returncode, 2, res.stderr)
 
 

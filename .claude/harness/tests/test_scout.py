@@ -46,6 +46,24 @@ class VerdictTest(helpers.TempDirCase):
         res = h(root, "scout", "signals", "--root", str(root))
         self.assertEqual(sorted(json.loads(res.stdout)["profiles"]), ["research", "software"])
 
+    def test_sc09_test_data_folders_are_not_signals_of_the_project(self):
+        """SC-09: a dated journal or a manifest under fixtures/, __fixtures__/ or testdata/ proves nothing."""
+        root = self.tmp / "harness-like"
+        for folder in ("tests/fixtures/mixed/docs", "ci/fixtures/toy/docs", "pkg/testdata/docs", "src/__fixtures__/docs"):
+            (root / folder).mkdir(parents=True)
+            (root / folder / "JOURNAL.md").write_text("# Journal\n\n## 2026-09-01 — Baseline\n", encoding="utf-8")
+            (root / folder.rsplit("/", 1)[0] / "pyproject.toml").write_text("[project]\nname = \"toy\"\n", encoding="utf-8")
+        found = scout.signals(root)["profiles"]
+        research = {c["id"]: c for c in found["research"]["criteria"]}
+        software = {c["id"]: c for c in found["software"]["criteria"]}
+        self.assertFalse(research["dated-journal"]["found"], research["dated-journal"]["proofs"])
+        self.assertFalse(software["manifest-python-package"]["found"], software["manifest-python-package"]["proofs"])
+        (root / "docs").mkdir()
+        (root / "docs" / "JOURNAL.md").write_text("## 2026-09-01 — Baseline\n", encoding="utf-8")
+        found = scout.signals(root)["profiles"]
+        proofs = {c["id"]: c for c in found["research"]["criteria"]}["dated-journal"]["proofs"]
+        self.assertEqual([p["file"] for p in proofs], ["docs/JOURNAL.md"])
+
     def test_sc03_sc05_the_agent_only_receives_judgement_criteria(self):
         """SC-03: the criteria handed to the Explore agent are the judgement ones, with a French question."""
         got = scout.judgement_criteria()

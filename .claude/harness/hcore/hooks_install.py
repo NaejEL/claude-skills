@@ -1,4 +1,4 @@
-# Installation of the harness hooks in .claude/settings.json (HK-02, HK-03, HK-06).
+# Installation of the harness hooks in .claude/settings.json (HK-02, HK-03, HK-06, HK-07).
 #
 # - HK-02: `PreToolUse` Edit|Write|MultiEdit|NotebookEdit -> pre-edit (10 s),
 #   `PreToolUse` Bash|PowerShell -> pre-bash (10 s), `PostToolUse`
@@ -10,14 +10,21 @@
 # - HK-03: the generated command never exits 2 except for a wanted blocking:
 #   a missing script is skipped (Python itself would answer 2) and any other code
 #   (interpreter missing = 127, crash = 1) becomes 0.
+# - HK-07: the command picks the interpreter when it runs, in the D5 order, so it is
+#   the same on every machine of the team (each probe is bounded by `timeout`: the
+#   Microsoft Store stub never answers). An entry written by an earlier version
+#   (the interpreter fixed in the command, the rest as generated) is updated in
+#   place (`mis-à-jour`); any other difference is still kept.
 
 from __future__ import annotations
 
 import json
+import re
+import shlex
 from pathlib import Path
 from typing import Any, Dict, List
 
-from . import fusion
+from . import fusion, interp
 
 HOOK_MARK = ".claude/harness/hooks/hook.py"
 EDIT_TOOLS = "Edit|Write|MultiEdit|NotebookEdit"
@@ -27,10 +34,47 @@ SPECS = (("PreToolUse", EDIT_TOOLS, "pre-edit", 10), ("PreToolUse", SHELL_TOOLS,
          ("PostToolUse", POST_TOOLS, "post-edit", 60))
 
 
+UPDATED = "mis-à-jour"
+D5_WORDS = [" ".join(c) for c in interp.CANDIDATES]
+# HK-07: each candidate is one shell word (a path with spaces stays whole); the D5 arguments
+# (`py -3`) are added by name, and the probe enforces the D5 floor like interp.detect.
+_PROGRAMS = [c[0] for c in interp.CANDIDATES]
+_ARGS = "".join('[ "$c" = %s ] && a=%s; ' % (c[0], " ".join(c[1:])) for c in interp.CANDIDATES if len(c) > 1)
+_FLOOR_CHECK = "import sys; sys.exit(sys.version_info < %r)" % (tuple(interp.FLOOR),)
+# HK-07: the command generated up to core 4.0.0, the interpreter fixed in it.
+_LEGACY = re.compile(r'^f="\$CLAUDE_PROJECT_DIR/%s"; \[ -f "\$f" \] \|\| exit 0; (?P<py>[^;]+?) "\$f" (?P<name>[a-z-]+); '
+                     r'rc=\$\?; \[ "\$rc" -eq 2 \] && exit 2; exit 0$' % re.escape(HOOK_MARK))
+
+
+def candidates_for(py: str) -> List[str]:
+    """HK-07: the D5 programs; a non-standard interpreter (a venv path, quotes stripped) is tried first."""
+    py = (py or "").strip()
+    if len(py) > 1 and py[0] == py[-1] and py[0] in "\"'":
+        py = py[1:-1]
+    return list(_PROGRAMS) if not py or py in D5_WORDS or py in _PROGRAMS else [py] + _PROGRAMS
+
+
 def command_for(py: str, name: str) -> str:
-    """HK-03: `$CLAUDE_PROJECT_DIR`, the detected interpreter, never an accidental exit 2."""
-    return ('f="$CLAUDE_PROJECT_DIR/%s"; [ -f "$f" ] || exit 0; %s "$f" %s; rc=$?; '
-            '[ "$rc" -eq 2 ] && exit 2; exit 0' % (HOOK_MARK, py, name))
+    """HK-03, HK-07: `$CLAUDE_PROJECT_DIR`, the first interpreter >= FLOOR that answers, never an accidental exit 2."""
+    words = " ".join(shlex.quote(c) for c in candidates_for(py))
+    return ('f="$CLAUDE_PROJECT_DIR/%s"; [ -f "$f" ] || exit 0; '
+            't=; command -v timeout >/dev/null 2>&1 && t="timeout 3"; p=; for c in %s; do a=; %s'
+            '$t "$c" $a -c "%s" >/dev/null 2>&1 && { p=$c; break; }; done; [ -n "$p" ] || exit 0; '
+            '"$p" $a "$f" %s; rc=$?; [ "$rc" -eq 2 ] && exit 2; exit 0'
+            % (HOOK_MARK, words, _ARGS, _FLOOR_CHECK, name))
+
+
+def _legacy_generated(group: Dict[str, Any], wanted: Dict[str, Any], name: str) -> bool:
+    """HK-07: the group is the earlier generated entry, untouched apart from its fixed interpreter."""
+    hooks = group.get("hooks")
+    if set(group) != set(wanted) or group.get("matcher") != wanted["matcher"] or not isinstance(hooks, list) \
+            or len(hooks) != 1 or not isinstance(hooks[0], dict):
+        return False
+    hook, want = hooks[0], wanted["hooks"][0]
+    if set(hook) != set(want) or hook.get("type") != want["type"] or hook.get("timeout") != want["timeout"]:
+        return False
+    m = _LEGACY.match(str(hook.get("command", "")))
+    return bool(m) and m.group("name") == name
 
 
 def lint_configured(root: Path) -> bool:
@@ -61,6 +105,11 @@ def _op(event: str, matcher: str, name: str, command: str, timeout: int, outcome
             if isinstance(group, dict) and any(_is_ours(h, name) for h in group.get("hooks", [])):
                 if group == wanted:
                     outcome[name] = fusion.IDENTICAL
+                    return []
+                if _legacy_generated(group, wanted, name):
+                    group.clear()
+                    group.update(json.loads(json.dumps(wanted)))
+                    outcome[name] = UPDATED
                     return []
                 outcome[name] = fusion.KEPT
                 return ["hooks.%s[%s]" % (event, name)]

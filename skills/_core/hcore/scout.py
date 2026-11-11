@@ -6,7 +6,8 @@
 #   judgement (evaluated by the agent).
 # - SC-02: `signals` evaluates every non-judgement criterion of every profile
 #   and returns the proofs {file, line, excerpt}; artifact folders are excluded
-#   (ST-03).
+#   (ST-03), and so are test-data folders (SC-09): a fixture describes another
+#   project, never the scanned one.
 # - SC-03: the agent only receives the judgement criteria (`judgement_criteria`).
 # - SC-04: role harness.scout, default model haiku (models.py).
 # - SC-05: `verdict`: a judgement proof must name an existing file, lines inside
@@ -33,6 +34,13 @@ from . import profiles, stack
 READ_LIMIT = 200 * 1024
 NOT_COLLECTED = "scout non recueilli"
 DEPENDENCY_FILES = ("requirements.txt", "pyproject.toml", "environment.yml", "package.json")
+# SC-09: folders of test data, at any depth; their manifests and journals are samples.
+TEST_DATA_DIRS = ("fixtures", "__fixtures__", "testdata")
+
+
+def _skipped(rel: str) -> bool:
+    """rel: posix path of a folder relative to the root."""
+    return stack._is_artifact(rel) or rel.split("/")[-1] in TEST_DATA_DIRS
 
 
 def _files(root: Path, max_depth: int) -> List[str]:
@@ -42,7 +50,7 @@ def _files(root: Path, max_depth: int) -> List[str]:
     for current, dirs, files in os.walk(str(root)):
         rel = Path(current).relative_to(root).as_posix()
         prefix = "" if rel == "." else rel + "/"
-        dirs[:] = sorted(d for d in dirs if not stack._is_artifact(prefix + d))
+        dirs[:] = sorted(d for d in dirs if not _skipped(prefix + d))
         depth = 0 if rel == "." else rel.count("/") + 1
         if depth >= max_depth:
             dirs[:] = []
@@ -56,7 +64,7 @@ def _dirs(root: Path) -> List[str]:
     for current, dirs, _files_ in os.walk(str(root)):
         rel = Path(current).relative_to(root).as_posix()
         prefix = "" if rel == "." else rel + "/"
-        dirs[:] = sorted(d for d in dirs if not stack._is_artifact(prefix + d))
+        dirs[:] = sorted(d for d in dirs if not _skipped(prefix + d))
         out += [prefix + d for d in dirs]
         if rel != ".":
             dirs[:] = []

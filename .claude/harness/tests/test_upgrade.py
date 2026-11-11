@@ -53,6 +53,31 @@ class ArgsTest(helpers.TempDirCase):
         self.assertIn("not equipped", res.stderr)
 
 
+class InterpreterTest(helpers.TempDirCase):
+    def entry(self, py):
+        return {"options": {"interpreter": py}}
+
+    def test_dt05_the_stamp_interpreter_is_kept_while_it_answers_here(self):
+        """DT-05: a caller on another machine does not rewrite the files as long as the recorded interpreter works."""
+        with mock.patch("hcore.interp.probe", return_value=(3, 12, 0)) as probe:
+            self.assertEqual(upgrade.interpreter_of(self.tmp, self.entry("py -3"), "python"), "py -3")
+        probe.assert_called_once_with(["py", "-3"])
+
+    def test_dt05_a_recorded_interpreter_absent_here_gives_way_to_the_caller(self):
+        """DT-05: recorded interpreter missing (or too old) on this machine -> the caller's one."""
+        for answer in (None, (3, 8, 10)):
+            with mock.patch("hcore.interp.probe", return_value=answer):
+                self.assertEqual(upgrade.interpreter_of(self.tmp, self.entry("py -3"), "python"), "python", answer)
+
+    def test_dt03_order_without_conflict_is_unchanged(self):
+        """DT-03: no stamp -> the option; stamp equal to the option or no option -> the stamp, without probing."""
+        with mock.patch("hcore.interp.probe") as probe:
+            self.assertEqual(upgrade.interpreter_of(self.tmp, {}, "python3"), "python3")
+            self.assertEqual(upgrade.interpreter_of(self.tmp, self.entry("python3"), "python3"), "python3")
+            self.assertEqual(upgrade.interpreter_of(self.tmp, self.entry("py -3"), None), "py -3")
+        probe.assert_not_called()
+
+
 @unittest.skipUnless(uf.REPO_OK, uf.SKIP_REPO)
 class UpgradeBlocksTest(helpers.TempDirCase):
     def setUp(self) -> None:

@@ -43,7 +43,7 @@ def run(ctx):
     ctx.check(3, same == [] and installed == version, "differences=%s core=%s installed=%s" % (same[:5], version, installed))
 
     got = {
-        "settings": ordered(ctx.read(".claude/settings.json").replace(ctx.interp, "{PY}")),
+        "settings": ordered(ctx.read(".claude/settings.json")),  # HK-07: same on every machine
         "tasks": ordered(ctx.read(".vscode/tasks.json")),
     }
     want = {

@@ -44,6 +44,6 @@ sous `<tmp>/<scénario>/github.com/acme/toy.git` (`ghflow.py` exige `github.com`
 
 ## Attendus (`expected/<scénario>/`, FX-06)
 
-- `install-fresh/` : `files.txt` (fichiers créés, hors `.claude/harness/`), `settings.json` (le jeton `{PY}` est remplacé par
-  l'interpréteur détecté), `tasks.json`, `gitignore.txt` ; comparaison sur le JSON parsé, ordre des clés compris.
+- `install-fresh/` : `files.txt` (fichiers créés, hors `.claude/harness/`), `settings.json` (comparé tel quel : la commande
+  des hooks choisit l'interpréteur à l'exécution, HK-07), `tasks.json`, `gitignore.txt` ; comparaison sur le JSON parsé, ordre des clés compris.
 - `stop-iteration3/stop-lines.txt` : lignes qui doivent figurer dans le `STOP-*.md`.
