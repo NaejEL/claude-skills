@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# harness: claude-skills 2.1.3 (core 4.0.3)
+# harness: claude-skills 2.1.4 (core 4.0.4)
 # >>> harness.ci >>>
 # Runs a headless software-factory cycle on an already approved spec.
 # Usage: ci/factory.sh <spec-path> [--yolo]
@@ -51,7 +51,7 @@ if [ ! -f "$spec" ]; then
     exit 1
 fi
 
-if ! grep -Eq "^[[:space:]]*(Status[[:space:]]*:[[:space:]]*APPROVED|Statut[[:space:]]*:[[:space:]]*APPROUVEE)" "$spec"; then
+if ! grep -Eiq "^[[:space:]]*(Status[[:space:]]*:[[:space:]]*APPROVED|Statut[[:space:]]*:[[:space:]]*APPROUVEE)" "$spec"; then
     echo "Spec not approved: '$spec' does not contain 'Status: APPROVED' (or the French 'Statut : APPROUVEE')." >&2
     echo "A CI cycle requires a spec validated by the Product Owner." >&2
     exit 1

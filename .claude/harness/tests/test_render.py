@@ -115,8 +115,9 @@ class CiScriptRunTest(helpers.TempDirCase):
         return res, logs[-1].read_text(encoding="utf-8") if logs else ""
 
     def test_relative_spec_root_anchored_stderr_logged_exit_kept(self):
-        for template, rel, status in (("factory-ci.sh", "factory.sh", "Status: APPROVED"),
-                                      ("lab-ci.sh", "lab.sh", "Status: PRE-REGISTERED")):
+        # The status check ignores case, like ci/*.ps1 and the core.
+        for template, rel, status in (("factory-ci.sh", "factory.sh", "status: Approved"),
+                                      ("lab-ci.sh", "lab.sh", "Status: pre-registered")):
             with self.subTest(rel):
                 for item in ("repo", "bin"):
                     shutil.rmtree(str(self.tmp / item), ignore_errors=True)

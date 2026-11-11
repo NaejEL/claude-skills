@@ -1,4 +1,4 @@
-# harness: claude-skills 2.1.3 (core 4.0.3)
+# harness: claude-skills 2.1.4 (core 4.0.4)
 # >>> harness.ci >>>
 # Runs a headless software-factory cycle on an already approved spec.
 # Usage: pwsh -File ci/factory.ps1 <spec-path> [-Yolo]
