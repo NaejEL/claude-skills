@@ -1,4 +1,4 @@
-# Upgrade engine of an equipped project (Phase 3, UP-01 to UP-13, DT-01 to DT-04).
+# Upgrade engine of an equipped project (Phase 3, UP-01 to UP-13, DT-01 to DT-05).
 #
 # - UP-01: `build_plan` computes every modification without writing in the project;
 #   `write_plan` writes only upgrade-<ts>.plan.json and upgrade-<ts>.diff under
@@ -21,6 +21,8 @@
 #   never touches the blocks of another one. UP-13: a missing generated file is recreated.
 # - DT-02, DT-03, DT-04: a project without stamp is detected by its generated files; the
 #   stamp is created by the first successful upgrade (inferred_from).
+# - DT-05: the stamp's interpreter beats the one detected by the caller as long as it
+#   answers on this machine, so moving between machines does not rewrite the files.
 # - CV: the first upgrade of a file without harness blocks goes through convert.py.
 
 from __future__ import annotations
@@ -193,10 +195,18 @@ def _mcp_interpreter(root: Path) -> Optional[str]:
 
 
 def interpreter_of(root: Path, old_entry: Dict[str, Any], given: Optional[str]) -> str:
-    """DT-03 order: option, stamp, .mcp.json, detection D5."""
+    """DT-03 order: stamp when it answers on this machine, option, stamp, .mcp.json, detection D5.
+
+    The option is the interpreter detected by the calling skill on the current machine: letting it
+    win would rewrite every generated file each time the project moves to another machine. The
+    recorded one is kept as long as it works here (DT-05)."""
+    saved = (old_entry.get("options") or {}).get("interpreter")
+    if saved and given and saved != given:
+        version = interp.probe(saved.split())
+        if version is not None and version[:2] >= interp.FLOOR:
+            return saved
     if given:
         return given
-    saved = (old_entry.get("options") or {}).get("interpreter")
     if saved:
         return saved
     found = _mcp_interpreter(Path(root))

@@ -74,11 +74,51 @@ class InstallTest(helpers.TempDirCase):
         self.assertEqual(result["entries"]["pre-edit"], fusion.KEPT)
         self.assertEqual(path.read_bytes(), before)
 
-    def test_hk02_the_interpreter_change_regenerates_nothing_by_itself(self):
-        """HK-06: a new interpreter is a different entry: kept as customized, reported (the upgrade decides)."""
+    def test_hk07_the_command_is_the_same_on_every_machine(self):
+        """HK-07: the interpreter is picked when the hook runs; installing from another D5 interpreter changes nothing."""
         hooks_install.apply(self.tmp, "python")
-        result = hooks_install.apply(self.tmp, "py -3")
+        before = self.settings().read_bytes()
+        for py in ("py -3", "python3"):
+            result = hooks_install.apply(self.tmp, py)
+            self.assertEqual(result["entries"]["pre-bash"], fusion.IDENTICAL, py)
+        self.assertEqual(self.settings().read_bytes(), before)
+        command = hooks_install.command_for("py -3", "pre-bash")
+        self.assertIn('for c in python python3 "py -3"; do', command)
+        self.assertIn('for c in /opt/venv/bin/python python python3 "py -3"; do',
+                      hooks_install.command_for("/opt/venv/bin/python", "pre-bash"))
+
+    def legacy_settings(self, py, timeout=10):
+        def entry(matcher, name):
+            command = ('f="$CLAUDE_PROJECT_DIR/.claude/harness/hooks/hook.py"; [ -f "$f" ] || exit 0; %s "$f" %s; '
+                       'rc=$?; [ "$rc" -eq 2 ] && exit 2; exit 0' % (py, name))
+            return {"matcher": matcher, "hooks": [{"type": "command", "command": command, "timeout": timeout}]}
+        data = {"hooks": {"PreToolUse": [entry(hooks_install.EDIT_TOOLS, "pre-edit"),
+                                         entry(hooks_install.SHELL_TOOLS, "pre-bash"),
+                                         {"matcher": "Bash", "hooks": [{"type": "command", "command": "echo user-hook"}]}]}}
+        return self.settings(json.dumps(data, indent=2))
+
+    def test_hk07_an_entry_generated_with_a_fixed_interpreter_is_updated_in_place(self):
+        """HK-07: the earlier generated entry (`py -3` written in it) is rewritten at its place; the user hook stays."""
+        path = self.legacy_settings("py -3")
+        result = hooks_install.apply(self.tmp, "python")
+        self.assertEqual(result["entries"], {"pre-edit": hooks_install.UPDATED, "pre-bash": hooks_install.UPDATED})
+        groups = json.loads(path.read_text(encoding="utf-8"))["hooks"]["PreToolUse"]
+        self.assertEqual([g["matcher"] for g in groups], [hooks_install.EDIT_TOOLS, hooks_install.SHELL_TOOLS, "Bash"])
+        self.assertEqual(groups[1]["hooks"][0]["command"], hooks_install.command_for("python", "pre-bash"))
+        self.assertEqual(groups[2]["hooks"][0]["command"], "echo user-hook")
+        self.assertEqual(hooks_install.apply(self.tmp, "py -3")[".claude/settings.json"], fusion.IDENTICAL)
+
+    def test_hk07_an_earlier_entry_edited_by_the_user_is_still_kept(self):
+        """HK-07, HK-02: an earlier entry with another change than its interpreter stays `personnalisé-conservé`."""
+        path = self.legacy_settings("py -3", timeout=30)
+        before = path.read_bytes()
+        result = hooks_install.apply(self.tmp, "python")
         self.assertEqual(result["entries"]["pre-bash"], fusion.KEPT)
+        self.assertEqual(path.read_bytes(), before)
+        edited = self.legacy_settings("py -3 -X dev; echo")
+        before = edited.read_bytes()
+        self.assertEqual(hooks_install.apply(self.tmp, "python")["entries"]["pre-bash"], fusion.KEPT)
+        self.assertEqual(edited.read_bytes(), before)
 
     def test_hk02_cli_with_a_lint_file(self):
         """HK-02, HL-01: `hooks install --lint-file` writes hooks.lint (consumed file) then merges the three entries."""

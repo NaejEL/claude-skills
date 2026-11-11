@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# harness: claude-skills 2.1.0 (core 4.0.0)
+# harness: claude-skills 2.1.1 (core 4.0.1)
 # >>> harness.ci >>>
 # Runs a headless software-factory cycle on an already approved spec.
 # Usage: ci/factory.sh <spec-path> [--yolo]

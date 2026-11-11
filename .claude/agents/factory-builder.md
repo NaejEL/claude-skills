@@ -1,5 +1,5 @@
 ---
-# harness: claude-skills 2.1.0 (core 4.0.0)
+# harness: claude-skills 2.1.1 (core 4.0.1)
 # >>> harness.frontmatter >>>
 name: factory-builder
 description: "Strictly implements an approved specification — architecture, code and tests in a single context — then runs build and tests before handing back."

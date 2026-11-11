@@ -10,12 +10,12 @@
   ],
   "skills": {
     "software-factory": {
-      "repo_commit": "fb1f40fbbc68584afabcd95370af55298c8c7f09",
-      "repo_describe": "2.1.0",
+      "repo_commit": "2aa0da3a5a1a40e480275190c4320cb1441b734e",
+      "repo_describe": "2.1.1",
       "repo_dirty": true,
-      "core_version": "4.0.0",
+      "core_version": "4.0.1",
       "installed_at": "2026-11-01T17:33:07+01:00",
-      "updated_at": "2026-11-02T08:19:19+01:00",
+      "updated_at": "2026-11-11T18:10:31+01:00",
       "options": {
         "stacks": [],
         "interpreter": "py -3",
