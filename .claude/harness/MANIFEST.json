@@ -1,11 +1,11 @@
 {
   "core_version": "4.0.1",
   "repo": {
-    "commit": "2aa0da3a5a1a40e480275190c4320cb1441b734e",
+    "commit": "9d5459f374b92c1fa7a13dc28ec8f60a9551e501",
     "describe": "2.1.1",
     "dirty": true
   },
-  "entry": "c3002cbbf8f6c4f40f121885753425b3dc7b8f52067bb035be85369cf21d655f",
+  "entry": "8da5044e4db5340abca042f8217fbf03dff6c7be87f24b74da98b4c306aa2932",
   "files": {
     "STAMP.md": "5f8cf7bbbb0ad66444cef1743d8b145bcb7f77941034309811852aafdd6fe7be",
     "harness.py": "b5d181d4b11bdc1b0024cc70d990a4b8cfa955445e6fbbf42f895d78bc665df1",
@@ -29,7 +29,7 @@
     "hcore/ghflow.py": "9032b3abf92e90f7f31e2d4f72f1051904928337516bd165a5a692d85eb6da75",
     "hcore/guard.py": "e041f001ee10201fccc3564ef2fe76375dd1b9baa2adf6066abea280a60d60ed",
     "hcore/history.py": "afde047d7503710d45f3abfc030c3d7337880fb50066565587b801a3cae6fd0e",
-    "hcore/hooks_install.py": "0697953949df490e05cc9b8ee50b6b9e254e98e554b8c70e804dd06cde587aea",
+    "hcore/hooks_install.py": "d0240fb6454dd9e3f59d81998a9e591775f91e52d8d4bfa0a13d0ae1147638b5",
     "hcore/interp.py": "476cdd00eaa751766731c22e2cd8d29f8cb35d8adfcf67eed80ffff64e398e1c",
     "hcore/journal.py": "0269de9802e2f6b9fae574364b510ba30027c534d4ccb67b6ea5fd8fa6da63e3",
     "hcore/jsonc.py": "82c50a4ac8300512c8d5f740025ce4b9bacb0d9d9f26f721ba54df990f3499f9",
@@ -61,7 +61,7 @@
     "hcore/verdicts.py": "cb5e559959df95a2612ce7b6247796430d512f23dc5afd1e181c447a0029af91",
     "hcore/version.py": "0d0b0661ca6cf13c14ff77b812d933d6d4165c4ec159cf9abdb5bfd384a304f0",
     "hcore/worktrees.py": "eeb0a59586f17ebdbe6f8d5b42f70c3ffd43389b466fe776841bf48c6ed3fe20",
-    "history.json": "17d3e23e4f89ab6debf894e501c02d016acc672ac0d894fdc6ca0cfdd499a6f9",
+    "history.json": "95220afc7b70ca8b51e435eec3c5ce75efaa6149597199c303f628211d4f7920",
     "hooks/hook.py": "79f55a2b6ef4e32293a35e343d3a3c3ea29ec2162e8c071e69c69eabe85678a6",
     "profiles/SCHEMA.md": "6149a7e6a97f51ff5b647c2755c2a1772782237818113b6056e18fb3fc5b1d48",
     "profiles/research/install.md": "9c3b8d98052220107e14554c6fccf7e44729866ba9049ed413a6c41a527b064d",
@@ -153,7 +153,7 @@
     "tests/test_hook_guard.py": "c6b405a2ff116e00f83676d0bfaef694ba30be9bc74019cf3618db8df5e8ad88",
     "tests/test_hook_lint.py": "78c2796b8c8751d56a9ef7d09aadcd90648920d2768cf2226866d27a7fcbc500",
     "tests/test_hook_scope.py": "541a02f40016d4d0aee000fbbb4466e225b50cc75cfe0200ef122b6cfdd88d58",
-    "tests/test_hooks_install.py": "f436402438f502e272d4bcd5d7e2b4513990ece96be8d9ed096bcf9affc399f0",
+    "tests/test_hooks_install.py": "2c1731105bd73a2dcb704e1b4230d0a17f95fd19a1a37141cc4ce47c30afe865",
     "tests/test_interp.py": "a9e1aa1a8122cc41e8709c17833d1d0028e570910bab2447cb68236a319523d5",
     "tests/test_journal.py": "38b9b0c8d27c4896538b885b782541ee772cc06c28094cef0d4d6c80753f7752",
     "tests/test_lab.py": "a40aad71fe5c4f5873d273d8738f46384c2f4fcd101863c2c24438220e24c827",
