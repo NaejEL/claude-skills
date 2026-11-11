@@ -1,5 +1,5 @@
 ---
-# harness: claude-skills 2.1.3 (core 4.0.3)
+# harness: claude-skills 2.1.4 (core 4.0.4)
 # >>> harness.frontmatter >>>
 name: factory-run
 description: "Runs one cycle of the software factory (Planner → human gate on the spec → Builder → Verifier with a fix loop) on a need or an approved spec."

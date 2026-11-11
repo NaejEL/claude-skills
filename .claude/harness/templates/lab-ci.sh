@@ -49,7 +49,7 @@ if [ ! -f "$protocol" ]; then
     exit 1
 fi
 
-if ! grep -Eq "^[[:space:]]*(Status[[:space:]]*:[[:space:]]*PRE-REGISTERED|Statut[[:space:]]*:[[:space:]]*PRE-ENREGISTRE)" "$protocol"; then
+if ! grep -Eiq "^[[:space:]]*(Status[[:space:]]*:[[:space:]]*PRE-REGISTERED|Statut[[:space:]]*:[[:space:]]*PRE-ENREGISTRE)" "$protocol"; then
     echo "Protocol not pre-registered: '$protocol' does not contain 'Status: PRE-REGISTERED' (or the French 'Statut : PRE-ENREGISTRE')." >&2
     echo "A CI cycle requires a protocol approved by the PI." >&2
     exit 1

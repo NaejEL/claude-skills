@@ -1,5 +1,5 @@
 ---
-# harness: claude-skills 2.1.3 (core 4.0.3)
+# harness: claude-skills 2.1.4 (core 4.0.4)
 # >>> harness.frontmatter >>>
 name: factory-verifier
 description: "Adversarial verification of an implementation against its spec — runs the tests, tries to break it, returns a strict JSON verdict. Never modifies the code."
